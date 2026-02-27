@@ -7,10 +7,12 @@ import {
 } from "react-router-dom";
 
 // --- Components ---
-import Landing from "./components/Landing"; // 👈 NEW: Imported the Front Door
+import Landing from "./components/Landing";
 import Login from "./components/Login";
 import Dashboard from "./components/Dashboard";
-// import Register from "./components/Register"; // Uncomment this if you built a Register component earlier!
+import Register from "./components/Register"; 
+import ForgotPassword from "./components/ForgotPassword";
+import ResetPassword from "./components/ResetPassword";
 
 function App() {
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -41,13 +43,12 @@ function App() {
 
         {/* The Traffic Cop (Changes the page based on the URL) */}
         <Routes>
-          {/* 👈 NEW: The root URL now shows your beautiful Landing Page! */}
           <Route path="/" element={<Landing />} />
-
           <Route path="/login" element={<Login />} />
           <Route path="/dashboard" element={<Dashboard />} />
-
-          {/* <Route path="/register" element={<Register />} /> */}
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password/:token" element={<ResetPassword />} />
+          <Route path="/register" element={<Register />} />
 
           {/* Catch-all: If someone types a weird URL, send them home */}
           <Route path="*" element={<Navigate to="/" />} />

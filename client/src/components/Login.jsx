@@ -5,8 +5,8 @@ const Login = () => {
   // 1. Memory for what the user types
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-    const [statusMessage, setStatusMessage] = useState("");
-    const navigate = useNavigate();
+  const [statusMessage, setStatusMessage] = useState("");
+  const navigate = useNavigate();
 
   // 2. The function that talks to your Node.js backend
   const onSubmitForm = async (e) => {
@@ -29,7 +29,6 @@ const Login = () => {
         setStatusMessage("✅ Login Successful! VIP Pass Secured.");
 
         navigate("/dashboard");
-
       } else {
         setStatusMessage("❌ " + parseRes.error);
       }
@@ -69,6 +68,15 @@ const Login = () => {
             onChange={(e) => setPassword(e.target.value)}
             required
           />
+        </div>
+
+        <div className="text-right">
+          <a
+            href="/forgot-password"
+            className="text-sm font-semibold text-blue-600 hover:underline dark:text-blue-400"
+          >
+            Forgot Password?
+          </a>
         </div>
 
         <button

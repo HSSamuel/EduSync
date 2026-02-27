@@ -66,3 +66,50 @@ CREATE TABLE attendance (
     date DATE NOT NULL,
     status VARCHAR(20) CHECK (status IN ('Present', 'Absent', 'Late', 'Excused'))
 );
+
+CREATE TABLE school_documents (
+    doc_id SERIAL PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    file_url TEXT NOT NULL,
+    uploaded_by INT REFERENCES users(user_id) ON DELETE SET NULL,
+    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE students 
+ADD COLUMN parent_id INT REFERENCES users(user_id) ON DELETE SET NULL;
+
+CREATE TABLE events (
+    event_id SERIAL PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    event_date DATE NOT NULL,
+    event_type VARCHAR(50) DEFAULT 'Event', -- e.g., 'Exam', 'Holiday', 'Event'
+    created_by INT REFERENCES users(user_id) ON DELETE SET NULL
+);
+
+CREATE TABLE invoices (
+    invoice_id SERIAL PRIMARY KEY,
+    student_id INT REFERENCES students(student_id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    amount DECIMAL(10, 2) NOT NULL,
+    status VARCHAR(50) DEFAULT 'Pending', -- Can be 'Pending' or 'Paid'
+    due_date DATE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE quizzes (
+    quiz_id SERIAL PRIMARY KEY,
+    subject_id INT REFERENCES subjects(subject_id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    questions JSONB NOT NULL, -- This will hold all our questions & answers!
+    created_by INT REFERENCES users(user_id) ON DELETE SET NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE cbt_results (
+    result_id SERIAL PRIMARY KEY,
+    quiz_id INT REFERENCES quizzes(quiz_id) ON DELETE CASCADE,
+    student_id INT REFERENCES students(student_id) ON DELETE CASCADE,
+    score INT NOT NULL,
+    total_questions INT NOT NULL,
+    submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

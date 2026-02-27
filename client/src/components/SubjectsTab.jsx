@@ -1,8 +1,31 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 
 const SubjectsTab = ({ isAdmin, subjects, setSubjects }) => {
   const [subjectName, setSubjectName] = useState("");
+  const [teacherId, setTeacherId] = useState(""); // 👈 Now dynamic!
+  const [teachers, setTeachers] = useState([]); // 👈 Holds the list of teachers
   const [modules, setModules] = useState({});
+
+  // Fetch teachers when the tab loads (Only Admins need this)
+  useEffect(() => {
+    if (isAdmin) {
+      const fetchTeachers = async () => {
+        try {
+          const token = localStorage.getItem("token");
+          const response = await fetch(
+            "http://localhost:5000/api/users/teachers",
+            {
+              headers: { jwt_token: token },
+            },
+          );
+          if (response.ok) setTeachers(await response.json());
+        } catch (err) {
+          console.error(err.message);
+        }
+      };
+      fetchTeachers();
+    }
+  }, [isAdmin]);
 
   const onSubmitSubject = async (e) => {
     e.preventDefault();
@@ -11,11 +34,15 @@ const SubjectsTab = ({ isAdmin, subjects, setSubjects }) => {
       const response = await fetch("http://localhost:5000/api/subjects", {
         method: "POST",
         headers: { "Content-Type": "application/json", jwt_token: token },
-        body: JSON.stringify({ subject_name: subjectName, teacher_id: "1" }),
+        body: JSON.stringify({
+          subject_name: subjectName,
+          teacher_id: teacherId,
+        }), // 👈 No longer hardcoded!
       });
       if (response.ok) {
         setSubjects([...subjects, await response.json()]);
         setSubjectName("");
+        setTeacherId("");
       }
     } catch (err) {
       console.error(err.message);
@@ -75,7 +102,10 @@ const SubjectsTab = ({ isAdmin, subjects, setSubjects }) => {
   return (
     <div className="animate-fade-in">
       {isAdmin && (
-        <form onSubmit={onSubmitSubject} className="flex gap-4 mb-6">
+        <form
+          onSubmit={onSubmitSubject}
+          className="flex flex-col md:flex-row gap-4 mb-6"
+        >
           <input
             type="text"
             placeholder="New Subject Name"
@@ -84,6 +114,25 @@ const SubjectsTab = ({ isAdmin, subjects, setSubjects }) => {
             onChange={(e) => setSubjectName(e.target.value)}
             required
           />
+
+          {/* --- NEW: Teacher Dropdown --- */}
+          <select
+            required
+            className="flex-1 px-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600"
+            value={teacherId}
+            onChange={(e) => setTeacherId(e.target.value)}
+          >
+            <option value="">Assign a Teacher...</option>
+            {teachers.length === 0 && (
+              <option disabled>No teachers found (Register one!)</option>
+            )}
+            {teachers.map((t) => (
+              <option key={t.user_id} value={t.user_id}>
+                {t.full_name}
+              </option>
+            ))}
+          </select>
+
           <button
             type="submit"
             className="px-6 py-2 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700"
@@ -167,7 +216,7 @@ const SubjectsTab = ({ isAdmin, subjects, setSubjects }) => {
                       modules[subject.subject_id].map((mod) => (
                         <li
                           key={mod.module_id}
-                          className="text-sm bg-white dark:bg-gray-800 p-2 rounded shadow-sm border"
+                          className="text-sm bg-white dark:bg-gray-800 p-2 rounded shadow-sm border dark:border-gray-700"
                         >
                           <a
                             href={mod.file_url}

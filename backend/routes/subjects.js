@@ -23,11 +23,24 @@ router.post("/", authorize, async (req, res) => {
   }
 });
 
-// 2. GET ALL SUBJECTS (Located at /api/subjects)
+// 2. GET SUBJECTS (Smart Route: Admins see all, Teachers see only theirs)
 router.get("/", authorize, async (req, res) => {
   try {
-    const allSubjects = await pool.query("SELECT * FROM subjects");
-    res.json(allSubjects.rows);
+    let subjects;
+
+    // If the user is a Teacher, ONLY fetch subjects assigned to their ID
+    if (req.user.role === "Teacher") {
+      subjects = await pool.query(
+        "SELECT * FROM subjects WHERE teacher_id = $1", 
+        [req.user.user_id]
+      );
+    } 
+    // Otherwise (Admin, Student, Parent), fetch all subjects for now
+    else {
+      subjects = await pool.query("SELECT * FROM subjects");
+    }
+
+    res.json(subjects.rows);
   } catch (err) {
     console.error(err.message);
     res.status(500).send("Server Error");
