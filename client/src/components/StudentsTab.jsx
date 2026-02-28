@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { UserPlus, Mail, Lock, GraduationCap, Link2, Users, CheckCircle2 } from "lucide-react";
 
 const StudentsTab = ({ isAdmin, students, setStudents }) => {
   const [studentName, setStudentName] = useState("");
@@ -6,11 +7,9 @@ const StudentsTab = ({ isAdmin, students, setStudents }) => {
   const [studentPassword, setStudentPassword] = useState("");
   const [studentGrade, setStudentGrade] = useState("");
 
-  // --- NEW: Parent Linking State ---
   const [parents, setParents] = useState([]);
   const [selectedParents, setSelectedParents] = useState({});
 
-  // Fetch the list of Parents when the Admin opens this tab
   useEffect(() => {
     if (isAdmin) {
       const fetchParents = async () => {
@@ -67,22 +66,17 @@ const StudentsTab = ({ isAdmin, students, setStudents }) => {
     }
   };
 
-  // --- NEW: Link Parent Function ---
   const linkParent = async (student_id) => {
     const parent_id = selectedParents[student_id];
-    if (!parent_id)
-      return alert("Please select a parent from the dropdown first!");
+    if (!parent_id) return alert("Please select a parent from the dropdown first!");
 
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch(
-        `http://localhost:5000/api/students/${student_id}/link-parent`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json", jwt_token: token },
-          body: JSON.stringify({ parent_id }),
-        },
-      );
+      const response = await fetch(`http://localhost:5000/api/students/${student_id}/link-parent`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", jwt_token: token },
+        body: JSON.stringify({ parent_id }),
+      });
 
       if (response.ok) {
         alert("✅ Parent successfully linked to this student!");
@@ -97,105 +91,118 @@ const StudentsTab = ({ isAdmin, students, setStudents }) => {
   if (!isAdmin) return null;
 
   return (
-    <div className="animate-fade-in">
-      <form
-        onSubmit={onSubmitStudent}
-        className="bg-gray-50 dark:bg-gray-700 p-6 rounded-xl border dark:border-gray-600 mb-6 shadow-sm"
-      >
-        <h4 className="text-lg font-bold mb-4 dark:text-white">
-          Enroll New Student
-        </h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <input
-            type="text"
-            placeholder="Full Name"
-            className="px-4 py-2 border rounded dark:bg-gray-800 dark:border-gray-600"
-            value={studentName}
-            onChange={(e) => setStudentName(e.target.value)}
-            required
-          />
-          <input
-            type="email"
-            placeholder="Email Address"
-            className="px-4 py-2 border rounded dark:bg-gray-800 dark:border-gray-600"
-            value={studentEmail}
-            onChange={(e) => setStudentEmail(e.target.value)}
-            required
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            className="px-4 py-2 border rounded dark:bg-gray-800 dark:border-gray-600"
-            value={studentPassword}
-            onChange={(e) => setStudentPassword(e.target.value)}
-            required
-          />
-          <input
-            type="text"
-            placeholder="Class / Grade"
-            className="px-4 py-2 border rounded dark:bg-gray-800 dark:border-gray-600"
-            value={studentGrade}
-            onChange={(e) => setStudentGrade(e.target.value)}
-            required
-          />
+    <div className="animate-fade-in space-y-8">
+      {/* Registration Form */}
+      <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm transition-all hover:shadow-md">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-lg">
+            <UserPlus size={24} />
+          </div>
+          <h4 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">Enroll New Student</h4>
         </div>
-        <button
-          type="submit"
-          className="mt-4 px-6 py-2 bg-green-600 text-white font-bold rounded w-full md:w-auto"
-        >
-          + Register Student
-        </button>
-      </form>
+        
+        <form onSubmit={onSubmitStudent} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Input with Adornment */}
+            <div className="relative">
+              <Users className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+              <input
+                type="text"
+                placeholder="Full Name"
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition-all text-sm font-medium"
+                value={studentName}
+                onChange={(e) => setStudentName(e.target.value)}
+                required
+              />
+            </div>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+              <input
+                type="email"
+                placeholder="Email Address"
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition-all text-sm font-medium"
+                value={studentEmail}
+                onChange={(e) => setStudentEmail(e.target.value)}
+                required
+              />
+            </div>
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+              <input
+                type="password"
+                placeholder="Temporary Password"
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition-all text-sm font-medium"
+                value={studentPassword}
+                onChange={(e) => setStudentPassword(e.target.value)}
+                required
+              />
+            </div>
+            <div className="relative">
+              <GraduationCap className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+              <input
+                type="text"
+                placeholder="Class / Grade (e.g. JSS 1)"
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition-all text-sm font-medium"
+                value={studentGrade}
+                onChange={(e) => setStudentGrade(e.target.value)}
+                required
+              />
+            </div>
+          </div>
+          <div className="pt-2">
+            <button type="submit" className="w-full md:w-auto px-8 py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 shadow-md shadow-green-500/30 transition-all flex items-center justify-center gap-2">
+              <CheckCircle2 size={18} />
+              <span>Register Student</span>
+            </button>
+          </div>
+        </form>
+      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Roster Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {students.map((student) => (
-          <div
-            key={student.student_id}
-            className="p-5 border rounded-xl shadow-sm bg-white dark:bg-gray-800 flex flex-col justify-between"
-          >
-            <div>
-              <h4 className="text-xl font-bold text-green-600 dark:text-green-400">
+          <div key={student.student_id} className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-lg transition-all duration-300 flex flex-col overflow-hidden">
+            
+            {/* Top Section: Student Info */}
+            <div className="p-6 flex-grow">
+              <div className="flex justify-between items-start mb-4">
+                <div className="flex items-center justify-center w-12 h-12 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full font-black text-xl">
+                  {student.full_name.charAt(0)}
+                </div>
+                <span className="px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs font-bold rounded-full tracking-wider">
+                  {student.class_grade}
+                </span>
+              </div>
+              <h4 className="text-lg font-bold text-gray-900 dark:text-white truncate">
                 {student.full_name}
               </h4>
-              <p className="text-sm">
-                <strong>Email:</strong> {student.email}
-              </p>
-              <p className="text-sm">
-                <strong>Class:</strong> {student.class_grade}
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 truncate flex items-center gap-2">
+                <Mail size={14} /> {student.email}
               </p>
             </div>
 
-            {/* --- NEW: The Linking Interface --- */}
-            <div className="mt-4 pt-4 border-t dark:border-gray-700">
-              <label className="text-xs font-bold text-gray-500 uppercase">
-                Link to Parent
+            {/* Bottom Section: Link Parent */}
+            <div className="p-5 bg-gray-50/80 dark:bg-gray-900/50 border-t border-gray-100 dark:border-gray-700">
+              <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-1 mb-2">
+                <Link2 size={12} /> Family Link
               </label>
-              <div className="flex gap-2 mt-1">
+              <div className="flex gap-2">
                 <select
-                  className="flex-1 px-2 py-1 text-sm border rounded dark:bg-gray-700 dark:border-gray-600"
+                  className="flex-1 px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                   value={selectedParents[student.student_id] || ""}
-                  onChange={(e) =>
-                    setSelectedParents({
-                      ...selectedParents,
-                      [student.student_id]: e.target.value,
-                    })
-                  }
+                  onChange={(e) => setSelectedParents({ ...selectedParents, [student.student_id]: e.target.value })}
                 >
-                  <option value="">Select a Parent...</option>
+                  <option value="" className="text-gray-400">Select Parent...</option>
                   {parents.map((p) => (
-                    <option key={p.user_id} value={p.user_id}>
-                      {p.full_name}
-                    </option>
+                    <option key={p.user_id} value={p.user_id}>{p.full_name}</option>
                   ))}
                 </select>
-                <button
-                  onClick={() => linkParent(student.student_id)}
-                  className="px-3 py-1 bg-blue-600 text-white text-sm font-bold rounded hover:bg-blue-700 transition-colors"
-                >
+                <button onClick={() => linkParent(student.student_id)} className="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 shadow-sm transition-all">
                   Link
                 </button>
               </div>
             </div>
+
           </div>
         ))}
       </div>

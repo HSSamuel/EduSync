@@ -1,4 +1,13 @@
 import React, { useState, useEffect } from "react";
+import {
+  Receipt,
+  DollarSign,
+  Send,
+  CheckCircle2,
+  Clock,
+  CreditCard,
+  PlusCircle,
+} from "lucide-react";
 
 const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
   const [invoices, setInvoices] = useState([]);
@@ -46,12 +55,10 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
   };
 
   const handlePayment = async (invoice_id) => {
-    // Simulate opening a payment gateway (like Paystack)
     if (
       !window.confirm("Proceed to secure payment gateway to pay this invoice?")
     )
       return;
-
     setIsProcessing(true);
     try {
       const token = localStorage.getItem("token");
@@ -73,139 +80,179 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
   };
 
   return (
-    <div className="animate-fade-in space-y-6">
+    <div className="animate-fade-in space-y-8">
       {/* Admin Invoice Generator */}
       {isAdmin && (
-        <form
-          onSubmit={onCreateInvoice}
-          className="bg-amber-50 dark:bg-amber-900/20 p-6 rounded-xl shadow-md border border-amber-200 dark:border-amber-700 flex flex-col md:flex-row gap-4"
-        >
-          <div className="flex-1">
-            <select
-              className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700"
-              value={formData.student_id}
-              onChange={(e) =>
-                setFormData({ ...formData, student_id: e.target.value })
-              }
-              required
-            >
-              <option value="">-- Select Student --</option>
-              {students.map((s) => (
-                <option key={s.student_id} value={s.student_id}>
-                  {s.full_name} ({s.class_grade})
-                </option>
-              ))}
-            </select>
+        <div className="bg-white dark:bg-gray-800 p-6 md:p-8 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm transition-all">
+          <div className="flex items-center gap-3 mb-6 border-b border-gray-100 dark:border-gray-700 pb-4">
+            <div className="p-2.5 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-500 rounded-xl">
+              <Receipt size={24} />
+            </div>
+            <div>
+              <h4 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">
+                Issue Digital Invoice
+              </h4>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Generate bills and alert parents via email.
+              </p>
+            </div>
           </div>
-          <div className="flex-1">
-            <input
-              type="text"
-              placeholder="Description (e.g., Term 1 Tuition)"
-              className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700"
-              value={formData.title}
-              onChange={(e) =>
-                setFormData({ ...formData, title: e.target.value })
-              }
-              required
-            />
-          </div>
-          <div className="w-32">
-            <input
-              type="number"
-              placeholder="Amount (₦)"
-              className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700"
-              value={formData.amount}
-              onChange={(e) =>
-                setFormData({ ...formData, amount: e.target.value })
-              }
-              required
-              min="1"
-            />
-          </div>
-          <div className="w-40">
-            <input
-              type="date"
-              className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700"
-              value={formData.due_date}
-              onChange={(e) =>
-                setFormData({ ...formData, due_date: e.target.value })
-              }
-              required
-            />
-          </div>
-          <button
-            type="submit"
-            className="px-6 py-2 bg-amber-600 text-white font-bold rounded-lg hover:bg-amber-700"
+
+          <form
+            onSubmit={onCreateInvoice}
+            className="grid grid-cols-1 md:grid-cols-12 gap-4"
           >
-            Issue Bill
-          </button>
-        </form>
+            <div className="md:col-span-4 relative">
+              <select
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none text-sm font-medium cursor-pointer"
+                value={formData.student_id}
+                onChange={(e) =>
+                  setFormData({ ...formData, student_id: e.target.value })
+                }
+                required
+              >
+                <option value="">-- Select Student --</option>
+                {students.map((s) => (
+                  <option key={s.student_id} value={s.student_id}>
+                    {s.full_name} ({s.class_grade})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="md:col-span-3 relative">
+              <input
+                type="text"
+                placeholder="Description (e.g., Tuition)"
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none text-sm font-medium"
+                value={formData.title}
+                onChange={(e) =>
+                  setFormData({ ...formData, title: e.target.value })
+                }
+                required
+              />
+            </div>
+            <div className="md:col-span-2 relative">
+              <DollarSign
+                className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                size={16}
+              />
+              <input
+                type="number"
+                placeholder="Amount"
+                className="w-full pl-9 pr-3 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none text-sm font-medium"
+                value={formData.amount}
+                onChange={(e) =>
+                  setFormData({ ...formData, amount: e.target.value })
+                }
+                required
+                min="1"
+              />
+            </div>
+            <div className="md:col-span-2 relative">
+              <input
+                type="date"
+                className="w-full px-3 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none text-sm font-medium cursor-pointer"
+                value={formData.due_date}
+                onChange={(e) =>
+                  setFormData({ ...formData, due_date: e.target.value })
+                }
+                required
+              />
+            </div>
+            <button
+              type="submit"
+              className="md:col-span-1 flex items-center justify-center py-3 bg-amber-500 text-white font-bold rounded-xl shadow-md shadow-amber-500/30 hover:bg-amber-600 transition-all hover:-translate-y-0.5"
+              title="Send Invoice"
+            >
+              <Send size={18} />
+            </button>
+          </form>
+        </div>
       )}
 
-      {/* Invoices List */}
-      <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border dark:border-gray-700">
-        <h4 className="text-xl font-bold mb-4 dark:text-white">
-          💳 Financial Records
-        </h4>
+      {/* Invoices List / Ledger */}
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div className="p-6 md:p-8 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20">
+          <h4 className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-2 tracking-tight">
+            <CreditCard className="text-amber-500" size={24} /> Financial Ledger
+          </h4>
+        </div>
+
         {invoices.length === 0 ? (
-          <p className="text-gray-500 italic">No invoices found.</p>
+          <div className="p-12 text-center text-gray-400">
+            <Receipt size={48} className="mx-auto mb-4 opacity-50" />
+            <p className="font-medium">No financial records found.</p>
+          </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+          <div className="overflow-x-auto p-4 md:p-6">
+            <table className="w-full text-left border-collapse min-w-[700px]">
               <thead>
-                <tr className="bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
-                  <th className="p-3 border-b">Student</th>
-                  <th className="p-3 border-b">Description</th>
-                  <th className="p-3 border-b">Amount</th>
-                  <th className="p-3 border-b">Due Date</th>
-                  <th className="p-3 border-b text-center">Status</th>
+                <tr className="border-b-2 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">
+                  <th className="p-4 font-bold">Student</th>
+                  <th className="p-4 font-bold">Description</th>
+                  <th className="p-4 font-bold">Amount (₦)</th>
+                  <th className="p-4 font-bold">Due Date</th>
+                  <th className="p-4 font-bold text-center">Status</th>
                   {(isParent || isStudent) && (
-                    <th className="p-3 border-b text-center">Action</th>
+                    <th className="p-4 font-bold text-right pr-6">Action</th>
                   )}
                 </tr>
               </thead>
-              <tbody>
-                {invoices.map((inv) => (
-                  <tr
-                    key={inv.invoice_id}
-                    className="hover:bg-gray-50 dark:hover:bg-gray-700/50"
-                  >
-                    <td className="p-3 border-b font-semibold">
-                      {inv.student_name}
-                    </td>
-                    <td className="p-3 border-b">{inv.title}</td>
-                    <td className="p-3 border-b font-bold">
-                      ₦{Number(inv.amount).toLocaleString()}
-                    </td>
-                    <td className="p-3 border-b text-sm text-gray-500">
-                      {new Date(inv.due_date).toLocaleDateString()}
-                    </td>
-                    <td className="p-3 border-b text-center">
-                      <span
-                        className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${inv.status === "Paid" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}
-                      >
-                        {inv.status}
-                      </span>
-                    </td>
-                    {(isParent || isStudent) && (
-                      <td className="p-3 border-b text-center">
-                        {inv.status === "Pending" ? (
-                          <button
-                            onClick={() => handlePayment(inv.invoice_id)}
-                            disabled={isProcessing}
-                            className="px-4 py-1 bg-green-600 text-white font-bold rounded hover:bg-green-700"
-                          >
-                            {isProcessing ? "Processing..." : "Pay Now"}
-                          </button>
-                        ) : (
-                          <span className="text-green-600 font-bold">
-                            ✓ Settled
-                          </span>
-                        )}
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
+                {invoices.map((inv) => {
+                  const isPaid = inv.status === "Paid";
+                  return (
+                    <tr
+                      key={inv.invoice_id}
+                      className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors group"
+                    >
+                      <td className="p-4">
+                        <p className="font-bold text-gray-900 dark:text-white">
+                          {inv.student_name}
+                        </p>
                       </td>
-                    )}
-                  </tr>
-                ))}
+                      <td className="p-4 font-medium text-gray-600 dark:text-gray-300">
+                        {inv.title}
+                      </td>
+                      <td className="p-4 font-black text-gray-900 dark:text-white">
+                        ₦{Number(inv.amount).toLocaleString()}
+                      </td>
+                      <td className="p-4 text-sm font-medium text-gray-500">
+                        {new Date(inv.due_date).toLocaleDateString()}
+                      </td>
+                      <td className="p-4 text-center">
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${isPaid ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-500"}`}
+                        >
+                          {isPaid ? (
+                            <CheckCircle2 size={12} />
+                          ) : (
+                            <Clock size={12} />
+                          )}
+                          {inv.status}
+                        </span>
+                      </td>
+                      {(isParent || isStudent) && (
+                        <td className="p-4 text-right">
+                          {!isPaid ? (
+                            <button
+                              onClick={() => handlePayment(inv.invoice_id)}
+                              disabled={isProcessing}
+                              className="px-5 py-2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-sm font-bold rounded-lg hover:bg-gray-800 dark:hover:bg-white shadow-md transition-all flex items-center gap-2 ml-auto"
+                            >
+                              <CreditCard size={14} />{" "}
+                              {isProcessing ? "Wait..." : "Pay Now"}
+                            </button>
+                          ) : (
+                            <span className="text-green-600 dark:text-green-400 font-bold text-sm flex items-center justify-end gap-1">
+                              <CheckCircle2 size={16} /> Settled
+                            </span>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
