@@ -1,134 +1,112 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { UserPlus, Mail, Lock, ShieldCheck } from "lucide-react";
 
 const Register = () => {
   const [formData, setFormData] = useState({
-    full_name: "",
-    email: "",
-    password: "",
-    role: "Admin", // Default role
+    full_name: "", email: "", password: "", role: "Admin",
   });
   const [statusMessage, setStatusMessage] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
-  const onChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
+  const onChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
   const onSubmitForm = async (e) => {
     e.preventDefault();
+    setIsLoading(true);
+    setStatusMessage("Creating account...");
     try {
       const response = await fetch("http://localhost:5000/api/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       });
-
       const parseRes = await response.json();
-
       if (response.ok) {
-        setStatusMessage("✅ Account Created! Redirecting to login...");
-        setTimeout(() => {
-          navigate("/login");
-        }, 2000);
+        setStatusMessage("✅ Account Created! Redirecting...");
+        setTimeout(() => navigate("/login"), 1500);
       } else {
         setStatusMessage("❌ " + (parseRes.error || "Registration failed."));
+        setIsLoading(false);
       }
     } catch (err) {
-      console.error(err.message);
       setStatusMessage("❌ Server error. Check your connection.");
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-2xl shadow-xl dark:bg-gray-800 dark:text-white transition-colors duration-300 animate-fade-in mt-10">
-      <h2 className="text-3xl font-bold text-center">Create Account</h2>
-      <p className="text-center text-gray-500 dark:text-gray-400 text-sm">
-        Join the EduSync platform today.
-      </p>
+    <div className="relative min-h-[calc(100vh-80px)] w-full flex items-center justify-center overflow-hidden pt-10 pb-10">
+      {/* BACKGROUND DEPTH ORBS */}
+      <div className="absolute top-[5%] right-[20%] w-[30rem] h-[30rem] bg-emerald-400/20 dark:bg-emerald-600/10 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-[120px] opacity-70 animate-pulse"></div>
+      <div className="absolute bottom-[5%] left-[20%] w-[30rem] h-[30rem] bg-blue-400/20 dark:bg-blue-600/10 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-[120px] opacity-70 animate-pulse" style={{ animationDelay: '3s' }}></div>
 
-      <form onSubmit={onSubmitForm} className="space-y-4">
-        <div>
-          <label className="block mb-2 text-sm font-medium">Full Name</label>
-          <input
-            type="text"
-            name="full_name"
-            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 dark:bg-gray-700 dark:border-gray-600 transition-colors"
-            placeholder="John Doe"
-            value={formData.full_name}
-            onChange={onChange}
-            required
-          />
+      {/* GLASSMORPHISM CARD */}
+      <div className="relative z-10 w-full max-w-md p-10 bg-white/60 dark:bg-gray-900/60 backdrop-blur-2xl border border-white/50 dark:border-gray-700/50 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.08)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.3)] transition-all duration-300">
+        
+        <div className="text-center mb-8">
+          <h2 className="text-3xl font-black font-serif tracking-tight text-gray-900 dark:text-white">
+            Create Account
+          </h2>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-2 font-medium">
+            Join the next generation of school management.
+          </p>
         </div>
 
-        <div>
-          <label className="block mb-2 text-sm font-medium">
-            Email Address
-          </label>
-          <input
-            type="email"
-            name="email"
-            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 dark:bg-gray-700 dark:border-gray-600 transition-colors"
-            placeholder="john@example.com"
-            value={formData.email}
-            onChange={onChange}
-            required
-          />
+        <form onSubmit={onSubmitForm} className="space-y-4">
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+              <UserPlus className="text-gray-400" size={18} />
+            </div>
+            <input type="text" name="full_name" placeholder="Full Name" className="w-full pl-11 pr-4 py-3.5 bg-white/50 dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/50 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white dark:focus:bg-gray-800 transition-all font-medium" value={formData.full_name} onChange={onChange} required />
+          </div>
+
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+              <Mail className="text-gray-400" size={18} />
+            </div>
+            <input type="email" name="email" placeholder="Email Address" className="w-full pl-11 pr-4 py-3.5 bg-white/50 dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/50 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white dark:focus:bg-gray-800 transition-all font-medium" value={formData.email} onChange={onChange} required />
+          </div>
+
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+              <Lock className="text-gray-400" size={18} />
+            </div>
+            <input type="password" name="password" placeholder="Password" className="w-full pl-11 pr-4 py-3.5 bg-white/50 dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/50 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white dark:focus:bg-gray-800 transition-all font-medium" value={formData.password} onChange={onChange} required />
+          </div>
+
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+              <ShieldCheck className="text-gray-400" size={18} />
+            </div>
+            <select name="role" className="w-full pl-11 pr-4 py-3.5 bg-white/50 dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/50 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white dark:focus:bg-gray-800 transition-all font-medium cursor-pointer" value={formData.role} onChange={onChange}>
+              <option value="Admin">School Admin</option>
+              <option value="Teacher">Teacher</option>
+              <option value="Student">Student</option>
+              <option value="Parent">Parent</option>
+            </select>
+          </div>
+
+          <button type="submit" disabled={isLoading} className="w-full py-4 mt-4 font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl hover:from-blue-700 hover:to-indigo-700 shadow-lg shadow-blue-500/25 transform hover:-translate-y-0.5 transition-all disabled:opacity-70 disabled:cursor-not-allowed">
+            {isLoading ? "Processing..." : "Create Account"}
+          </button>
+        </form>
+
+        {statusMessage && (
+          <div className={`mt-5 p-3.5 text-center font-bold text-sm rounded-xl ${statusMessage.includes("✅") ? "bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20" : "bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20"}`}>
+            {statusMessage}
+          </div>
+        )}
+
+        <div className="mt-8 text-center border-t border-gray-200/60 dark:border-gray-700/50 pt-6">
+          <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+            Already have an account?{" "}
+            <Link to="/login" className="font-bold text-blue-600 dark:text-blue-400 hover:text-blue-800 transition-colors">
+              Log in here.
+            </Link>
+          </p>
         </div>
-
-        <div>
-          <label className="block mb-2 text-sm font-medium">Password</label>
-          <input
-            type="password"
-            name="password"
-            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 dark:bg-gray-700 dark:border-gray-600 transition-colors"
-            placeholder="••••••••"
-            value={formData.password}
-            onChange={onChange}
-            required
-          />
-        </div>
-
-        <div>
-          <label className="block mb-2 text-sm font-medium">Account Type</label>
-          <select
-            name="role"
-            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 dark:bg-gray-700 dark:border-gray-600 transition-colors"
-            value={formData.role}
-            onChange={onChange}
-          >
-            <option value="Admin">School Admin</option>
-            <option value="Teacher">Teacher</option>
-            <option value="Student">Student</option>
-            <option value="Parent">Parent</option>
-          </select>
-        </div>
-
-        <button
-          type="submit"
-          className="w-full py-3 mt-4 font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300 dark:focus:ring-blue-800 transition-colors shadow-md"
-        >
-          Register
-        </button>
-      </form>
-
-      {statusMessage && (
-        <div
-          className={`p-3 mt-4 text-center font-semibold text-sm rounded ${statusMessage.includes("✅") ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400" : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"}`}
-        >
-          {statusMessage}
-        </div>
-      )}
-
-      <p className="text-sm text-center text-gray-600 dark:text-gray-400">
-        Already have an account?{" "}
-        <Link
-          to="/login"
-          className="font-bold text-blue-600 hover:underline dark:text-blue-400"
-        >
-          Log in here.
-        </Link>
-      </p>
+      </div>
     </div>
   );
 };

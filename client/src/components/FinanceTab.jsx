@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import PremiumEmptyState from "./PremiumEmptyState";
 import {
   Receipt,
   DollarSign,
@@ -179,9 +180,12 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
         </div>
 
         {invoices.length === 0 ? (
-          <div className="p-12 text-center text-gray-400">
-            <Receipt size={48} className="mx-auto mb-4 opacity-50" />
-            <p className="font-medium">No financial records found.</p>
+          <div className="p-6">
+            <PremiumEmptyState
+              icon={Receipt}
+              title="No Invoices Found"
+              description="There are currently no active or pending financial records for this account."
+            />
           </div>
         ) : (
           <div className="overflow-x-auto p-4 md:p-6">

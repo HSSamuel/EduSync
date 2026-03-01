@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import PremiumEmptyState from "./PremiumEmptyState";
 import {
   BookOpen,
   Plus,
@@ -164,15 +165,11 @@ const SubjectsTab = ({ isAdmin, subjects, setSubjects }) => {
 
       {/* Empty State */}
       {subjects.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 bg-white dark:bg-gray-800 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700">
-          <BookOpen
-            size={48}
-            className="text-gray-300 dark:text-gray-600 mb-4"
-          />
-          <p className="text-gray-500 dark:text-gray-400 font-medium">
-            No subjects have been created yet.
-          </p>
-        </div>
+        <PremiumEmptyState
+          icon={BookOpen}
+          title="No Subjects Assigned"
+          description="There are no academic subjects created or assigned to your profile yet."
+        />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {subjects.map((subject) => (

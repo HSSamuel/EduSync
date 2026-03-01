@@ -5,7 +5,8 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["Lato", "sans-serif"], // 👈 This makes Lato the global default!
+        sans: ["Lato", "sans-serif"],
+        serif: ['"Playfair Display"', "serif"], // 👈 Added our new premium heading font
       },
     },
   },
