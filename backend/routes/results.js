@@ -2,7 +2,23 @@ const express = require("express");
 const router = express.Router();
 const pool = require("../db");
 const authorize = require("../middleware/authorize");
-const sendEmail = require("../utils/sendEmail"); // 👈 NEW: Import Email Engine
+const sendEmail = require("../utils/sendEmail");
+const { z } = require("zod"); // Phase 1: Schema validation
+const validate = require("../middleware/validate");
+
+// --- PHASE 1: ZOD SCHEMAS ---
+const createGradeSchema = z.object({
+  student_id: z.coerce.number().positive(),
+  subject_id: z.coerce.number().positive(),
+  academic_term: z.string().min(1, "Academic term is required"),
+  test_score: z.coerce.number().min(0).max(40, "Test score cannot exceed 40"),
+  exam_score: z.coerce.number().min(0).max(60, "Exam score cannot exceed 60"),
+});
+
+const updateGradeSchema = z.object({
+  test_score: z.coerce.number().min(0).max(40, "Test score cannot exceed 40"),
+  exam_score: z.coerce.number().min(0).max(60, "Exam score cannot exceed 60"),
+});
 
 // Helper Function: The Email Template for Grades
 const getGradeEmailHTML = (
@@ -25,14 +41,12 @@ const getGradeEmailHTML = (
 `;
 
 // 1. ADD A STUDENT'S GRADE & TRIGGER EMAIL
-router.post("/", authorize, async (req, res) => {
+router.post("/", authorize, validate(createGradeSchema), async (req, res) => {
   try {
     if (req.user.role !== "Admin" && req.user.role !== "Teacher") {
-      return res
-        .status(403)
-        .json({
-          error: "Access Denied. Only Admins and Teachers can add grades.",
-        });
+      return res.status(403).json({
+        error: "Access Denied. Only Admins and Teachers can add grades.",
+      });
     }
 
     const { student_id, subject_id, academic_term, test_score, exam_score } =
@@ -43,7 +57,7 @@ router.post("/", authorize, async (req, res) => {
       [student_id, subject_id, academic_term, test_score, exam_score],
     );
 
-    // --- NEW: AUTOMATED EMAIL TRIGGER ---
+    // --- AUTOMATED EMAIL TRIGGER ---
     const detailsQuery = await pool.query(
       `
       SELECT 
@@ -134,8 +148,8 @@ router.get("/me", authorize, async (req, res) => {
   }
 });
 
-// 4. UPDATE A GRADE & TRIGGER EMAIL
-router.put("/:id", authorize, async (req, res) => {
+// 4. UPDATE A GRADE & TRIGGER EMAIL (Phase 1: Validation & Audit Logs Added)
+router.put("/:id", authorize, validate(updateGradeSchema), async (req, res) => {
   try {
     if (req.user.role !== "Admin" && req.user.role !== "Teacher") {
       return res.status(403).json({ error: "Access Denied." });
@@ -144,13 +158,41 @@ router.put("/:id", authorize, async (req, res) => {
     const { id } = req.params;
     const { test_score, exam_score } = req.body;
 
+    // 1. Fetch the OLD record for the audit log
+    const oldRecordQuery = await pool.query(
+      "SELECT * FROM results WHERE result_id = $1",
+      [id],
+    );
+    if (oldRecordQuery.rows.length === 0)
+      return res.status(404).json({ error: "Result not found" });
+    const oldRecord = oldRecordQuery.rows[0];
+
+    // 2. Perform the update
     const updateGrade = await pool.query(
       "UPDATE results SET test_score = $1, exam_score = $2 WHERE result_id = $3 RETURNING *",
       [test_score, exam_score, id],
     );
-
-    // --- NEW: AUTOMATED UPDATE EMAIL TRIGGER ---
     const resultData = updateGrade.rows[0];
+
+    // 3. Create the Audit Log (For compliance and security tracking)
+    await pool.query(
+      `INSERT INTO audit_logs (user_id, action, target_table, record_id, old_value, new_value) 
+       VALUES ($1, 'UPDATE_GRADE', 'results', $2, $3, $4)`,
+      [
+        req.user.user_id,
+        id,
+        JSON.stringify({
+          test: oldRecord.test_score,
+          exam: oldRecord.exam_score,
+        }),
+        JSON.stringify({
+          test: resultData.test_score,
+          exam: resultData.exam_score,
+        }),
+      ],
+    );
+
+    // --- AUTOMATED UPDATE EMAIL TRIGGER ---
     const detailsQuery = await pool.query(
       `
       SELECT u.email AS student_email, u.full_name AS student_name, p.email AS parent_email, p.full_name AS parent_name, sub.subject_name

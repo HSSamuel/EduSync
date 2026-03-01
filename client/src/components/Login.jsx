@@ -18,13 +18,14 @@ const Login = () => {
       const response = await fetch("http://localhost:5000/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include", // 👈 CRITICAL: This tells the browser to save the httpOnly cookie!
         body: JSON.stringify({ email, password }),
       });
 
       const parseRes = await response.json();
 
       if (parseRes.token) {
-        localStorage.setItem("token", parseRes.token);
+        localStorage.setItem("token", parseRes.token); // Save the 15m access token
         setStatusMessage("✅ Login Successful! Redirecting...");
         setTimeout(() => navigate("/dashboard"), 1000);
       } else {

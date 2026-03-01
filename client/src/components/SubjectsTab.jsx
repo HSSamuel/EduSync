@@ -109,6 +109,34 @@ const SubjectsTab = ({ isAdmin, subjects, setSubjects }) => {
     }
   };
 
+  // --- FIX: SECURE BLOB DOWNLOAD LOGIC FOR MODULES ---
+  const handleSecureDownload = async (e, fileUrl, fileName) => {
+    e.preventDefault();
+    try {
+      const token = localStorage.getItem("token");
+      // Fallback fix for older files saved in DB before the architecture update
+      const secureUrl = fileUrl.replace("/uploads/", "/api/downloads/");
+
+      const response = await fetch(secureUrl, {
+        headers: { jwt_token: token },
+      });
+
+      if (!response.ok) throw new Error("Unauthorized or file missing");
+
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (err) {
+      alert("❌ Secure download failed: " + err.message);
+    }
+  };
+
   return (
     <div className="animate-fade-in space-y-8">
       {/* Sleek Admin Control Bar */}
@@ -258,12 +286,16 @@ const SubjectsTab = ({ isAdmin, subjects, setSubjects }) => {
                       </div>
                     ) : (
                       modules[subject.subject_id].map((mod) => (
-                        <a
+                        <button
                           key={mod.module_id}
-                          href={mod.file_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 hover:border-blue-300 hover:shadow transition-all group/link"
+                          onClick={(e) =>
+                            handleSecureDownload(
+                              e,
+                              mod.file_url,
+                              `${mod.title}.pdf`,
+                            )
+                          }
+                          className="w-full flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 hover:border-blue-300 hover:shadow transition-all group/link text-left"
                         >
                           <FileText
                             size={16}
@@ -272,7 +304,7 @@ const SubjectsTab = ({ isAdmin, subjects, setSubjects }) => {
                           <span className="text-sm font-medium text-gray-700 dark:text-gray-200 group-hover/link:text-blue-600 truncate flex-1">
                             {mod.title}
                           </span>
-                        </a>
+                        </button>
                       ))
                     )}
                   </div>

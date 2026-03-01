@@ -137,9 +137,20 @@ const Dashboard = () => {
     ? userData.message.replace("Welcome back, ", "").charAt(0)
     : "U";
 
-  const logout = (e) => {
+  const logout = async (e) => {
     e.preventDefault();
-    localStorage.removeItem("token");
+
+    try {
+      // Tell the backend to clear the httpOnly refresh cookie
+      await fetch("http://localhost:5000/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (err) {
+      console.error("Logout error", err);
+    }
+
+    localStorage.removeItem("token"); // Remove the short-lived access token
     navigate("/login");
   };
 

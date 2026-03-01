@@ -3,20 +3,63 @@ const router = express.Router();
 const pool = require("../db");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const sendEmail = require("../utils/sendEmail"); // 👈 Import our email engine
+const sendEmail = require("../utils/sendEmail");
+const { z } = require("zod");
+const validate = require("../middleware/validate");
+const rateLimit = require("express-rate-limit");
 require("dotenv").config();
 
-// 1. REGISTER A NEW USER
-router.post("/register", async (req, res) => {
+// --- 1. RATE LIMITING SETUP ---
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // Limit each IP to 10 requests per window
+  message: {
+    error:
+      "Too many login attempts from this IP, please try again after 15 minutes.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// --- 2. ZOD SCHEMAS ---
+const registerSchema = z.object({
+  full_name: z.string().min(3, "Name must be at least 3 characters"),
+  email: z.string().email("Invalid email format"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  role: z.enum(["Admin", "Teacher", "Student", "Parent"]),
+  // 👈 NEW: Accept school_id, but default to 1 if the frontend doesn't provide it yet
+  school_id: z.coerce.number().positive().optional().default(1),
+});
+
+const loginSchema = z.object({
+  email: z.string().email("Invalid email format"),
+  password: z.string().min(1, "Password is required"),
+});
+
+// --- 3. ROUTES ---
+
+// REGISTER (Validated)
+router.post("/register", validate(registerSchema), async (req, res) => {
   try {
-    const { full_name, email, password, role } = req.body;
-    const saltRounds = 10;
-    const salt = await bcrypt.genSalt(saltRounds);
+    // 👈 NEW: Extract school_id from the validated body
+    const { full_name, email, password, role, school_id } = req.body;
+
+    // Check if user already exists first!
+    const userExists = await pool.query(
+      "SELECT * FROM users WHERE email = $1",
+      [email],
+    );
+    if (userExists.rows.length > 0) {
+      return res.status(400).json({ error: "User already exists" });
+    }
+
+    const salt = await bcrypt.genSalt(10);
     const bcryptPassword = await bcrypt.hash(password, salt);
 
+    // 👈 NEW: Insert school_id into the database
     const newUser = await pool.query(
-      "INSERT INTO users (full_name, email, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING *",
-      [full_name, email, bcryptPassword, role],
+      "INSERT INTO users (full_name, email, password_hash, role, school_id) VALUES ($1, $2, $3, $4, $5) RETURNING user_id, full_name, email, role, school_id",
+      [full_name, email, bcryptPassword, role, school_id],
     );
 
     res.json(newUser.rows[0]);
@@ -26,38 +69,105 @@ router.post("/register", async (req, res) => {
   }
 });
 
-// 2. LOGIN A USER
-router.post("/login", async (req, res) => {
+// --- LOGIN (NOW WITH REFRESH TOKENS) ---
+router.post("/login", authLimiter, validate(loginSchema), async (req, res) => {
   try {
     const { email, password } = req.body;
+    // SELECT * ensures we grab the school_id from the DB
     const user = await pool.query("SELECT * FROM users WHERE email = $1", [
       email,
     ]);
 
-    if (user.rows.length === 0) {
+    if (user.rows.length === 0)
       return res.status(401).json({ error: "Invalid Credentials" });
-    }
 
     const validPassword = await bcrypt.compare(
       password,
       user.rows[0].password_hash,
     );
-
-    if (!validPassword) {
+    if (!validPassword)
       return res.status(401).json({ error: "Invalid Credentials" });
-    }
 
-    const token = jwt.sign(
-      { user_id: user.rows[0].user_id, role: user.rows[0].role },
+    // Inside router.post("/login" ...), look for the token generation:
+
+    // 1. Short-Lived Access Token (15 mins)
+    const accessToken = jwt.sign(
+      {
+        user_id: user.rows[0].user_id,
+        role: user.rows[0].role,
+        school_id: user.rows[0].school_id, // 👈 NEW: Inject the Tenant ID!
+      },
       process.env.JWT_SECRET,
-      { expiresIn: "1hr" },
+      { expiresIn: "15m" },
     );
 
-    res.json({ token: token, message: "Login successful!" });
+    // 2. Long-Lived Refresh Token (7 days)
+    const refreshToken = jwt.sign(
+      {
+        user_id: user.rows[0].user_id,
+        school_id: user.rows[0].school_id, // 👈 NEW: Inject the Tenant ID!
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" },
+    );
+
+    // 3. Send Refresh Token as a highly secure HTTP-Only Cookie
+    res.cookie("refresh_token", refreshToken, {
+      httpOnly: true, // Javascript cannot access this (Prevents XSS attacks)
+      secure: process.env.NODE_ENV === "production", // Must be true in production (HTTPS)
+      sameSite: "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
+    res.json({ token: accessToken, message: "Login successful!" });
   } catch (err) {
     console.error(err.message);
     res.status(500).send("Server Error");
   }
+});
+
+// --- NEW: REFRESH TOKEN ROUTE ---
+router.post("/refresh", async (req, res) => {
+  try {
+    // 1. Grab the refresh token from the cookie
+    const refreshToken = req.cookies.refresh_token;
+    if (!refreshToken)
+      return res
+        .status(401)
+        .json({ error: "Session expired. Please log in again." });
+
+    // 2. Verify it
+    const payload = jwt.verify(refreshToken, process.env.JWT_SECRET);
+
+    // 3. Look up the user's role AND school_id
+    const user = await pool.query(
+      "SELECT role, school_id FROM users WHERE user_id = $1",
+      [payload.user_id],
+    );
+    if (user.rows.length === 0)
+      return res.status(401).json({ error: "User no longer exists." });
+
+    // 4. Issue a fresh 15-minute Access Token
+    const newAccessToken = jwt.sign(
+      {
+        user_id: payload.user_id,
+        role: user.rows[0].role,
+        school_id: user.rows[0].school_id, // 👈 NEW: Ensure school_id persists across refreshes
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "15m" },
+    );
+
+    res.json({ token: newAccessToken });
+  } catch (err) {
+    res.status(401).json({ error: "Invalid refresh token." });
+  }
+});
+
+// --- NEW: LOGOUT ROUTE ---
+router.post("/logout", (req, res) => {
+  res.clearCookie("refresh_token");
+  res.json({ message: "Logged out successfully" });
 });
 
 // --- NEW: 3. FORGOT PASSWORD ---

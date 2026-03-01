@@ -1,15 +1,17 @@
 import React, { useState, useEffect, useRef } from "react";
 import io from "socket.io-client";
+import { Users, MessageSquare } from "lucide-react";
 
-// Connect to our backend WebSocket server
 const socket = io.connect("http://localhost:5000");
 
 const ChatTab = ({ userData }) => {
   const [currentMessage, setCurrentMessage] = useState("");
   const [messageList, setMessageList] = useState([]);
+  const [room, setRoom] = useState("Global Lounge");
   const chatEndRef = useRef(null);
 
-  // Auto-scroll to the bottom when a new message arrives
+  const availableRooms = ["Global Lounge", "Staff Room", "JSS 1", "SS 3"];
+
   const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -18,15 +20,17 @@ const ChatTab = ({ userData }) => {
     scrollToBottom();
   }, [messageList]);
 
-  // Listen for incoming messages from the server
+  // --- FIX: EMIT ROOM JOIN EVENT ON CHANGE ---
+  useEffect(() => {
+    socket.emit("join_room", room);
+    setMessageList([]); // Clear screen when changing rooms
+  }, [room]);
+
   useEffect(() => {
     const receiveMessageHandler = (data) => {
       setMessageList((list) => [...list, data]);
     };
-
     socket.on("receive_message", receiveMessageHandler);
-
-    // Cleanup the listener when the component unmounts
     return () => {
       socket.off("receive_message", receiveMessageHandler);
     };
@@ -36,7 +40,8 @@ const ChatTab = ({ userData }) => {
     e.preventDefault();
     if (currentMessage.trim() !== "") {
       const messageData = {
-        sender: userData.full_name, // You might need to add full_name to your /api/dashboard profile route if it's missing, or just use their role for now
+        room: room, // Attach the room to direct the backend
+        sender: userData.message.replace("Welcome back, ", "").replace("!", ""),
         role: userData.your_role,
         message: currentMessage,
         time: new Date().toLocaleTimeString([], {
@@ -45,56 +50,69 @@ const ChatTab = ({ userData }) => {
         }),
       };
 
-      // Send the message to the backend via WebSockets
       await socket.emit("send_message", messageData);
+      setMessageList((list) => [...list, messageData]); // Optimistic UI update
       setCurrentMessage("");
     }
   };
 
   return (
     <div className="animate-fade-in flex flex-col h-[600px] bg-white dark:bg-gray-800 rounded-xl shadow-md border dark:border-gray-700 overflow-hidden">
-      {/* Chat Header */}
-      <div className="bg-blue-600 p-4 text-white flex justify-between items-center shadow-md z-10">
+      <div className="bg-blue-600 p-4 text-white flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 z-10">
         <h4 className="text-xl font-bold flex items-center gap-2">
           <span className="relative flex h-3 w-3">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
           </span>
-          Global School Lounge
+          Live Communications
         </h4>
-        <p className="text-sm opacity-80">Live Chat</p>
+
+        {/* Room Selector */}
+        <div className="flex items-center gap-2 bg-blue-700/50 p-1.5 rounded-lg border border-blue-500/50 w-full sm:w-auto">
+          <Users size={16} className="ml-2 text-blue-200" />
+          <select
+            className="bg-transparent text-white font-bold text-sm outline-none cursor-pointer p-1 w-full sm:w-auto"
+            value={room}
+            onChange={(e) => setRoom(e.target.value)}
+          >
+            {availableRooms.map((r) => (
+              <option key={r} value={r} className="text-gray-900">
+                {r}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
-      {/* Chat Messages Area */}
       <div className="flex-1 p-6 overflow-y-auto bg-gray-50 dark:bg-gray-900 space-y-4">
         {messageList.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-gray-400 italic">
-            No messages yet. Be the first to say hello!
+          <div className="h-full flex flex-col items-center justify-center text-gray-400">
+            <MessageSquare size={48} className="mb-4 opacity-20" />
+            <p className="italic font-medium text-sm">
+              Welcome to {room}. Say hello!
+            </p>
           </div>
         ) : (
           messageList.map((msg, index) => {
-            // Determine if the message was sent by the current user
             const isMe =
-              msg.sender === userData.full_name ||
-              msg.role === userData.your_role; // simplified check
-
+              msg.sender ===
+              userData.message.replace("Welcome back, ", "").replace("!", "");
             return (
               <div
                 key={index}
                 className={`flex ${isMe ? "justify-end" : "justify-start"}`}
               >
                 <div
-                  className={`max-w-[70%] rounded-2xl p-4 shadow-sm ${
-                    isMe
-                      ? "bg-blue-600 text-white rounded-br-none"
-                      : "bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-bl-none"
-                  }`}
+                  className={`max-w-[75%] rounded-2xl p-4 shadow-sm ${isMe ? "bg-blue-600 text-white rounded-br-none" : "bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-bl-none"}`}
                 >
                   <div className="flex justify-between items-baseline mb-1 gap-4">
                     <span
-                      className={`text-xs font-bold ${isMe ? "text-blue-200" : "text-gray-500 dark:text-gray-400"}`}
+                      className={`text-xs font-bold ${isMe ? "text-blue-200" : "text-gray-500"}`}
                     >
-                      {msg.sender || msg.role}
+                      {msg.sender}{" "}
+                      <span className="opacity-70 font-normal">
+                        ({msg.role})
+                      </span>
                     </span>
                     <span
                       className={`text-[10px] ${isMe ? "text-blue-200" : "text-gray-400"}`}
@@ -102,7 +120,9 @@ const ChatTab = ({ userData }) => {
                       {msg.time}
                     </span>
                   </div>
-                  <p className="break-words">{msg.message}</p>
+                  <p className="break-words text-sm md:text-base leading-relaxed">
+                    {msg.message}
+                  </p>
                 </div>
               </div>
             );
@@ -111,22 +131,21 @@ const ChatTab = ({ userData }) => {
         <div ref={chatEndRef} />
       </div>
 
-      {/* Message Input Area */}
       <form
         onSubmit={sendMessage}
-        className="p-4 bg-white dark:bg-gray-800 border-t dark:border-gray-700 flex gap-2"
+        className="p-4 bg-white dark:bg-gray-800 border-t border-gray-100 dark:border-gray-700 flex gap-3"
       >
         <input
           type="text"
           value={currentMessage}
           onChange={(e) => setCurrentMessage(e.target.value)}
-          placeholder="Type a message..."
-          className="flex-1 px-4 py-3 border rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 transition-all"
+          placeholder={`Message ${room}...`}
+          className="flex-1 px-5 py-3 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900 dark:border-gray-700 text-sm font-medium"
         />
         <button
           type="submit"
           disabled={!currentMessage.trim()}
-          className="bg-blue-600 text-white p-3 rounded-full hover:bg-blue-700 disabled:bg-gray-400 transition-colors shadow-md flex items-center justify-center w-12 h-12"
+          className="bg-blue-600 text-white p-3 rounded-full hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 shadow-md flex items-center justify-center w-12 h-12 shrink-0"
         >
           ➤
         </button>

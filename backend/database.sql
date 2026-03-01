@@ -113,3 +113,39 @@ CREATE TABLE cbt_results (
     total_questions INT NOT NULL,
     submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE audit_logs (
+    log_id SERIAL PRIMARY KEY,
+    user_id INT REFERENCES users(user_id) ON DELETE SET NULL,
+    action VARCHAR(50) NOT NULL,
+    target_table VARCHAR(50) NOT NULL,
+    record_id INT NOT NULL,
+    old_value JSONB,
+    new_value JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 1. Create the Schools (Tenants) Table
+CREATE TABLE schools (
+    school_id SERIAL PRIMARY KEY,
+    school_name VARCHAR(255) NOT NULL,
+    contact_email VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 2. Insert a "Default" School so your existing data doesn't break
+INSERT INTO schools (school_name, contact_email) VALUES ('EduSync Alpha Academy', 'admin@edusync.com');
+
+-- 3. Add school_id to core tables and set the default to School 1
+ALTER TABLE users ADD COLUMN school_id INT REFERENCES schools(school_id) ON DELETE CASCADE DEFAULT 1;
+ALTER TABLE subjects ADD COLUMN school_id INT REFERENCES schools(school_id) ON DELETE CASCADE DEFAULT 1;
+ALTER TABLE school_documents ADD COLUMN school_id INT REFERENCES schools(school_id) ON DELETE CASCADE DEFAULT 1;
+ALTER TABLE events ADD COLUMN school_id INT REFERENCES schools(school_id) ON DELETE CASCADE DEFAULT 1;
+ALTER TABLE quizzes ADD COLUMN school_id INT REFERENCES schools(school_id) ON DELETE CASCADE DEFAULT 1;
+
+-- (Optional) Remove the DEFAULT constraint now that existing rows are updated safely
+ALTER TABLE users ALTER COLUMN school_id DROP DEFAULT;
+ALTER TABLE subjects ALTER COLUMN school_id DROP DEFAULT;
+ALTER TABLE school_documents ALTER COLUMN school_id DROP DEFAULT;
+ALTER TABLE events ALTER COLUMN school_id DROP DEFAULT;
+ALTER TABLE quizzes ALTER COLUMN school_id DROP DEFAULT;
