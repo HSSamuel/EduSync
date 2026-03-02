@@ -3,6 +3,7 @@ const router = express.Router();
 const pool = require("../db");
 const authorize = require("../middleware/authorize");
 const multer = require("multer");
+const { z } = require("zod");
 
 const { storage } = require("../utils/cloudinary");
 const { emailQueue } = require("../utils/emailQueue");
@@ -10,10 +11,24 @@ const { emailQueue } = require("../utils/emailQueue");
 const upload = multer({ storage: storage });
 const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
 
+// 👈 NEW: Schema for the multipart form text fields
+const moduleSchema = z.object({
+  subject_id: z.coerce.number().positive("Valid Subject ID is required"),
+  title: z.string().min(2, "Module title is required"),
+});
+
 router.post("/", authorize, upload.single("module_file"), async (req, res) => {
   try {
     if (req.user.role !== "Admin" && req.user.role !== "Teacher") {
       return res.status(403).json({ error: "Access Denied." });
+    }
+
+    // 👈 NEW: Validate the body fields parsed by multer
+    const validation = moduleSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res
+        .status(400)
+        .json({ error: "Validation Failed", details: validation.error.errors });
     }
 
     const { subject_id, title } = req.body;

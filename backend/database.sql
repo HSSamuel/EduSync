@@ -159,3 +159,17 @@ ALTER TABLE attendance ADD COLUMN school_id INT REFERENCES schools(school_id) ON
 ALTER TABLE timetables ADD COLUMN school_id INT REFERENCES schools(school_id) ON DELETE CASCADE DEFAULT 1;
 ALTER TABLE timetables DROP CONSTRAINT IF EXISTS timetables_class_grade_key;
 ALTER TABLE timetables ADD CONSTRAINT unique_class_per_school UNIQUE (class_grade, school_id);
+
+-- ==========================================
+-- 🚀 NEW: DATABASE PERFORMANCE INDEXES
+-- ==========================================
+-- PostgreSQL does not automatically index foreign keys. 
+-- These indexes will dramatically speed up dashboard loading times as your data grows.
+CREATE INDEX idx_users_school_id ON users(school_id);
+CREATE INDEX idx_students_user_id ON students(user_id);
+CREATE INDEX idx_students_parent_id ON students(parent_id);
+CREATE INDEX idx_results_student_id ON results(student_id);
+CREATE INDEX idx_results_school_id ON results(school_id);
+CREATE INDEX idx_attendance_student_id ON attendance(student_id);
+CREATE INDEX idx_invoices_student_id ON invoices(student_id);
+CREATE INDEX idx_modules_subject_id ON modules(subject_id);

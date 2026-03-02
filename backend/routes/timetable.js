@@ -2,12 +2,27 @@ const express = require("express");
 const router = express.Router();
 const pool = require("../db");
 const authorize = require("../middleware/authorize");
+const { z } = require("zod");
+const validate = require("../middleware/validate");
+
+// 👈 NEW: Validation Schema
+const timetableSchema = z.object({
+  class_grade: z.string().min(1, "Class Grade is required"),
+  schedule: z.record(
+    z.array(
+      z.object({
+        start_time: z.string(),
+        end_time: z.string(),
+        subject: z.string(),
+      }),
+    ),
+  ),
+});
 
 // 1. GET TIMETABLE FOR A SPECIFIC CLASS
 router.get("/:class_grade", authorize, async (req, res) => {
   try {
     const { class_grade } = req.params;
-    // 👈 NEW: Fetch timetable for this specific school and class
     const timetable = await pool.query(
       "SELECT schedule FROM timetables WHERE class_grade = $1 AND school_id = $2",
       [class_grade, req.user.school_id],
@@ -31,14 +46,13 @@ router.get("/:class_grade", authorize, async (req, res) => {
 });
 
 // 2. SAVE OR UPDATE A TIMETABLE (Admin Only)
-router.post("/", authorize, async (req, res) => {
+router.post("/", authorize, validate(timetableSchema), async (req, res) => {
   try {
     if (req.user.role !== "Admin")
       return res.status(403).json({ error: "Access Denied." });
 
     const { class_grade, schedule } = req.body;
 
-    // 👈 NEW: PostgreSQL UPSERT based on the unique combination of class_grade AND school_id
     const newTimetable = await pool.query(
       `INSERT INTO timetables (class_grade, schedule, updated_by, school_id) 
        VALUES ($1, $2, $3, $4) 

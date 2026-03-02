@@ -1,14 +1,20 @@
 import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom"; // 👈 NEW: useSearchParams
 import { UserPlus, Mail, Lock, ShieldCheck, Building, Hash } from "lucide-react";
-import { GoogleLogin } from '@react-oauth/google'; // 👈 NEW
+import { GoogleLogin } from '@react-oauth/google';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
 const Register = () => {
+  // 👈 NEW: Parse Invite Links
+  const [searchParams] = useSearchParams();
+  const defaultSchoolId = searchParams.get("school_id") || "";
+  const defaultRole = searchParams.get("role") || "Admin";
+
   const [formData, setFormData] = useState({
-    full_name: "", email: "", password: "", role: "Admin", school_name: "", school_id: ""
+    full_name: "", email: "", password: "", role: defaultRole, school_name: "", school_id: defaultSchoolId
   });
+  
   const [statusMessage, setStatusMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
@@ -32,8 +38,7 @@ const Register = () => {
       });
       const parseRes = await response.json();
       if (response.ok) {
-        handleAuthSuccess(parseRes.token || parseRes); // Fallback if token isn't returned on register directly
-        setTimeout(() => navigate("/login"), 1500);
+        handleAuthSuccess(parseRes.token || parseRes);
       } else {
         setStatusMessage("❌ " + (parseRes.error || "Registration failed."));
         setIsLoading(false);
@@ -44,7 +49,6 @@ const Register = () => {
     }
   };
 
-  // 👈 NEW: Google Register Handler
   const onGoogleSuccess = async (credentialResponse) => {
     if (formData.role === "Admin" && !formData.school_name) {
       return setStatusMessage("❌ Please enter a School Name before using Google Sign-up.");
@@ -78,7 +82,6 @@ const Register = () => {
       setStatusMessage("❌ Google Registration failed.");
     }
   };
-
 
   return (
     <div className="relative min-h-[calc(100vh-80px)] w-full flex items-center justify-center overflow-hidden pt-10 pb-10">
@@ -125,7 +128,6 @@ const Register = () => {
             </div>
           )}
 
-          {/* 👈 NEW: Google Registration Button right below School ID */}
           <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/50 rounded-xl">
              <p className="text-xs text-center text-blue-800 dark:text-blue-300 font-bold mb-3">FAST REGISTRATION (Recommended)</p>
              <div className="flex justify-center">

@@ -2,9 +2,26 @@ const express = require("express");
 const router = express.Router();
 const pool = require("../db");
 const authorize = require("../middleware/authorize");
+const { z } = require("zod");
+const validate = require("../middleware/validate");
+
+// 👈 NEW: Strict validation schema prevents bad DB inserts
+const createQuizSchema = z.object({
+  subject_id: z.coerce.number().positive(),
+  title: z.string().min(3, "Title must be at least 3 characters"),
+  questions: z
+    .array(
+      z.object({
+        text: z.string().min(1, "Question text is required"),
+        options: z.array(z.string()).length(4, "Exactly 4 options required"),
+        answer: z.number().min(0).max(3, "Answer must be index 0-3"),
+      }),
+    )
+    .min(1, "At least one question is required"),
+});
 
 // 1. CREATE A QUIZ (Teacher/Admin Only)
-router.post("/", authorize, async (req, res) => {
+router.post("/", authorize, validate(createQuizSchema), async (req, res) => {
   try {
     if (req.user.role !== "Teacher" && req.user.role !== "Admin") {
       return res.status(403).json({ error: "Access Denied." });
@@ -12,7 +29,6 @@ router.post("/", authorize, async (req, res) => {
 
     const { subject_id, title, questions } = req.body;
 
-    // 👈 NEW: Add the school_id payload
     const newQuiz = await pool.query(
       "INSERT INTO quizzes (subject_id, title, questions, created_by, school_id) VALUES ($1, $2, $3, $4, $5) RETURNING *",
       [
@@ -34,7 +50,6 @@ router.post("/", authorize, async (req, res) => {
 // 2. GET ALL QUIZZES
 router.get("/", authorize, async (req, res) => {
   try {
-    // 👈 NEW: Scope strictly to this school
     const quizzes = await pool.query(
       `
       SELECT q.quiz_id, q.title, q.created_at, s.subject_name 
@@ -55,7 +70,6 @@ router.get("/", authorize, async (req, res) => {
 // 3. GET A SPECIFIC QUIZ (To take it)
 router.get("/:id", authorize, async (req, res) => {
   try {
-    // 👈 NEW: Double check the school_id boundary
     const quiz = await pool.query(
       "SELECT * FROM quizzes WHERE quiz_id = $1 AND school_id = $2",
       [req.params.id, req.user.school_id],
@@ -95,7 +109,6 @@ router.post("/:id/submit", authorize, async (req, res) => {
     );
     const student_id = studentQuery.rows[0].student_id;
 
-    // 👈 NEW: Verify quiz boundary
     const quiz = await pool.query(
       "SELECT questions FROM quizzes WHERE quiz_id = $1 AND school_id = $2",
       [quiz_id, req.user.school_id],
@@ -104,6 +117,14 @@ router.post("/:id/submit", authorize, async (req, res) => {
       return res.status(404).json({ error: "Quiz not found" });
 
     const realQuestions = quiz.rows[0].questions;
+
+    // 👈 NEW: Security Fix - Prevent array out-of-bounds manipulation
+    if (
+      !Array.isArray(student_answers) ||
+      student_answers.length !== realQuestions.length
+    ) {
+      return res.status(400).json({ error: "Invalid submission payload." });
+    }
 
     // The Auto-Grading Engine!
     let score = 0;

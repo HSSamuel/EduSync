@@ -9,7 +9,7 @@ import {
   CreditCard,
 } from "lucide-react";
 
-const API_URL = import.meta.env.VITE_API_URL; // 👈 Fixed
+const API_URL = import.meta.env.VITE_API_URL;
 
 const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
   const [invoices, setInvoices] = useState([]);
@@ -34,7 +34,6 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
     try {
       const token = localStorage.getItem("token");
       const res = await fetch(`${API_URL}/finance/invoices`, {
-        // 👈 Fixed
         headers: { jwt_token: token },
       });
       if (res.ok) setInvoices(await res.json());
@@ -48,7 +47,6 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
     try {
       const token = localStorage.getItem("token");
       const res = await fetch(`${API_URL}/finance/invoices`, {
-        // 👈 Fixed
         method: "POST",
         headers: { "Content-Type": "application/json", jwt_token: token },
         body: JSON.stringify(formData),
@@ -70,7 +68,6 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
       const res = await fetch(
         `${API_URL}/finance/invoices/${invoice_id}/checkout`,
         {
-          // 👈 Fixed
           method: "POST",
           headers: { jwt_token: token },
         },
@@ -179,8 +176,8 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
         </div>
       )}
 
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
-        <div className="p-6 md:p-8 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden flex flex-col">
+        <div className="p-6 md:p-8 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20 shrink-0">
           <h4 className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-2 tracking-tight">
             <CreditCard className="text-amber-500" size={24} /> Financial Ledger
           </h4>
@@ -195,17 +192,18 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
             />
           </div>
         ) : (
-          <div className="overflow-x-auto p-4 md:p-6">
+          /* 👈 PRO UI: Sticky Header & Scrollable Body Container */
+          <div className="overflow-auto max-h-[60vh] w-full relative">
             <table className="w-full text-left border-collapse min-w-[700px]">
-              <thead>
-                <tr className="border-b-2 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">
-                  <th className="p-4 font-bold">Student</th>
-                  <th className="p-4 font-bold">Description</th>
-                  <th className="p-4 font-bold">Amount (₦)</th>
-                  <th className="p-4 font-bold">Due Date</th>
-                  <th className="p-4 font-bold text-center">Status</th>
+              <thead className="sticky top-0 z-10 bg-gray-100 dark:bg-gray-900/95 backdrop-blur-sm shadow-sm">
+                <tr className="text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">
+                  <th className="p-4 font-bold border-b border-gray-200 dark:border-gray-700">Student</th>
+                  <th className="p-4 font-bold border-b border-gray-200 dark:border-gray-700">Description</th>
+                  <th className="p-4 font-bold border-b border-gray-200 dark:border-gray-700">Amount (₦)</th>
+                  <th className="p-4 font-bold border-b border-gray-200 dark:border-gray-700">Due Date</th>
+                  <th className="p-4 font-bold text-center border-b border-gray-200 dark:border-gray-700">Status</th>
                   {(isParent || isStudent) && (
-                    <th className="p-4 font-bold text-right pr-6">Action</th>
+                    <th className="p-4 font-bold text-right pr-6 border-b border-gray-200 dark:border-gray-700">Action</th>
                   )}
                 </tr>
               </thead>
@@ -215,7 +213,7 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
                   return (
                     <tr
                       key={inv.invoice_id}
-                      className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors group"
+                      className="hover:bg-blue-50/30 dark:hover:bg-gray-800/50 transition-colors group"
                     >
                       <td className="p-4 font-bold text-gray-900 dark:text-white">
                         {inv.student_name}
@@ -223,10 +221,11 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
                       <td className="p-4 font-medium text-gray-600 dark:text-gray-300">
                         {inv.title}
                       </td>
-                      <td className="p-4 font-black text-gray-900 dark:text-white">
-                        ₦{Number(inv.amount).toLocaleString()}
+                      {/* 👈 PRO UI: font-mono for perfect vertical alignment of numbers */}
+                      <td className="p-4 font-mono font-bold text-gray-900 dark:text-white text-[15px]">
+                        ₦{Number(inv.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </td>
-                      <td className="p-4 text-sm font-medium text-gray-500">
+                      <td className="p-4 text-sm font-mono font-medium text-gray-500">
                         {new Date(inv.due_date).toLocaleDateString()}
                       </td>
                       <td className="p-4 text-center">

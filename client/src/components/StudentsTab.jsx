@@ -44,7 +44,7 @@ const StudentsTab = ({ isAdmin }) => {
           search: searchTerm,
           class_grade: filterClass,
           page: currentPage,
-          limit: 9,
+          limit: 15, // 👈 PRO UI: Increased limit because tables are denser
         });
 
         const response = await fetch(
@@ -282,7 +282,7 @@ const StudentsTab = ({ isAdmin }) => {
         </div>
       </div>
 
-      {/* Roster Grid */}
+      {/* 👈 PRO UI: High Density Roster Table */}
       {students.length === 0 ? (
         <PremiumEmptyState
           icon={Users}
@@ -290,101 +290,130 @@ const StudentsTab = ({ isAdmin }) => {
           description="Adjust your search filters or enroll a new student to see them here."
         />
       ) : (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {students.map((student) => (
-              <div
-                key={student.student_id}
-                className="bg-white dark:bg-gray-800 rounded-2xl shadow-[0_4px_20px_rgb(0,0,0,0.03)] border border-gray-100 dark:border-gray-700 hover:shadow-lg transition-all duration-300 flex flex-col overflow-hidden group"
-              >
-                {/* Top Section: Student Info */}
-                <div className="p-6 flex-grow">
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="flex items-center justify-center w-12 h-12 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full font-black text-xl shadow-inner group-hover:scale-110 transition-transform">
-                      {student.full_name.charAt(0)}
-                    </div>
-                    <span className="px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs font-bold rounded-full tracking-wider border border-gray-200 dark:border-gray-600">
-                      {student.class_grade}
-                    </span>
-                  </div>
-                  <h4 className="text-lg font-bold text-gray-900 dark:text-white truncate">
-                    {student.full_name}
-                  </h4>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 truncate flex items-center gap-2">
-                    <Mail size={14} /> {student.email}
-                  </p>
-                </div>
-
-                {/* Bottom Section: Link Parent */}
-                <div className="p-5 bg-gray-50/80 dark:bg-gray-900/50 border-t border-gray-100 dark:border-gray-700">
-                  <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-1 mb-2">
-                    <Link2 size={12} /> Family Link
-                  </label>
-                  <div className="flex gap-2">
-                    <select
-                      className="flex-1 px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all cursor-pointer"
-                      value={selectedParents[student.student_id] || ""}
-                      onChange={(e) =>
-                        setSelectedParents({
-                          ...selectedParents,
-                          [student.student_id]: e.target.value,
-                        })
-                      }
-                    >
-                      <option value="" className="text-gray-400">
-                        Select Parent...
-                      </option>
-                      {parents.map((p) => (
-                        <option key={p.user_id} value={p.user_id}>
-                          {p.full_name}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={() => linkParent(student.student_id)}
-                      className="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 shadow-sm transition-all active:scale-95"
-                    >
-                      Link
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden flex flex-col">
+          <div className="overflow-auto max-h-[65vh] w-full relative">
+            <table className="w-full text-left border-collapse min-w-[800px]">
+              <thead className="sticky top-0 z-10 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-sm shadow-sm">
+                <tr className="text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">
+                  <th className="p-4 font-bold border-b border-gray-200 dark:border-gray-700 w-12 text-center">
+                    #
+                  </th>
+                  <th className="p-4 font-bold border-b border-gray-200 dark:border-gray-700">
+                    Student Info
+                  </th>
+                  <th className="p-4 font-bold border-b border-gray-200 dark:border-gray-700 w-32 text-center">
+                    Class
+                  </th>
+                  <th className="p-4 font-bold border-b border-gray-200 dark:border-gray-700">
+                    Parent Linkage
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
+                {students.map((student, index) => (
+                  <tr
+                    key={student.student_id}
+                    className="hover:bg-blue-50/30 dark:hover:bg-gray-800/50 transition-colors group"
+                  >
+                    <td className="p-4 text-center font-mono text-gray-400 text-xs">
+                      {(currentPage - 1) * 15 + index + 1}
+                    </td>
+                    <td className="p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center justify-center w-9 h-9 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full font-black text-sm">
+                          {student.full_name.charAt(0)}
+                        </div>
+                        <div>
+                          <p className="font-bold text-gray-900 dark:text-white leading-none mb-1">
+                            {student.full_name}
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                            <Mail size={12} /> {student.email}
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="p-4 text-center">
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-black uppercase tracking-wider bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600">
+                        {student.class_grade}
+                      </span>
+                    </td>
+                    <td className="p-4">
+                      <div className="flex items-center gap-2 max-w-sm">
+                        <div className="relative flex-1">
+                          <Link2
+                            className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-gray-400"
+                            size={14}
+                          />
+                          <select
+                            className="w-full pl-8 pr-3 py-2 text-sm bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all cursor-pointer text-gray-700 dark:text-gray-200"
+                            value={selectedParents[student.student_id] || ""}
+                            onChange={(e) =>
+                              setSelectedParents({
+                                ...selectedParents,
+                                [student.student_id]: e.target.value,
+                              })
+                            }
+                          >
+                            <option value="" className="text-gray-400">
+                              Select Parent...
+                            </option>
+                            {parents.map((p) => (
+                              <option key={p.user_id} value={p.user_id}>
+                                {p.full_name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <button
+                          onClick={() => linkParent(student.student_id)}
+                          className="px-3 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-sm font-bold rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors shrink-0"
+                        >
+                          Link
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
 
-          {/* Pagination Controls */}
+          {/* Pagination Footer inside Table container */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-4 pt-6">
-              <button
-                onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                disabled={currentPage === 1}
-                className="p-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
-              >
-                <ChevronLeft
-                  size={20}
-                  className="text-gray-600 dark:text-gray-300"
-                />
-              </button>
-
-              <span className="text-sm font-bold text-gray-700 dark:text-gray-300">
-                Page {currentPage} of {totalPages}
+            <div className="p-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20 flex items-center justify-between">
+              <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">
+                Showing Page {currentPage} of {totalPages}
               </span>
-
-              <button
-                onClick={() =>
-                  setCurrentPage((prev) => Math.min(prev + 1, totalPages))
-                }
-                disabled={currentPage === totalPages}
-                className="p-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
-              >
-                <ChevronRight
-                  size={20}
-                  className="text-gray-600 dark:text-gray-300"
-                />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() =>
+                    setCurrentPage((prev) => Math.max(prev - 1, 1))
+                  }
+                  disabled={currentPage === 1}
+                  className="p-1.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+                >
+                  <ChevronLeft
+                    size={16}
+                    className="text-gray-600 dark:text-gray-300"
+                  />
+                </button>
+                <button
+                  onClick={() =>
+                    setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                  }
+                  disabled={currentPage === totalPages}
+                  className="p-1.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+                >
+                  <ChevronRight
+                    size={16}
+                    className="text-gray-600 dark:text-gray-300"
+                  />
+                </button>
+              </div>
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );

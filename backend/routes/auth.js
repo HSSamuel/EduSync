@@ -30,7 +30,7 @@ const registerSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters"),
   role: z.enum(["Admin", "Teacher", "Student", "Parent"]),
   school_name: z.string().optional(),
-  school_id: z.coerce.number().positive().optional(),
+  school_id: z.coerce.number().positive().optional().or(z.literal("")), 
 });
 
 const loginSchema = z.object({
@@ -82,7 +82,7 @@ router.post("/register", validate(registerSchema), async (req, res) => {
     const bcryptPassword = await bcrypt.hash(password, salt);
 
     const newUser = await pool.query(
-      "INSERT INTO users (full_name, email, password_hash, role, school_id) VALUES ($1, $2, $3, $4, $5) RETURNING user_id, full_name, email, role, school_id",
+      "INSERT INTO users (full_name, email, password_hash, role, school_id, auth_provider) VALUES ($1, $2, $3, $4, $5, 'local') RETURNING user_id, full_name, email, role, school_id",
       [full_name, email, bcryptPassword, role, finalSchoolId],
     );
 
@@ -102,6 +102,15 @@ router.post("/login", authLimiter, validate(loginSchema), async (req, res) => {
 
     if (user.rows.length === 0)
       return res.status(401).json({ error: "Invalid Credentials" });
+
+    if (user.rows[0].auth_provider === "google") {
+      return res
+        .status(400)
+        .json({
+          error:
+            "This account was created via Google. Please log in using the Google button.",
+        });
+    }
 
     const validPassword = await bcrypt.compare(
       password,
@@ -276,7 +285,6 @@ router.post("/google", async (req, res) => {
   try {
     const { token, type, role, school_name, school_id } = req.body;
 
-    // 1. Verify the token with Google's servers
     const ticket = await googleClient.verifyIdToken({
       idToken: token,
       audience: process.env.GOOGLE_CLIENT_ID,
@@ -286,7 +294,6 @@ router.post("/google", async (req, res) => {
     const email = payload.email;
     const full_name = payload.name;
 
-    // 2. Check if user already exists
     const userExists = await pool.query(
       "SELECT * FROM users WHERE email = $1",
       [email],
@@ -310,7 +317,6 @@ router.post("/google", async (req, res) => {
           .json({ error: "Email is already registered. Please log in." });
       }
 
-      // Handle School ID logic for registration
       final_school_id = school_id;
       if (role === "Admin") {
         if (!school_name)
@@ -332,8 +338,6 @@ router.post("/google", async (req, res) => {
       }
 
       final_role = role;
-
-      // Generate a random placeholder password since they are using Google
       const salt = await bcrypt.genSalt(10);
       const randomPassword = await bcrypt.hash(
         Math.random().toString(36).slice(-10),
@@ -341,13 +345,12 @@ router.post("/google", async (req, res) => {
       );
 
       const newUser = await pool.query(
-        "INSERT INTO users (full_name, email, password_hash, role, school_id) VALUES ($1, $2, $3, $4, $5) RETURNING user_id",
+        "INSERT INTO users (full_name, email, password_hash, role, school_id, auth_provider) VALUES ($1, $2, $3, $4, $5, 'google') RETURNING user_id",
         [full_name, email, randomPassword, final_role, final_school_id],
       );
       user_id = newUser.rows[0].user_id;
     }
 
-    // 3. Generate EduSync JWT Tokens
     const accessToken = jwt.sign(
       { user_id, role: final_role, school_id: final_school_id },
       process.env.JWT_SECRET,

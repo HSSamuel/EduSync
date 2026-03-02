@@ -16,7 +16,6 @@ const ChatTab = ({ userData }) => {
 
   const availableRooms = ["Global Lounge", "Staff Room", "JSS 1", "SS 3"];
 
-  // Helper to extract the user's true name securely
   const userName =
     userData?.full_name ||
     userData?.message?.replace("Welcome back, ", "")?.replace("!", "") ||
@@ -37,15 +36,13 @@ const ChatTab = ({ userData }) => {
 
     const newSocket = io(SOCKET_URL, {
       auth: { token },
-      reconnection: true, // Force socket to reconnect if dropped
+      reconnection: true,
     });
 
     setSocket(newSocket);
 
-    // 2. Listen for incoming messages
     const receiveMessageHandler = (data) => {
       setMessageList((list) => {
-        // Prevent duplicate messages if the Optimistic UI already rendered it
         const isDuplicate = list.some((m) => m.id === data.id);
         if (isDuplicate) return list;
         return [...list, data];
@@ -54,8 +51,29 @@ const ChatTab = ({ userData }) => {
 
     newSocket.on("receive_message", receiveMessageHandler);
 
+    // 👈 NEW: Handle Token Expiration mid-session
+    newSocket.on("connect_error", async (err) => {
+      if (err.message.includes("Authentication error")) {
+        try {
+          const res = await fetch(`${API_URL}/auth/refresh`, {
+            method: "POST",
+            credentials: "include",
+          });
+          if (res.ok) {
+            const data = await res.json();
+            localStorage.setItem("token", data.token);
+            newSocket.auth.token = data.token; // Update socket's token
+            newSocket.connect(); // Force reconnect
+          }
+        } catch (e) {
+          console.error("Socket Refresh Failed", e);
+        }
+      }
+    });
+
     return () => {
       newSocket.off("receive_message", receiveMessageHandler);
+      newSocket.off("connect_error");
       newSocket.close();
     };
   }, []);
@@ -63,20 +81,13 @@ const ChatTab = ({ userData }) => {
   // 3. Bulletproof Room Joining Logic
   useEffect(() => {
     if (!socket) return;
+    const joinCurrentRoom = () => socket.emit("join_room", room);
 
-    const joinCurrentRoom = () => {
-      socket.emit("join_room", room);
-    };
-
-    // Join room immediately if the socket is already connected
     if (socket.connected) {
       joinCurrentRoom();
     }
 
-    // FIX: If the socket silently reconnects, force it to rejoin the room!
     socket.on("connect", joinCurrentRoom);
-
-    // Clear messages when switching to a new room
     setMessageList([]);
 
     return () => {
@@ -87,7 +98,7 @@ const ChatTab = ({ userData }) => {
   const sendMessage = async (e) => {
     e.preventDefault();
     if (currentMessage.trim() !== "" && socket) {
-      const msgId = `msg_${Date.now()}_${Math.random()}`; // Generate unique ID
+      const msgId = `msg_${Date.now()}_${Math.random()}`;
 
       const messageData = {
         id: msgId,
@@ -101,10 +112,7 @@ const ChatTab = ({ userData }) => {
         role: userData?.your_role || "User",
       };
 
-      // Optimistic UI: Render it instantly on the user's screen
       setMessageList((list) => [...list, messageData]);
-
-      // Emit to server in the background
       await socket.emit("send_message", messageData);
       setCurrentMessage("");
     }
@@ -121,7 +129,6 @@ const ChatTab = ({ userData }) => {
           Live Communications
         </h4>
 
-        {/* Room Selector */}
         <div className="flex items-center gap-2 bg-blue-700/50 p-1.5 rounded-lg border border-blue-500/50 w-full sm:w-auto">
           <Users size={16} className="ml-2 text-blue-200" />
           <select
@@ -149,7 +156,6 @@ const ChatTab = ({ userData }) => {
         ) : (
           messageList.map((msg, index) => {
             const isMe = msg.sender === userName;
-
             return (
               <div
                 key={msg.id || index}
