@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react"; // 👈 IMPORT useRef
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -22,6 +22,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Bell,
+  ArrowUp, // 👈 IMPORT ARROW UP
 } from "lucide-react";
 
 import SubjectsTab from "./SubjectsTab";
@@ -53,16 +54,40 @@ const Dashboard = () => {
     document.documentElement.classList.contains("dark"),
   );
 
+  // 👈 NEW: Ref and State for Back to Top Button
+  const mainContentRef = useRef(null);
+  const [showTopBtn, setShowTopBtn] = useState(false);
+
   const navigate = useNavigate();
 
   const toggleTheme = () => {
+    const root = document.documentElement;
     if (isDark) {
-      document.documentElement.classList.remove("dark");
+      root.classList.remove("dark");
+      localStorage.setItem("theme", "light");
       setIsDark(false);
     } else {
-      document.documentElement.classList.add("dark");
+      root.classList.add("dark");
+      localStorage.setItem("theme", "dark");
       setIsDark(true);
     }
+  };
+
+  // 👈 NEW: Scroll Listener for the <main> container
+  const handleScroll = () => {
+    if (mainContentRef.current && mainContentRef.current.scrollTop > 300) {
+      setShowTopBtn(true);
+    } else {
+      setShowTopBtn(false);
+    }
+  };
+
+  // 👈 NEW: Scroll to Top function for the container
+  const scrollToTop = () => {
+    mainContentRef.current?.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
   };
 
   useEffect(() => {
@@ -328,6 +353,24 @@ const Dashboard = () => {
       </aside>
 
       <div className="flex-1 flex flex-col overflow-hidden relative">
+        {/* 👈 NEW: Animated Back-to-Top Button for Dashboard */}
+        <AnimatePresence>
+          {showTopBtn && (
+            <motion.button
+              initial={{ opacity: 0, y: 20, scale: 0.8 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.8 }}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={scrollToTop}
+              className="absolute bottom-8 right-8 z-[100] p-3.5 bg-blue-600 text-white rounded-full shadow-2xl hover:bg-blue-700 transition-colors focus:outline-none focus:ring-4 focus:ring-blue-500/50"
+              title="Back to top"
+            >
+              <ArrowUp size={24} strokeWidth={2.5} />
+            </motion.button>
+          )}
+        </AnimatePresence>
+
         <header className="h-16 shrink-0 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl border-b border-gray-200/60 dark:border-gray-700/50 flex items-center justify-between px-4 sm:px-6 z-10">
           <div className="flex items-center gap-4">
             <button
@@ -382,7 +425,12 @@ const Dashboard = () => {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-gray-50 dark:bg-gray-900 relative">
+        {/* 👈 NEW: Attached ref and onScroll to the main tag */}
+        <main
+          ref={mainContentRef}
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-gray-50 dark:bg-gray-900 relative"
+        >
           <div className="max-w-[1400px] mx-auto pb-12">
             <AnimatePresence mode="wait">
               <motion.div

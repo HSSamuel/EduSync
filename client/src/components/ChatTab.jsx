@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import io from "socket.io-client";
-import { Users, MessageSquare } from "lucide-react";
+import { Users, MessageSquare, Send } from "lucide-react";
+
+const API_URL = import.meta.env.VITE_API_URL;
+const SOCKET_URL = API_URL
+  ? API_URL.replace("/api", "")
+  : "http://localhost:5000";
 
 const ChatTab = ({ userData }) => {
   const [socket, setSocket] = useState(null);
@@ -11,6 +16,12 @@ const ChatTab = ({ userData }) => {
 
   const availableRooms = ["Global Lounge", "Staff Room", "JSS 1", "SS 3"];
 
+  // Helper to extract the user's true name securely
+  const userName =
+    userData?.full_name ||
+    userData?.message?.replace("Welcome back, ", "")?.replace("!", "") ||
+    "Me";
+
   const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -19,20 +30,28 @@ const ChatTab = ({ userData }) => {
     scrollToBottom();
   }, [messageList]);
 
-  // --- FIX: INITIALIZE SOCKET SECURELY ---
+  // 1. Initialize Socket Connection
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) return;
 
-    const newSocket = io("http://localhost:5000", {
+    const newSocket = io(SOCKET_URL, {
       auth: { token },
+      reconnection: true, // Force socket to reconnect if dropped
     });
 
     setSocket(newSocket);
 
+    // 2. Listen for incoming messages
     const receiveMessageHandler = (data) => {
-      setMessageList((list) => [...list, data]);
+      setMessageList((list) => {
+        // Prevent duplicate messages if the Optimistic UI already rendered it
+        const isDuplicate = list.some((m) => m.id === data.id);
+        if (isDuplicate) return list;
+        return [...list, data];
+      });
     };
+
     newSocket.on("receive_message", receiveMessageHandler);
 
     return () => {
@@ -41,27 +60,51 @@ const ChatTab = ({ userData }) => {
     };
   }, []);
 
-  // Join Room whenever room changes
+  // 3. Bulletproof Room Joining Logic
   useEffect(() => {
-    if (socket) {
+    if (!socket) return;
+
+    const joinCurrentRoom = () => {
       socket.emit("join_room", room);
-      setMessageList([]); // Clear screen when changing rooms
+    };
+
+    // Join room immediately if the socket is already connected
+    if (socket.connected) {
+      joinCurrentRoom();
     }
+
+    // FIX: If the socket silently reconnects, force it to rejoin the room!
+    socket.on("connect", joinCurrentRoom);
+
+    // Clear messages when switching to a new room
+    setMessageList([]);
+
+    return () => {
+      socket.off("connect", joinCurrentRoom);
+    };
   }, [room, socket]);
 
   const sendMessage = async (e) => {
     e.preventDefault();
     if (currentMessage.trim() !== "" && socket) {
+      const msgId = `msg_${Date.now()}_${Math.random()}`; // Generate unique ID
+
       const messageData = {
+        id: msgId,
         room: room,
         message: currentMessage,
         time: new Date().toLocaleTimeString([], {
           hour: "2-digit",
           minute: "2-digit",
         }),
-        // NOTE: sender and role are NO LONGER sent. The backend reads them securely from the JWT.
+        sender: userName,
+        role: userData?.your_role || "User",
       };
 
+      // Optimistic UI: Render it instantly on the user's screen
+      setMessageList((list) => [...list, messageData]);
+
+      // Emit to server in the background
       await socket.emit("send_message", messageData);
       setCurrentMessage("");
     }
@@ -105,12 +148,11 @@ const ChatTab = ({ userData }) => {
           </div>
         ) : (
           messageList.map((msg, index) => {
-            const isMe =
-              msg.sender ===
-              userData.message.replace("Welcome back, ", "").replace("!", "");
+            const isMe = msg.sender === userName;
+
             return (
               <div
-                key={index}
+                key={msg.id || index}
                 className={`flex ${isMe ? "justify-end" : "justify-start"}`}
               >
                 <div
@@ -120,7 +162,7 @@ const ChatTab = ({ userData }) => {
                     <span
                       className={`text-xs font-bold ${isMe ? "text-blue-200" : "text-gray-500"}`}
                     >
-                      {msg.sender}{" "}
+                      {isMe ? "You" : msg.sender}{" "}
                       <span className="opacity-70 font-normal">
                         ({msg.role})
                       </span>
@@ -156,9 +198,9 @@ const ChatTab = ({ userData }) => {
         <button
           type="submit"
           disabled={!currentMessage.trim()}
-          className="bg-blue-600 text-white p-3 rounded-full hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 shadow-md flex items-center justify-center w-12 h-12 shrink-0"
+          className="bg-blue-600 text-white p-3 rounded-full hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 shadow-md flex items-center justify-center w-12 h-12 shrink-0 transition-colors"
         >
-          ➤
+          <Send size={20} className="ml-1" />
         </button>
       </form>
     </div>

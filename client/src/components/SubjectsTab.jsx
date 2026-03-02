@@ -10,6 +10,8 @@ import {
   CheckCircle2,
 } from "lucide-react";
 
+const API_URL = import.meta.env.VITE_API_URL; // 👈 Fixed
+
 const SubjectsTab = ({ isAdmin, subjects, setSubjects }) => {
   const [subjectName, setSubjectName] = useState("");
   const [teacherId, setTeacherId] = useState("");
@@ -21,12 +23,10 @@ const SubjectsTab = ({ isAdmin, subjects, setSubjects }) => {
       const fetchTeachers = async () => {
         try {
           const token = localStorage.getItem("token");
-          const response = await fetch(
-            "http://localhost:5000/api/users/teachers",
-            {
-              headers: { jwt_token: token },
-            },
-          );
+          const response = await fetch(`${API_URL}/users/teachers`, {
+            // 👈 Fixed
+            headers: { jwt_token: token },
+          });
           if (response.ok) setTeachers(await response.json());
         } catch (err) {
           console.error(err.message);
@@ -40,7 +40,8 @@ const SubjectsTab = ({ isAdmin, subjects, setSubjects }) => {
     e.preventDefault();
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch("http://localhost:5000/api/subjects", {
+      const response = await fetch(`${API_URL}/subjects`, {
+        // 👈 Fixed
         method: "POST",
         headers: { "Content-Type": "application/json", jwt_token: token },
         body: JSON.stringify({
@@ -63,7 +64,8 @@ const SubjectsTab = ({ isAdmin, subjects, setSubjects }) => {
       return;
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch(`http://localhost:5000/api/subjects/${id}`, {
+      const response = await fetch(`${API_URL}/subjects/${id}`, {
+        // 👈 Fixed
         method: "DELETE",
         headers: { jwt_token: token },
       });
@@ -79,7 +81,8 @@ const SubjectsTab = ({ isAdmin, subjects, setSubjects }) => {
       const token = localStorage.getItem("token");
       const formData = new FormData(e.target);
       formData.append("subject_id", subject_id);
-      const response = await fetch("http://localhost:5000/api/modules", {
+      const response = await fetch(`${API_URL}/modules`, {
+        // 👈 Fixed
         method: "POST",
         headers: { jwt_token: token },
         body: formData,
@@ -96,12 +99,10 @@ const SubjectsTab = ({ isAdmin, subjects, setSubjects }) => {
   const fetchModules = async (subject_id) => {
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch(
-        `http://localhost:5000/api/modules/${subject_id}`,
-        {
-          headers: { jwt_token: token },
-        },
-      );
+      const response = await fetch(`${API_URL}/modules/${subject_id}`, {
+        // 👈 Fixed
+        headers: { jwt_token: token },
+      });
       if (response.ok)
         setModules({ ...modules, [subject_id]: await response.json() });
     } catch (err) {

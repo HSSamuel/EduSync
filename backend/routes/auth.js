@@ -7,9 +7,11 @@ const sendEmail = require("../utils/sendEmail");
 const { z } = require("zod");
 const validate = require("../middleware/validate");
 const rateLimit = require("express-rate-limit");
+const { OAuth2Client } = require("google-auth-library");
 require("dotenv").config();
 
 const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -53,11 +55,9 @@ router.post("/register", validate(registerSchema), async (req, res) => {
 
     if (role === "Admin") {
       if (!school_name)
-        return res
-          .status(400)
-          .json({
-            error: "School name is required to register an Admin account.",
-          });
+        return res.status(400).json({
+          error: "School name is required to register an Admin account.",
+        });
 
       const newSchool = await pool.query(
         "INSERT INTO schools (school_name, contact_email) VALUES ($1, $2) RETURNING school_id",
@@ -194,8 +194,9 @@ router.post("/forgot-password", async (req, res) => {
         .json({ error: "If that email exists, a reset link has been sent." });
     }
 
+    const secretHashSlice = user.rows[0].password_hash.substring(0, 10);
     const resetToken = jwt.sign(
-      { user_id: user.rows[0].user_id },
+      { user_id: user.rows[0].user_id, secret: secretHashSlice },
       process.env.JWT_SECRET,
       { expiresIn: "15m" },
     );
@@ -223,7 +224,6 @@ router.post("/forgot-password", async (req, res) => {
       subject: "EduSync Password Reset",
       html: emailHTML,
     });
-
     res.json({ message: "Password reset link sent to your email!" });
   } catch (err) {
     console.error(err.message);
@@ -234,8 +234,21 @@ router.post("/forgot-password", async (req, res) => {
 router.put("/reset-password", async (req, res) => {
   try {
     const { token, newPassword } = req.body;
-
     const payload = jwt.verify(token, process.env.JWT_SECRET);
+
+    const user = await pool.query(
+      "SELECT password_hash FROM users WHERE user_id = $1",
+      [payload.user_id],
+    );
+    if (user.rows.length === 0)
+      return res.status(404).json({ error: "User not found." });
+
+    const currentHashSlice = user.rows[0].password_hash.substring(0, 10);
+    if (payload.secret !== currentHashSlice) {
+      return res.status(401).json({
+        error: "This reset link has already been used or is invalid.",
+      });
+    }
 
     const saltRounds = 10;
     const salt = await bcrypt.genSalt(saltRounds);
@@ -253,6 +266,114 @@ router.put("/reset-password", async (req, res) => {
     res
       .status(401)
       .json({ error: "This reset link is invalid or has expired." });
+  }
+});
+
+// ==========================================
+// GOOGLE AUTHENTICATION ROUTE
+// ==========================================
+router.post("/google", async (req, res) => {
+  try {
+    const { token, type, role, school_name, school_id } = req.body;
+
+    // 1. Verify the token with Google's servers
+    const ticket = await googleClient.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    const email = payload.email;
+    const full_name = payload.name;
+
+    // 2. Check if user already exists
+    const userExists = await pool.query(
+      "SELECT * FROM users WHERE email = $1",
+      [email],
+    );
+
+    let user_id, final_role, final_school_id;
+
+    if (type === "login") {
+      if (userExists.rows.length === 0) {
+        return res
+          .status(404)
+          .json({ error: "Account not found. Please register first." });
+      }
+      user_id = userExists.rows[0].user_id;
+      final_role = userExists.rows[0].role;
+      final_school_id = userExists.rows[0].school_id;
+    } else if (type === "register") {
+      if (userExists.rows.length > 0) {
+        return res
+          .status(400)
+          .json({ error: "Email is already registered. Please log in." });
+      }
+
+      // Handle School ID logic for registration
+      final_school_id = school_id;
+      if (role === "Admin") {
+        if (!school_name)
+          return res.status(400).json({ error: "School name is required." });
+        const newSchool = await pool.query(
+          "INSERT INTO schools (school_name, contact_email) VALUES ($1, $2) RETURNING school_id",
+          [school_name, email],
+        );
+        final_school_id = newSchool.rows[0].school_id;
+      } else {
+        if (!final_school_id)
+          return res.status(400).json({ error: "School ID is required." });
+        const schoolExists = await pool.query(
+          "SELECT school_id FROM schools WHERE school_id = $1",
+          [final_school_id],
+        );
+        if (schoolExists.rows.length === 0)
+          return res.status(404).json({ error: "Invalid School ID provided." });
+      }
+
+      final_role = role;
+
+      // Generate a random placeholder password since they are using Google
+      const salt = await bcrypt.genSalt(10);
+      const randomPassword = await bcrypt.hash(
+        Math.random().toString(36).slice(-10),
+        salt,
+      );
+
+      const newUser = await pool.query(
+        "INSERT INTO users (full_name, email, password_hash, role, school_id) VALUES ($1, $2, $3, $4, $5) RETURNING user_id",
+        [full_name, email, randomPassword, final_role, final_school_id],
+      );
+      user_id = newUser.rows[0].user_id;
+    }
+
+    // 3. Generate EduSync JWT Tokens
+    const accessToken = jwt.sign(
+      { user_id, role: final_role, school_id: final_school_id },
+      process.env.JWT_SECRET,
+      { expiresIn: "15m" },
+    );
+
+    const refreshToken = jwt.sign(
+      { user_id, school_id: final_school_id },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" },
+    );
+
+    res.cookie("refresh_token", refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    res.json({
+      token: accessToken,
+      message: `${type === "login" ? "Login" : "Registration"} successful!`,
+    });
+  } catch (err) {
+    console.error("Google Auth Error:", err);
+    res.status(401).json({ error: "Google Authentication failed." });
   }
 });
 

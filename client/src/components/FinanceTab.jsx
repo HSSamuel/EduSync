@@ -9,6 +9,8 @@ import {
   CreditCard,
 } from "lucide-react";
 
+const API_URL = import.meta.env.VITE_API_URL; // 👈 Fixed
+
 const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
   const [invoices, setInvoices] = useState([]);
   const [formData, setFormData] = useState({
@@ -21,19 +23,18 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
 
   useEffect(() => {
     fetchInvoices();
-
-    // FIX: Secure Webhook Redirect handling
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get("payment_success") === "true") {
       alert("🎉 Payment Successful! Your receipt is being processed securely.");
-      window.history.replaceState(null, "", window.location.pathname); // Clean URL
+      window.history.replaceState(null, "", window.location.pathname);
     }
   }, []);
 
   const fetchInvoices = async () => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/finance/invoices", {
+      const res = await fetch(`${API_URL}/finance/invoices`, {
+        // 👈 Fixed
         headers: { jwt_token: token },
       });
       if (res.ok) setInvoices(await res.json());
@@ -46,7 +47,8 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
     e.preventDefault();
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/finance/invoices", {
+      const res = await fetch(`${API_URL}/finance/invoices`, {
+        // 👈 Fixed
         method: "POST",
         headers: { "Content-Type": "application/json", jwt_token: token },
         body: JSON.stringify(formData),
@@ -66,17 +68,16 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
     try {
       const token = localStorage.getItem("token");
       const res = await fetch(
-        `http://localhost:5000/api/finance/invoices/${invoice_id}/checkout`,
+        `${API_URL}/finance/invoices/${invoice_id}/checkout`,
         {
+          // 👈 Fixed
           method: "POST",
           headers: { jwt_token: token },
         },
       );
 
       const data = await res.json();
-
       if (res.ok && data.url) {
-        // Redirect the browser to Stripe's secure hosted checkout page
         window.location.href = data.url;
       } else {
         alert("❌ " + (data.error || "Failed to initialize payment gateway."));

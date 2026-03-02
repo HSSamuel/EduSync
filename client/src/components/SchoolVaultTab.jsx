@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import { FolderLock } from "lucide-react";
 import PremiumEmptyState from "./PremiumEmptyState";
 
+const API_URL = import.meta.env.VITE_API_URL; // 👈 Fixed
+
 const SchoolVaultTab = ({ isAdmin }) => {
   const [documents, setDocuments] = useState([]);
 
@@ -9,12 +11,10 @@ const SchoolVaultTab = ({ isAdmin }) => {
     const fetchDocs = async () => {
       try {
         const token = localStorage.getItem("token");
-        const response = await fetch(
-          "http://localhost:5000/api/school/documents",
-          {
-            headers: { jwt_token: token },
-          },
-        );
+        const response = await fetch(`${API_URL}/school/documents`, {
+          // 👈 Fixed
+          headers: { jwt_token: token },
+        });
         if (response.ok) setDocuments(await response.json());
       } catch (err) {
         console.error(err.message);
@@ -28,14 +28,12 @@ const SchoolVaultTab = ({ isAdmin }) => {
     try {
       const token = localStorage.getItem("token");
       const formData = new FormData(e.target);
-      const response = await fetch(
-        "http://localhost:5000/api/school/documents",
-        {
-          method: "POST",
-          headers: { jwt_token: token },
-          body: formData,
-        },
-      );
+      const response = await fetch(`${API_URL}/school/documents`, {
+        // 👈 Fixed
+        method: "POST",
+        headers: { jwt_token: token },
+        body: formData,
+      });
       if (response.ok) {
         alert("✅ Document Uploaded to Vault!");
         e.target.reset();
@@ -51,13 +49,11 @@ const SchoolVaultTab = ({ isAdmin }) => {
   const deleteDocument = async (id) => {
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch(
-        `http://localhost:5000/api/school/documents/${id}`,
-        {
-          method: "DELETE",
-          headers: { jwt_token: token },
-        },
-      );
+      const response = await fetch(`${API_URL}/school/documents/${id}`, {
+        // 👈 Fixed
+        method: "DELETE",
+        headers: { jwt_token: token },
+      });
       if (response.ok) setDocuments(documents.filter((d) => d.doc_id !== id));
     } catch (err) {
       console.error(err.message);
@@ -68,7 +64,7 @@ const SchoolVaultTab = ({ isAdmin }) => {
   const handleSecureDownload = (e, fileUrl, fileName) => {
     e.preventDefault();
     if (!fileUrl) return alert("File URL is missing.");
-    
+
     // If the file is hosted on Cloudinary, append 'fl_attachment' to force download
     let downloadUrl = fileUrl;
     if (fileUrl.includes("cloudinary.com")) {
@@ -77,7 +73,7 @@ const SchoolVaultTab = ({ isAdmin }) => {
     }
 
     // Open in a new tab which triggers the cloud download securely
-    window.open(downloadUrl, '_blank');
+    window.open(downloadUrl, "_blank");
   };
 
   return (

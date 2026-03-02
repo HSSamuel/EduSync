@@ -2,7 +2,6 @@ const express = require("express");
 const cors = require("cors");
 const pool = require("./db");
 const path = require("path");
-const fs = require("fs");
 const cookieParser = require("cookie-parser");
 const authorize = require("./middleware/authorize");
 const jwt = require("jsonwebtoken");
@@ -44,17 +43,6 @@ app.use((req, res, next) => {
 
 app.use(cookieParser());
 
-app.get("/api/downloads/:filename", authorize, (req, res) => {
-  const fileName = req.params.filename;
-  const filePath = path.join(__dirname, "uploads", fileName);
-
-  if (fs.existsSync(filePath)) {
-    res.sendFile(filePath);
-  } else {
-    res.status(404).json({ error: "File not found or access denied." });
-  }
-});
-
 app.get("/", (req, res) => {
   res.send("Welcome to the EduSync API! The server is alive.");
 });
@@ -72,6 +60,9 @@ app.use("/api/finance", require("./routes/finance"));
 app.use("/api/cbt", require("./routes/cbt"));
 app.use("/api/timetable", require("./routes/timetable"));
 
+// ==========================================
+// WEBSOCKET (SOCKET.IO) ENGINE
+// ==========================================
 io.use(async (socket, next) => {
   try {
     const token = socket.handshake.auth.token;
@@ -110,12 +101,14 @@ io.on("connection", (socket) => {
   socket.on("send_message", (data) => {
     const secureRoom = `${socket.user.school_id}_${data.room}`;
     const secureMessage = {
+      id: data.id || Math.random().toString(36).substring(7), // 👈 NEW: Unique ID for optimistic UI
       room: data.room,
       message: data.message,
       time: data.time,
       sender: socket.user.name,
       role: socket.user.role,
     };
+    // Broadcast message to everyone in the room
     io.to(secureRoom).emit("receive_message", secureMessage);
   });
 

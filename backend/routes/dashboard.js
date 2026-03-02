@@ -16,6 +16,7 @@ router.get("/", authorize, async (req, res) => {
 
     res.json({
       message: `Welcome back, ${user.rows[0].full_name}!`,
+      full_name: user.rows[0].full_name, // 👈 Fix for secure chat identity
       your_role: user.rows[0].role,
     });
   } catch (err) {
@@ -31,7 +32,6 @@ router.get("/stats", authorize, async (req, res) => {
       return res.status(403).json({ error: "Access Denied." });
     }
 
-    // 👈 NEW: Scoped queries to ensure School A only sees School A's stats
     const [students, teachers, subjects, documents] = await Promise.all([
       pool.query(
         "SELECT COUNT(*) FROM students s JOIN users u ON s.user_id = u.user_id WHERE u.school_id = $1",
