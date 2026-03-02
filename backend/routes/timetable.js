@@ -7,13 +7,13 @@ const authorize = require("../middleware/authorize");
 router.get("/:class_grade", authorize, async (req, res) => {
   try {
     const { class_grade } = req.params;
+    // 👈 NEW: Fetch timetable for this specific school and class
     const timetable = await pool.query(
-      "SELECT schedule FROM timetables WHERE class_grade = $1",
-      [class_grade],
+      "SELECT schedule FROM timetables WHERE class_grade = $1 AND school_id = $2",
+      [class_grade, req.user.school_id],
     );
 
     if (timetable.rows.length === 0) {
-      // Return an empty template if no schedule exists yet
       return res.json({
         Monday: [],
         Tuesday: [],
@@ -38,14 +38,19 @@ router.post("/", authorize, async (req, res) => {
 
     const { class_grade, schedule } = req.body;
 
-    // PostgreSQL "UPSERT" - Insert it, but if the class already exists, update it!
+    // 👈 NEW: PostgreSQL UPSERT based on the unique combination of class_grade AND school_id
     const newTimetable = await pool.query(
-      `INSERT INTO timetables (class_grade, schedule, updated_by) 
-       VALUES ($1, $2, $3) 
-       ON CONFLICT (class_grade) 
+      `INSERT INTO timetables (class_grade, schedule, updated_by, school_id) 
+       VALUES ($1, $2, $3, $4) 
+       ON CONFLICT (class_grade, school_id) 
        DO UPDATE SET schedule = EXCLUDED.schedule, updated_by = EXCLUDED.updated_by, updated_at = CURRENT_TIMESTAMP 
        RETURNING *`,
-      [class_grade, JSON.stringify(schedule), req.user.user_id],
+      [
+        class_grade,
+        JSON.stringify(schedule),
+        req.user.user_id,
+        req.user.school_id,
+      ],
     );
 
     res.json({

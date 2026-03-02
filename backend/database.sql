@@ -149,3 +149,13 @@ ALTER TABLE subjects ALTER COLUMN school_id DROP DEFAULT;
 ALTER TABLE school_documents ALTER COLUMN school_id DROP DEFAULT;
 ALTER TABLE events ALTER COLUMN school_id DROP DEFAULT;
 ALTER TABLE quizzes ALTER COLUMN school_id DROP DEFAULT;
+
+ALTER TABLE modules ADD COLUMN school_id INT REFERENCES schools(school_id) ON DELETE CASCADE DEFAULT 1;
+ALTER TABLE results ADD COLUMN school_id INT REFERENCES schools(school_id) ON DELETE CASCADE DEFAULT 1;
+ALTER TABLE invoices ADD COLUMN school_id INT REFERENCES schools(school_id) ON DELETE CASCADE DEFAULT 1;
+ALTER TABLE attendance ADD COLUMN school_id INT REFERENCES schools(school_id) ON DELETE CASCADE DEFAULT 1;
+
+-- If you created a timetables table previously, run these as well:
+ALTER TABLE timetables ADD COLUMN school_id INT REFERENCES schools(school_id) ON DELETE CASCADE DEFAULT 1;
+ALTER TABLE timetables DROP CONSTRAINT IF EXISTS timetables_class_grade_key;
+ALTER TABLE timetables ADD CONSTRAINT unique_class_per_school UNIQUE (class_grade, school_id);

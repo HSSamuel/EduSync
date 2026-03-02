@@ -4,10 +4,9 @@ const pool = require("../db");
 const authorize = require("../middleware/authorize");
 const multer = require("multer");
 const sendEmail = require("../utils/sendEmail");
-const { storage } = require("../utils/cloudinary"); 
+const { storage } = require("../utils/cloudinary");
 const { emailQueue } = require("../utils/emailQueue");
 
-// Replace local storage with Cloudinary storage
 const upload = multer({ storage: storage });
 
 // 1. UPLOAD A GLOBAL DOCUMENT (Admin Only)
@@ -24,12 +23,12 @@ router.post(
       if (!req.file)
         return res.status(400).json({ error: "No file was uploaded." });
 
-      // --- FIX: GRAB THE CLOUDINARY URL ---
       const file_url = req.file.path;
 
+      // 👈 NEW: Tag document with school_id
       const newDoc = await pool.query(
-        "INSERT INTO school_documents (title, file_url, uploaded_by) VALUES ($1, $2, $3) RETURNING *",
-        [title, file_url, req.user.user_id],
+        "INSERT INTO school_documents (title, file_url, uploaded_by, school_id) VALUES ($1, $2, $3, $4) RETURNING *",
+        [title, file_url, req.user.user_id, req.user.school_id],
       );
       res.json(newDoc.rows[0]);
     } catch (err) {
@@ -42,8 +41,10 @@ router.post(
 // 2. GET ALL GLOBAL DOCUMENTS (All Users)
 router.get("/documents", authorize, async (req, res) => {
   try {
+    // 👈 NEW: Only fetch documents for this user's school
     const docs = await pool.query(
-      "SELECT * FROM school_documents ORDER BY uploaded_at DESC",
+      "SELECT * FROM school_documents WHERE school_id = $1 ORDER BY uploaded_at DESC",
+      [req.user.school_id],
     );
     res.json(docs.rows);
   } catch (err) {
@@ -57,9 +58,12 @@ router.delete("/documents/:id", authorize, async (req, res) => {
   try {
     if (req.user.role !== "Admin")
       return res.status(403).json({ error: "Access Denied." });
-    await pool.query("DELETE FROM school_documents WHERE doc_id = $1", [
-      req.params.id,
-    ]);
+
+    // 👈 NEW: Ensure they only delete their own school's document
+    await pool.query(
+      "DELETE FROM school_documents WHERE doc_id = $1 AND school_id = $2",
+      [req.params.id, req.user.school_id],
+    );
     res.json({ message: "Document deleted successfully!" });
   } catch (err) {
     console.error(err.message);
@@ -76,21 +80,25 @@ router.post("/broadcast", authorize, async (req, res) => {
 
     const { audience, subject, message } = req.body;
 
-    let query = "SELECT email, full_name FROM users WHERE role != 'Admin'";
-    let queryParams = [];
+    // 👈 NEW: Only broadcast to users IN THIS SPECIFIC SCHOOL
+    let query =
+      "SELECT email, full_name FROM users WHERE role != 'Admin' AND school_id = $1";
+    let queryParams = [req.user.school_id];
 
     if (audience !== "All") {
-      query = "SELECT email, full_name FROM users WHERE role = $1";
-      queryParams = [audience];
+      query =
+        "SELECT email, full_name FROM users WHERE role = $2 AND school_id = $1";
+      queryParams = [req.user.school_id, audience];
     }
 
     const targetUsers = await pool.query(query, queryParams);
 
     if (targetUsers.rows.length === 0) {
-      return res.status(400).json({ error: "No users found in this audience category." });
+      return res
+        .status(400)
+        .json({ error: "No users found in this audience category." });
     }
 
-    // --- FIX: ADD JOBS TO THE REDIS QUEUE INSTEAD OF AWAITING THEM ---
     const jobs = targetUsers.rows.map((user) => ({
       name: "broadcast-email",
       data: {
@@ -111,12 +119,11 @@ router.post("/broadcast", authorize, async (req, res) => {
       },
     }));
 
-    // Add all jobs to the queue at once
     await emailQueue.addBulk(jobs);
 
-    // Instantly respond to the frontend
-    res.json({ message: `✅ Broadcast queued successfully! Dispatching to ${targetUsers.rows.length} recipient(s) in the background.` });
-
+    res.json({
+      message: `✅ Broadcast queued successfully! Dispatching to ${targetUsers.rows.length} recipient(s) in the background.`,
+    });
   } catch (err) {
     console.error(err.message);
     res.status(500).send("Server Error");
@@ -130,8 +137,10 @@ router.post("/broadcast", authorize, async (req, res) => {
 // 5. GET ALL EVENTS (All Users)
 router.get("/events", authorize, async (req, res) => {
   try {
+    // 👈 NEW: Only fetch events for this school
     const events = await pool.query(
-      "SELECT * FROM events ORDER BY event_date ASC",
+      "SELECT * FROM events WHERE school_id = $1 ORDER BY event_date ASC",
+      [req.user.school_id],
     );
     res.json(events.rows);
   } catch (err) {
@@ -147,9 +156,11 @@ router.post("/events", authorize, async (req, res) => {
       return res.status(403).json({ error: "Access Denied." });
 
     const { title, event_date, event_type } = req.body;
+
+    // 👈 NEW: Tag event with school_id
     const newEvent = await pool.query(
-      "INSERT INTO events (title, event_date, event_type, created_by) VALUES ($1, $2, $3, $4) RETURNING *",
-      [title, event_date, event_type, req.user.user_id],
+      "INSERT INTO events (title, event_date, event_type, created_by, school_id) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+      [title, event_date, event_type, req.user.user_id, req.user.school_id],
     );
     res.json(newEvent.rows[0]);
   } catch (err) {
@@ -164,7 +175,11 @@ router.delete("/events/:id", authorize, async (req, res) => {
     if (req.user.role !== "Admin")
       return res.status(403).json({ error: "Access Denied." });
 
-    await pool.query("DELETE FROM events WHERE event_id = $1", [req.params.id]);
+    // 👈 NEW: Prevent deleting other schools' events
+    await pool.query(
+      "DELETE FROM events WHERE event_id = $1 AND school_id = $2",
+      [req.params.id, req.user.school_id],
+    );
     res.json({ message: "Event deleted!" });
   } catch (err) {
     console.error(err.message);

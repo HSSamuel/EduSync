@@ -11,65 +11,98 @@ router.post("/", authorize, async (req, res) => {
     }
 
     const { subject_id, title, questions } = req.body;
-    // 'questions' is an array of objects: [{ text: "", options: ["A", "B", "C", "D"], answer: 0 }]
 
+    // 👈 NEW: Add the school_id payload
     const newQuiz = await pool.query(
-      "INSERT INTO quizzes (subject_id, title, questions, created_by) VALUES ($1, $2, $3, $4) RETURNING *",
-      [subject_id, title, JSON.stringify(questions), req.user.user_id]
+      "INSERT INTO quizzes (subject_id, title, questions, created_by, school_id) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+      [
+        subject_id,
+        title,
+        JSON.stringify(questions),
+        req.user.user_id,
+        req.user.school_id,
+      ],
     );
 
     res.json({ message: "Quiz successfully created!", quiz: newQuiz.rows[0] });
   } catch (err) {
-    console.error(err.message); res.status(500).send("Server Error");
+    console.error(err.message);
+    res.status(500).send("Server Error");
   }
 });
 
 // 2. GET ALL QUIZZES
 router.get("/", authorize, async (req, res) => {
   try {
-    const quizzes = await pool.query(`
+    // 👈 NEW: Scope strictly to this school
+    const quizzes = await pool.query(
+      `
       SELECT q.quiz_id, q.title, q.created_at, s.subject_name 
       FROM quizzes q
       JOIN subjects s ON q.subject_id = s.subject_id
+      WHERE q.school_id = $1
       ORDER BY q.created_at DESC
-    `);
+    `,
+      [req.user.school_id],
+    );
     res.json(quizzes.rows);
   } catch (err) {
-    console.error(err.message); res.status(500).send("Server Error");
+    console.error(err.message);
+    res.status(500).send("Server Error");
   }
 });
 
 // 3. GET A SPECIFIC QUIZ (To take it)
 router.get("/:id", authorize, async (req, res) => {
   try {
-    const quiz = await pool.query("SELECT * FROM quizzes WHERE quiz_id = $1", [req.params.id]);
-    
+    // 👈 NEW: Double check the school_id boundary
+    const quiz = await pool.query(
+      "SELECT * FROM quizzes WHERE quiz_id = $1 AND school_id = $2",
+      [req.params.id, req.user.school_id],
+    );
+
+    if (quiz.rows.length === 0)
+      return res.status(404).json({ error: "Quiz not found" });
+
     // Security: If the user is a Student, do NOT send the correct answers to the frontend!
     if (req.user.role === "Student") {
-      const sanitizedQuestions = quiz.rows[0].questions.map(q => ({ text: q.text, options: q.options }));
+      const sanitizedQuestions = quiz.rows[0].questions.map((q) => ({
+        text: q.text,
+        options: q.options,
+      }));
       return res.json({ ...quiz.rows[0], questions: sanitizedQuestions });
     }
-    
+
     res.json(quiz.rows[0]);
   } catch (err) {
-    console.error(err.message); res.status(500).send("Server Error");
+    console.error(err.message);
+    res.status(500).send("Server Error");
   }
 });
 
 // 4. AUTO-GRADE A QUIZ SUBMISSION (Student Only)
 router.post("/:id/submit", authorize, async (req, res) => {
   try {
-    if (req.user.role !== "Student") return res.status(403).json({ error: "Only students can take quizzes." });
+    if (req.user.role !== "Student")
+      return res.status(403).json({ error: "Only students can take quizzes." });
 
     const quiz_id = req.params.id;
-    const { student_answers } = req.body; // Array of selected option indexes
+    const { student_answers } = req.body;
 
-    // Get the student's actual ID
-    const studentQuery = await pool.query("SELECT student_id FROM students WHERE user_id = $1", [req.user.user_id]);
+    const studentQuery = await pool.query(
+      "SELECT student_id FROM students WHERE user_id = $1",
+      [req.user.user_id],
+    );
     const student_id = studentQuery.rows[0].student_id;
 
-    // Fetch the quiz with the REAL answers
-    const quiz = await pool.query("SELECT questions FROM quizzes WHERE quiz_id = $1", [quiz_id]);
+    // 👈 NEW: Verify quiz boundary
+    const quiz = await pool.query(
+      "SELECT questions FROM quizzes WHERE quiz_id = $1 AND school_id = $2",
+      [quiz_id, req.user.school_id],
+    );
+    if (quiz.rows.length === 0)
+      return res.status(404).json({ error: "Quiz not found" });
+
     const realQuestions = quiz.rows[0].questions;
 
     // The Auto-Grading Engine!
@@ -80,15 +113,19 @@ router.post("/:id/submit", authorize, async (req, res) => {
       }
     }
 
-    // Save the result
     await pool.query(
       "INSERT INTO cbt_results (quiz_id, student_id, score, total_questions) VALUES ($1, $2, $3, $4)",
-      [quiz_id, student_id, score, realQuestions.length]
+      [quiz_id, student_id, score, realQuestions.length],
     );
 
-    res.json({ message: "Quiz auto-graded successfully!", score, total: realQuestions.length });
+    res.json({
+      message: "Quiz auto-graded successfully!",
+      score,
+      total: realQuestions.length,
+    });
   } catch (err) {
-    console.error(err.message); res.status(500).send("Server Error");
+    console.error(err.message);
+    res.status(500).send("Server Error");
   }
 });
 

@@ -2,11 +2,10 @@ const express = require("express");
 const router = express.Router();
 const pool = require("../db");
 const authorize = require("../middleware/authorize");
-const sendEmail = require("../utils/sendEmail");
-const { z } = require("zod"); // Phase 1: Schema validation
+const { emailQueue } = require("../utils/emailQueue"); // Use background queue
+const { z } = require("zod");
 const validate = require("../middleware/validate");
 
-// --- PHASE 1: ZOD SCHEMAS ---
 const createGradeSchema = z.object({
   student_id: z.coerce.number().positive(),
   subject_id: z.coerce.number().positive(),
@@ -20,7 +19,6 @@ const updateGradeSchema = z.object({
   exam_score: z.coerce.number().min(0).max(60, "Exam score cannot exceed 60"),
 });
 
-// Helper Function: The Email Template for Grades
 const getGradeEmailHTML = (
   recipientName,
   subjectName,
@@ -40,77 +38,80 @@ const getGradeEmailHTML = (
   </div>
 `;
 
-// 1. ADD A STUDENT'S GRADE & TRIGGER EMAIL
+// 1. ADD A STUDENT'S GRADE
 router.post("/", authorize, validate(createGradeSchema), async (req, res) => {
   try {
     if (req.user.role !== "Admin" && req.user.role !== "Teacher") {
-      return res.status(403).json({
-        error: "Access Denied. Only Admins and Teachers can add grades.",
-      });
+      return res.status(403).json({ error: "Access Denied." });
     }
 
     const { student_id, subject_id, academic_term, test_score, exam_score } =
       req.body;
 
+    // 👈 NEW: Tag result with school_id
     const newResult = await pool.query(
-      "INSERT INTO results (student_id, subject_id, academic_term, test_score, exam_score) VALUES ($1, $2, $3, $4, $5) RETURNING *",
-      [student_id, subject_id, academic_term, test_score, exam_score],
+      "INSERT INTO results (student_id, subject_id, academic_term, test_score, exam_score, school_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *",
+      [
+        student_id,
+        subject_id,
+        academic_term,
+        test_score,
+        exam_score,
+        req.user.school_id,
+      ],
     );
 
-    // --- AUTOMATED EMAIL TRIGGER ---
     const detailsQuery = await pool.query(
       `
-      SELECT 
-        u.email AS student_email, u.full_name AS student_name,
-        p.email AS parent_email, p.full_name AS parent_name,
-        sub.subject_name
+      SELECT u.email AS student_email, u.full_name AS student_name, p.email AS parent_email, p.full_name AS parent_name, sub.subject_name
       FROM students s
       JOIN users u ON s.user_id = u.user_id
       LEFT JOIN users p ON s.parent_id = p.user_id
       JOIN subjects sub ON sub.subject_id = $1
-      WHERE s.student_id = $2
-    `,
-      [subject_id, student_id],
+      WHERE s.student_id = $2 AND u.school_id = $3
+      `,
+      [subject_id, student_id, req.user.school_id],
     );
 
     if (detailsQuery.rows.length > 0) {
       const details = detailsQuery.rows[0];
+      const jobs = [];
 
-      // Notify Student
       if (details.student_email) {
-        sendEmail({
-          to: details.student_email,
-          subject: `New Grade: ${details.subject_name}`,
-          html: getGradeEmailHTML(
-            details.student_name,
-            details.subject_name,
-            academic_term,
-          ),
+        jobs.push({
+          name: "grade-alert",
+          data: {
+            to: details.student_email,
+            subject: `New Grade: ${details.subject_name}`,
+            html: getGradeEmailHTML(
+              details.student_name,
+              details.subject_name,
+              academic_term,
+            ),
+          },
         });
       }
-      // Notify Parent (If linked)
       if (details.parent_email) {
-        sendEmail({
-          to: details.parent_email,
-          subject: `New Grade for ${details.student_name}: ${details.subject_name}`,
-          html: getGradeEmailHTML(
-            details.parent_name,
-            details.subject_name,
-            academic_term,
-          ),
+        jobs.push({
+          name: "grade-alert",
+          data: {
+            to: details.parent_email,
+            subject: `New Grade for ${details.student_name}: ${details.subject_name}`,
+            html: getGradeEmailHTML(
+              details.parent_name,
+              details.subject_name,
+              academic_term,
+            ),
+          },
         });
       }
+      await emailQueue.addBulk(jobs); // Fast queue processing
     }
-    // ------------------------------------
 
     res.json(newResult.rows[0]);
   } catch (err) {
     console.error(err.message);
-    res
-      .status(500)
-      .send(
-        "Server Error. (Check if the student_id and subject_id actually exist!)",
-      );
+    res.status(500).send("Server Error.");
   }
 });
 
@@ -118,12 +119,14 @@ router.post("/", authorize, validate(createGradeSchema), async (req, res) => {
 router.get("/student/:student_id", authorize, async (req, res) => {
   try {
     const { student_id } = req.params;
+    // 👈 NEW: Verify school_id
     const reportCard = await pool.query(
       `
-      SELECT results.result_id, subjects.subject_name, results.academic_term, results.test_score, results.exam_score, results.total_score
-      FROM results JOIN subjects ON results.subject_id = subjects.subject_id WHERE results.student_id = $1
+      SELECT r.result_id, s.subject_name, r.academic_term, r.test_score, r.exam_score, r.total_score
+      FROM results r JOIN subjects s ON r.subject_id = s.subject_id 
+      WHERE r.student_id = $1 AND r.school_id = $2
     `,
-      [student_id],
+      [student_id, req.user.school_id],
     );
     res.json(reportCard.rows);
   } catch (err) {
@@ -136,11 +139,13 @@ router.get("/me", authorize, async (req, res) => {
   try {
     const myGrades = await pool.query(
       `
-      SELECT results.result_id, subjects.subject_name, results.academic_term, results.test_score, results.exam_score, results.total_score
-      FROM results JOIN subjects ON results.subject_id = subjects.subject_id JOIN students ON results.student_id = students.student_id
-      WHERE students.user_id = $1
+      SELECT r.result_id, s.subject_name, r.academic_term, r.test_score, r.exam_score, r.total_score
+      FROM results r 
+      JOIN subjects s ON r.subject_id = s.subject_id 
+      JOIN students st ON r.student_id = st.student_id
+      WHERE st.user_id = $1 AND r.school_id = $2
     `,
-      [req.user.user_id],
+      [req.user.user_id, req.user.school_id],
     );
     res.json(myGrades.rows);
   } catch (err) {
@@ -148,36 +153,32 @@ router.get("/me", authorize, async (req, res) => {
   }
 });
 
-// 4. UPDATE A GRADE & TRIGGER EMAIL (Phase 1: Validation & Audit Logs Added)
+// 4. UPDATE A GRADE & TRIGGER EMAIL
 router.put("/:id", authorize, validate(updateGradeSchema), async (req, res) => {
   try {
-    if (req.user.role !== "Admin" && req.user.role !== "Teacher") {
+    if (req.user.role !== "Admin" && req.user.role !== "Teacher")
       return res.status(403).json({ error: "Access Denied." });
-    }
 
     const { id } = req.params;
     const { test_score, exam_score } = req.body;
 
-    // 1. Fetch the OLD record for the audit log
     const oldRecordQuery = await pool.query(
-      "SELECT * FROM results WHERE result_id = $1",
-      [id],
+      "SELECT * FROM results WHERE result_id = $1 AND school_id = $2",
+      [id, req.user.school_id],
     );
     if (oldRecordQuery.rows.length === 0)
       return res.status(404).json({ error: "Result not found" });
     const oldRecord = oldRecordQuery.rows[0];
 
-    // 2. Perform the update
     const updateGrade = await pool.query(
-      "UPDATE results SET test_score = $1, exam_score = $2 WHERE result_id = $3 RETURNING *",
-      [test_score, exam_score, id],
+      "UPDATE results SET test_score = $1, exam_score = $2 WHERE result_id = $3 AND school_id = $4 RETURNING *",
+      [test_score, exam_score, id, req.user.school_id],
     );
     const resultData = updateGrade.rows[0];
 
-    // 3. Create the Audit Log (For compliance and security tracking)
+    // Audit Log
     await pool.query(
-      `INSERT INTO audit_logs (user_id, action, target_table, record_id, old_value, new_value) 
-       VALUES ($1, 'UPDATE_GRADE', 'results', $2, $3, $4)`,
+      `INSERT INTO audit_logs (user_id, action, target_table, record_id, old_value, new_value) VALUES ($1, 'UPDATE_GRADE', 'results', $2, $3, $4)`,
       [
         req.user.user_id,
         id,
@@ -191,46 +192,6 @@ router.put("/:id", authorize, validate(updateGradeSchema), async (req, res) => {
         }),
       ],
     );
-
-    // --- AUTOMATED UPDATE EMAIL TRIGGER ---
-    const detailsQuery = await pool.query(
-      `
-      SELECT u.email AS student_email, u.full_name AS student_name, p.email AS parent_email, p.full_name AS parent_name, sub.subject_name
-      FROM students s
-      JOIN users u ON s.user_id = u.user_id
-      LEFT JOIN users p ON s.parent_id = p.user_id
-      JOIN subjects sub ON sub.subject_id = $1
-      WHERE s.student_id = $2
-    `,
-      [resultData.subject_id, resultData.student_id],
-    );
-
-    if (detailsQuery.rows.length > 0) {
-      const details = detailsQuery.rows[0];
-      if (details.student_email)
-        sendEmail({
-          to: details.student_email,
-          subject: `Grade Updated: ${details.subject_name}`,
-          html: getGradeEmailHTML(
-            details.student_name,
-            details.subject_name,
-            resultData.academic_term,
-            true,
-          ),
-        });
-      if (details.parent_email)
-        sendEmail({
-          to: details.parent_email,
-          subject: `Grade Updated for ${details.student_name}: ${details.subject_name}`,
-          html: getGradeEmailHTML(
-            details.parent_name,
-            details.subject_name,
-            resultData.academic_term,
-            true,
-          ),
-        });
-    }
-    // ------------------------------------
 
     res.json({
       message: "Grade updated successfully!",

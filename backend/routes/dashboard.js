@@ -1,15 +1,18 @@
 const express = require("express");
 const router = express.Router();
 const authorize = require("../middleware/authorize");
-const pool = require("../db"); // 👈 The missing puzzle piece!
+const pool = require("../db");
 
 // 1. GET USER PROFILE
 router.get("/", authorize, async (req, res) => {
   try {
     const user = await pool.query(
-      "SELECT full_name, role FROM users WHERE user_id = $1",
-      [req.user.user_id],
+      "SELECT full_name, role FROM users WHERE user_id = $1 AND school_id = $2",
+      [req.user.user_id, req.user.school_id],
     );
+
+    if (user.rows.length === 0)
+      return res.status(404).json({ error: "User not found" });
 
     res.json({
       message: `Welcome back, ${user.rows[0].full_name}!`,
@@ -28,12 +31,22 @@ router.get("/stats", authorize, async (req, res) => {
       return res.status(403).json({ error: "Access Denied." });
     }
 
-    // Run multiple counting queries at the same time for maximum speed
+    // 👈 NEW: Scoped queries to ensure School A only sees School A's stats
     const [students, teachers, subjects, documents] = await Promise.all([
-      pool.query("SELECT COUNT(*) FROM students"),
-      pool.query("SELECT COUNT(*) FROM users WHERE role = 'Teacher'"),
-      pool.query("SELECT COUNT(*) FROM subjects"),
-      pool.query("SELECT COUNT(*) FROM school_documents"),
+      pool.query(
+        "SELECT COUNT(*) FROM students s JOIN users u ON s.user_id = u.user_id WHERE u.school_id = $1",
+        [req.user.school_id],
+      ),
+      pool.query(
+        "SELECT COUNT(*) FROM users WHERE role = 'Teacher' AND school_id = $1",
+        [req.user.school_id],
+      ),
+      pool.query("SELECT COUNT(*) FROM subjects WHERE school_id = $1", [
+        req.user.school_id,
+      ]),
+      pool.query("SELECT COUNT(*) FROM school_documents WHERE school_id = $1", [
+        req.user.school_id,
+      ]),
     ]);
 
     res.json({

@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   Clock,
   CreditCard,
-  PlusCircle,
 } from "lucide-react";
 
 const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
@@ -22,6 +21,7 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
 
   useEffect(() => {
     fetchInvoices();
+    checkStripeRedirect();
   }, []);
 
   const fetchInvoices = async () => {
@@ -33,6 +33,37 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
       if (res.ok) setInvoices(await res.json());
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  // --- NEW: Detect if the user just returned from Stripe Checkout ---
+  const checkStripeRedirect = async () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const paymentSuccess = urlParams.get("payment_success");
+    const invoiceId = urlParams.get("invoice_id");
+
+    if (paymentSuccess === "true" && invoiceId) {
+      setIsProcessing(true);
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(
+          `http://localhost:5000/api/finance/invoices/${invoiceId}/pay`,
+          {
+            method: "PUT",
+            headers: { jwt_token: token },
+          },
+        );
+        if (res.ok) {
+          alert("🎉 Payment Successful! Your receipt has been emailed.");
+          fetchInvoices();
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        // Clean the URL so it doesn't trigger again on refresh
+        window.history.replaceState(null, "", window.location.pathname);
+        setIsProcessing(false);
+      }
     }
   };
 
@@ -55,34 +86,36 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
     }
   };
 
+  // --- NEW: Redirect to Stripe ---
   const handlePayment = async (invoice_id) => {
-    if (
-      !window.confirm("Proceed to secure payment gateway to pay this invoice?")
-    )
-      return;
     setIsProcessing(true);
     try {
       const token = localStorage.getItem("token");
       const res = await fetch(
-        `http://localhost:5000/api/finance/invoices/${invoice_id}/pay`,
+        `http://localhost:5000/api/finance/invoices/${invoice_id}/checkout`,
         {
-          method: "PUT",
+          method: "POST",
           headers: { jwt_token: token },
         },
       );
-      if (res.ok) {
-        alert("🎉 Payment Successful! Receipt emailed.");
-        fetchInvoices();
+
+      const data = await res.json();
+
+      if (res.ok && data.url) {
+        // Redirect the browser to Stripe's secure hosted checkout page
+        window.location.href = data.url;
+      } else {
+        alert("❌ " + (data.error || "Failed to initialize payment gateway."));
+        setIsProcessing(false);
       }
     } catch (err) {
       console.error(err);
+      setIsProcessing(false);
     }
-    setIsProcessing(false);
   };
 
   return (
     <div className="animate-fade-in space-y-8">
-      {/* Admin Invoice Generator */}
       {isAdmin && (
         <div className="bg-white dark:bg-gray-800 p-6 md:p-8 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm transition-all">
           <div className="flex items-center gap-3 mb-6 border-b border-gray-100 dark:border-gray-700 pb-4">
@@ -171,7 +204,6 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
         </div>
       )}
 
-      {/* Invoices List / Ledger */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
         <div className="p-6 md:p-8 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20">
           <h4 className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-2 tracking-tight">
@@ -210,10 +242,8 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
                       key={inv.invoice_id}
                       className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors group"
                     >
-                      <td className="p-4">
-                        <p className="font-bold text-gray-900 dark:text-white">
-                          {inv.student_name}
-                        </p>
+                      <td className="p-4 font-bold text-gray-900 dark:text-white">
+                        {inv.student_name}
                       </td>
                       <td className="p-4 font-medium text-gray-600 dark:text-gray-300">
                         {inv.title}
@@ -242,10 +272,10 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
                             <button
                               onClick={() => handlePayment(inv.invoice_id)}
                               disabled={isProcessing}
-                              className="px-5 py-2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-sm font-bold rounded-lg hover:bg-gray-800 dark:hover:bg-white shadow-md transition-all flex items-center gap-2 ml-auto"
+                              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg shadow-md transition-all flex items-center gap-2 ml-auto disabled:opacity-50"
                             >
                               <CreditCard size={14} />{" "}
-                              {isProcessing ? "Wait..." : "Pay Now"}
+                              {isProcessing ? "Loading..." : "Pay via Stripe"}
                             </button>
                           ) : (
                             <span className="text-green-600 dark:text-green-400 font-bold text-sm flex items-center justify-end gap-1">

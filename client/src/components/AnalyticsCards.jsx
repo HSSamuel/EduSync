@@ -207,7 +207,7 @@ const AnalyticsCards = () => {
               Distribution of portal accounts
             </p>
           </div>
-          <div className="flex-1 flex items-center justify-center min-h-[250px]">
+          <div className="w-full h-[250px] mt-4">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie

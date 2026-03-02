@@ -3,12 +3,11 @@ const router = express.Router();
 const pool = require("../db");
 const bcrypt = require("bcrypt");
 const authorize = require("../middleware/authorize");
-const sendEmail = require("../utils/sendEmail"); // 👈 NEW: Imported our email engine!
+const sendEmail = require("../utils/sendEmail");
 
 // 1. REGISTER A NEW STUDENT (Only Admins allowed)
 router.post("/", authorize, async (req, res) => {
   try {
-    // Security checkpoint
     if (req.user.role !== "Admin") {
       return res
         .status(403)
@@ -17,27 +16,22 @@ router.post("/", authorize, async (req, res) => {
 
     const { full_name, email, password, class_grade } = req.body;
 
-    // Step 1: Hash the password
     const saltRounds = 10;
     const salt = await bcrypt.genSalt(saltRounds);
     const bcryptPassword = await bcrypt.hash(password, salt);
 
-    // Step 2: Insert into the 'users' table (Hardcoding the role as 'Student')
     const newUser = await pool.query(
-      "INSERT INTO users (full_name, email, password_hash, role) VALUES ($1, $2, $3, 'Student') RETURNING user_id, full_name, email",
-      [full_name, email, bcryptPassword],
+      "INSERT INTO users (full_name, email, password_hash, role, school_id) VALUES ($1, $2, $3, 'Student', $4) RETURNING user_id, full_name, email",
+      [full_name, email, bcryptPassword, req.user.school_id],
     );
 
-    // Grab the ID the database just created for this user
     const newUserId = newUser.rows[0].user_id;
 
-    // Step 3: Insert into the 'students' table using that new ID
     const newStudent = await pool.query(
       "INSERT INTO students (user_id, class_grade) VALUES ($1, $2) RETURNING *",
       [newUserId, class_grade],
     );
 
-    // --- NEW: TRIGGER THE AUTOMATED WELCOME EMAIL ---
     const emailHTML = `
       <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden;">
         <div style="background-color: #2563EB; padding: 20px; text-align: center;">
@@ -59,15 +53,12 @@ router.post("/", authorize, async (req, res) => {
       </div>
     `;
 
-    // We send this in the background so the app doesn't freeze waiting for Google
     sendEmail({
       to: email,
       subject: "Welcome to the EduSync Portal - Your Academic Dashboard",
       html: emailHTML,
     });
-    // ------------------------------------------------
 
-    // Send a beautiful combined summary back to the frontend
     res.json({
       message: "Student registered successfully! Welcome email dispatched.",
       user_account: newUser.rows[0],
@@ -75,28 +66,78 @@ router.post("/", authorize, async (req, res) => {
     });
   } catch (err) {
     console.error(err.message);
-    res.status(500).json({
-      error: "Server Error. (Did you use an email that already exists?)",
-    });
+    res
+      .status(500)
+      .json({
+        error: "Server Error. (Did you use an email that already exists?)",
+      });
   }
 });
 
-// 2. GET ALL STUDENTS (Stitching users and students together!)
+// 2. GET ALL STUDENTS (NOW WITH SEARCH, FILTERS, AND PAGINATION)
 router.get("/", authorize, async (req, res) => {
   try {
-    // We use a JOIN to grab the name/email from 'users' and the grade from 'students'
-    const allStudents = await pool.query(`
-      SELECT 
-        students.student_id, 
-        users.full_name, 
-        users.email, 
-        students.class_grade, 
-        students.enrollment_date 
-      FROM students 
-      JOIN users ON students.user_id = users.user_id
-    `);
+    // Extract query parameters with defaults
+    const { search = "", class_grade = "", page = 1, limit = 10 } = req.query;
+    const offset = (page - 1) * limit;
 
-    res.json(allStudents.rows);
+    // Start building the dynamic query
+    let baseQuery = `
+      FROM students s 
+      JOIN users u ON s.user_id = u.user_id
+      WHERE u.school_id = $1
+    `;
+    const queryParams = [req.user.school_id];
+    let paramIndex = 2;
+
+    // Add Search Filter (ILIKE is case-insensitive in PostgreSQL)
+    if (search) {
+      baseQuery += ` AND u.full_name ILIKE $${paramIndex}`;
+      queryParams.push(`%${search}%`);
+      paramIndex++;
+    }
+
+    // Add Class Filter
+    if (class_grade) {
+      baseQuery += ` AND s.class_grade = $${paramIndex}`;
+      queryParams.push(class_grade);
+      paramIndex++;
+    }
+
+    // 1. Get the TOTAL count for pagination math
+    const countResult = await pool.query(
+      `SELECT COUNT(*) ${baseQuery}`,
+      queryParams,
+    );
+    const totalItems = parseInt(countResult.rows[0].count);
+
+    // 2. Get the actual paginated data
+    const dataQuery = `
+      SELECT 
+        s.student_id, 
+        u.full_name, 
+        u.email, 
+        s.class_grade, 
+        s.enrollment_date 
+      ${baseQuery}
+      ORDER BY u.full_name ASC
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+    `;
+
+    // Add limit and offset to the parameters array
+    queryParams.push(limit, offset);
+
+    const students = await pool.query(dataQuery, queryParams);
+
+    // Return the data alongside the pagination metadata
+    res.json({
+      data: students.rows,
+      pagination: {
+        total: totalItems,
+        page: parseInt(page),
+        totalPages: Math.ceil(totalItems / limit),
+      },
+    });
   } catch (err) {
     console.error(err.message);
     res.status(500).send("Server Error");
@@ -132,7 +173,6 @@ router.get("/my-children", authorize, async (req, res) => {
       return res.status(403).json({ error: "Access Denied." });
     }
 
-    // Find all students whose parent_id matches this logged-in user
     const children = await pool.query(
       `
       SELECT 

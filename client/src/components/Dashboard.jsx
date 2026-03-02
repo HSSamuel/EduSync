@@ -102,12 +102,15 @@ const Dashboard = () => {
           }
 
           const studentsRes = await fetch(
-            "http://localhost:5000/api/students",
+            "http://localhost:5000/api/students?limit=1000", // Fetch all for dropdowns
             { headers: { jwt_token: token } },
           );
           if (studentsRes.ok) {
             const parsedStudents = await studentsRes.json();
-            if (isMounted) setStudents(parsedStudents);
+            if (isMounted) {
+              // 👈 FIX: Gracefully handle the new Paginated object format
+              setStudents(parsedStudents.data ? parsedStudents.data : parsedStudents);
+            }
           }
         } else {
           localStorage.removeItem("token");
