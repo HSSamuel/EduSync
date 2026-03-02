@@ -109,32 +109,18 @@ const SubjectsTab = ({ isAdmin, subjects, setSubjects }) => {
     }
   };
 
-  // --- FIX: SECURE BLOB DOWNLOAD LOGIC FOR MODULES ---
-  const handleSecureDownload = async (e, fileUrl, fileName) => {
+  // --- FIX: CLOUDINARY DOWNLOAD LOGIC FOR MODULES ---
+  const handleSecureDownload = (e, fileUrl, fileName) => {
     e.preventDefault();
-    try {
-      const token = localStorage.getItem("token");
-      // Fallback fix for older files saved in DB before the architecture update
-      const secureUrl = fileUrl.replace("/uploads/", "/api/downloads/");
+    if (!fileUrl) return alert("File URL is missing.");
 
-      const response = await fetch(secureUrl, {
-        headers: { jwt_token: token },
-      });
-
-      if (!response.ok) throw new Error("Unauthorized or file missing");
-
-      const blob = await response.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = downloadUrl;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(downloadUrl);
-    } catch (err) {
-      alert("❌ Secure download failed: " + err.message);
+    let downloadUrl = fileUrl;
+    if (fileUrl.includes("cloudinary.com")) {
+      const parts = fileUrl.split("/upload/");
+      downloadUrl = `${parts[0]}/upload/fl_attachment/${parts[1]}`;
     }
+
+    window.open(downloadUrl, "_blank");
   };
 
   return (

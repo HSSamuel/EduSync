@@ -3,41 +3,47 @@ const cors = require("cors");
 const pool = require("./db");
 const path = require("path");
 const fs = require("fs");
-const cookieParser = require("cookie-parser"); // Phase 1: Cookie Parser
-const authorize = require("./middleware/authorize"); // Phase 1: Secure Downloads
+const cookieParser = require("cookie-parser");
+const authorize = require("./middleware/authorize");
+const jwt = require("jsonwebtoken");
 require("dotenv").config();
 
-// --- NEW: WEBSOCKET IMPORTS ---
 const http = require("http");
 const { Server } = require("socket.io");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
 
-// 1. Wrap our Express app in a standard HTTP server
 const server = http.createServer(app);
 
-// 2. Attach Socket.io to that server and configure CORS
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:5173", // Your React frontend URL
+    origin: CLIENT_URL,
     methods: ["GET", "POST"],
-    credentials: true, // Phase 1: Support secure cookies
+    credentials: true,
   },
 });
 
-// --- MIDDLEWARE ---
 app.use(
   cors({
-    origin: "http://localhost:5173",
-    credentials: true, // Phase 1: Required for HTTP-only cookies
+    origin: CLIENT_URL,
+    credentials: true,
   }),
 );
-app.use(express.json({ limit: "10mb" })); // Phase 1: Protect against massive JSON payloads
-app.use(cookieParser()); // Phase 1: Enables reading cookies securely
 
-// --- FIX: SECURE FILE SERVING ---
-// We replaced app.use('/uploads', express.static) with an authorized endpoint
+app.use("/api/finance/webhook", express.raw({ type: "application/json" }));
+
+app.use((req, res, next) => {
+  if (req.originalUrl === "/api/finance/webhook") {
+    next();
+  } else {
+    express.json({ limit: "10mb" })(req, res, next);
+  }
+});
+
+app.use(cookieParser());
+
 app.get("/api/downloads/:filename", authorize, (req, res) => {
   const fileName = req.params.filename;
   const filePath = path.join(__dirname, "uploads", fileName);
@@ -49,12 +55,10 @@ app.get("/api/downloads/:filename", authorize, (req, res) => {
   }
 });
 
-// --- ROUTES ---
 app.get("/", (req, res) => {
   res.send("Welcome to the EduSync API! The server is alive.");
 });
 
-// The Manager delegating tasks to the new Departments!
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/dashboard", require("./routes/dashboard"));
 app.use("/api/subjects", require("./routes/subjects"));
@@ -68,33 +72,63 @@ app.use("/api/finance", require("./routes/finance"));
 app.use("/api/cbt", require("./routes/cbt"));
 app.use("/api/timetable", require("./routes/timetable"));
 
-// --- FIX: WEBSOCKET CONNECTION WITH ROOMS ---
-io.on("connection", (socket) => {
-  console.log(`🟢 User Connected: ${socket.id}`);
+io.use(async (socket, next) => {
+  try {
+    const token = socket.handshake.auth.token;
+    if (!token)
+      return next(new Error("Authentication error: No token provided"));
 
-  // User requests to join a specific class/cohort room
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+
+    const userQuery = await pool.query(
+      "SELECT full_name, role FROM users WHERE user_id = $1",
+      [payload.user_id],
+    );
+    if (userQuery.rows.length === 0) return next(new Error("User not found"));
+
+    socket.user = {
+      id: payload.user_id,
+      name: userQuery.rows[0].full_name,
+      role: userQuery.rows[0].role,
+      school_id: payload.school_id,
+    };
+    next();
+  } catch (err) {
+    next(new Error("Authentication error: Invalid token"));
+  }
+});
+
+io.on("connection", (socket) => {
+  console.log(`🟢 User Connected: ${socket.user.name} (${socket.id})`);
+
   socket.on("join_room", (room) => {
-    socket.join(room);
-    console.log(`User ${socket.id} joined room: ${room}`);
+    const secureRoom = `${socket.user.school_id}_${room}`;
+    socket.join(secureRoom);
+    console.log(`User ${socket.user.name} joined room: ${secureRoom}`);
   });
 
-  // Broadcast that message to EVERYONE IN THAT SPECIFIC ROOM
   socket.on("send_message", (data) => {
-    io.to(data.room).emit("receive_message", data);
+    const secureRoom = `${socket.user.school_id}_${data.room}`;
+    const secureMessage = {
+      room: data.room,
+      message: data.message,
+      time: data.time,
+      sender: socket.user.name,
+      role: socket.user.role,
+    };
+    io.to(secureRoom).emit("receive_message", secureMessage);
   });
 
   socket.on("disconnect", () => {
-    console.log(`🔴 User Disconnected: ${socket.id}`);
+    console.log(`🔴 User Disconnected: ${socket.user.name} (${socket.id})`);
   });
 });
 
-// --- DATABASE & SERVER STARTUP ---
 pool
   .connect()
   .then(() => {
     console.log("📦 Successfully connected to the PostgreSQL Database!");
 
-    // IMPORTANT: We use server.listen now to start both Express AND WebSockets!
     server.listen(PORT, () => {
       console.log(
         `🚀 Server & WebSockets are officially running on port ${PORT}`,

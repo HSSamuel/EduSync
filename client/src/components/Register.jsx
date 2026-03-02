@@ -1,10 +1,10 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { UserPlus, Mail, Lock, ShieldCheck } from "lucide-react";
+import { UserPlus, Mail, Lock, ShieldCheck, Building, Hash } from "lucide-react";
 
 const Register = () => {
   const [formData, setFormData] = useState({
-    full_name: "", email: "", password: "", role: "Admin",
+    full_name: "", email: "", password: "", role: "Admin", school_name: "", school_id: ""
   });
   const [statusMessage, setStatusMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -86,6 +86,23 @@ const Register = () => {
               <option value="Parent">Parent</option>
             </select>
           </div>
+
+          {/* FIX: Conditional Input for Multi-Tenancy */}
+          {formData.role === "Admin" ? (
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                <Building className="text-gray-400" size={18} />
+              </div>
+              <input type="text" name="school_name" placeholder="Your School's Name" className="w-full pl-11 pr-4 py-3.5 bg-white/50 dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/50 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white dark:focus:bg-gray-800 transition-all font-medium" value={formData.school_name} onChange={onChange} required />
+            </div>
+          ) : (
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                <Hash className="text-gray-400" size={18} />
+              </div>
+              <input type="number" name="school_id" placeholder="School ID (Ask your Admin)" className="w-full pl-11 pr-4 py-3.5 bg-white/50 dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/50 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white dark:focus:bg-gray-800 transition-all font-medium" value={formData.school_id} onChange={onChange} required />
+            </div>
+          )}
 
           <button type="submit" disabled={isLoading} className="w-full py-4 mt-4 font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl hover:from-blue-700 hover:to-indigo-700 shadow-lg shadow-blue-500/25 transform hover:-translate-y-0.5 transition-all disabled:opacity-70 disabled:cursor-not-allowed">
             {isLoading ? "Processing..." : "Create Account"}

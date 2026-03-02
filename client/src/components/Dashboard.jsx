@@ -24,7 +24,6 @@ import {
   Bell,
 } from "lucide-react";
 
-// --- Import our Sub-Components ---
 import SubjectsTab from "./SubjectsTab";
 import StudentsTab from "./StudentsTab";
 import GradesTab from "./GradesTab";
@@ -39,6 +38,8 @@ import CBTTab from "./CBTTab";
 import TimetableTab from "./TimetableTab";
 import StudentBento from "./StudentBento";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 const Dashboard = () => {
   const [userData, setUserData] = useState(null);
   const [subjects, setSubjects] = useState([]);
@@ -46,11 +47,8 @@ const Dashboard = () => {
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("");
 
-  // Layout States
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
-  // Dark Mode State
   const [isDark, setIsDark] = useState(
     document.documentElement.classList.contains("dark"),
   );
@@ -75,7 +73,7 @@ const Dashboard = () => {
         const token = localStorage.getItem("token");
         if (!token) return navigate("/login");
 
-        const profileRes = await fetch("http://localhost:5000/api/dashboard", {
+        const profileRes = await fetch(`${API_URL}/dashboard`, {
           headers: { jwt_token: token },
         });
 
@@ -85,31 +83,29 @@ const Dashboard = () => {
 
           setUserData(profileData);
 
-          // Smart Routing Defaults
           if (profileData.your_role === "Admin") setActiveTab("overview");
           else if (profileData.your_role === "Parent") setActiveTab("grades");
           else if (profileData.your_role === "Student")
             setActiveTab("overview");
-          else setActiveTab("subjects"); // Teacher default
+          else setActiveTab("subjects");
 
-          const subjectsRes = await fetch(
-            "http://localhost:5000/api/subjects",
-            { headers: { jwt_token: token } },
-          );
+          const subjectsRes = await fetch(`${API_URL}/subjects`, {
+            headers: { jwt_token: token },
+          });
           if (subjectsRes.ok) {
             const parsedSubjects = await subjectsRes.json();
             if (isMounted) setSubjects(parsedSubjects);
           }
 
-          const studentsRes = await fetch(
-            "http://localhost:5000/api/students?limit=1000", // Fetch all for dropdowns
-            { headers: { jwt_token: token } },
-          );
+          const studentsRes = await fetch(`${API_URL}/students?limit=1000`, {
+            headers: { jwt_token: token },
+          });
           if (studentsRes.ok) {
             const parsedStudents = await studentsRes.json();
             if (isMounted) {
-              // 👈 FIX: Gracefully handle the new Paginated object format
-              setStudents(parsedStudents.data ? parsedStudents.data : parsedStudents);
+              setStudents(
+                parsedStudents.data ? parsedStudents.data : parsedStudents,
+              );
             }
           }
         } else {
@@ -130,7 +126,6 @@ const Dashboard = () => {
     };
   }, [navigate]);
 
-  // --- ROLE CHECKERS ---
   const isAdmin = userData?.your_role === "Admin";
   const isTeacher = userData?.your_role === "Teacher";
   const isParent = userData?.your_role === "Parent";
@@ -144,8 +139,7 @@ const Dashboard = () => {
     e.preventDefault();
 
     try {
-      // Tell the backend to clear the httpOnly refresh cookie
-      await fetch("http://localhost:5000/api/auth/logout", {
+      await fetch(`${API_URL}/auth/logout`, {
         method: "POST",
         credentials: "include",
       });
@@ -153,7 +147,7 @@ const Dashboard = () => {
       console.error("Logout error", err);
     }
 
-    localStorage.removeItem("token"); // Remove the short-lived access token
+    localStorage.removeItem("token");
     navigate("/login");
   };
 
@@ -212,11 +206,9 @@ const Dashboard = () => {
 
   return (
     <div className="flex h-screen w-full bg-gray-50 dark:bg-gray-900 overflow-hidden font-sans">
-      {/* --- DESKTOP SIDEBAR --- */}
       <aside
         className={`hidden md:flex flex-col bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 transition-all duration-300 ease-in-out z-20 ${isSidebarOpen ? "w-64" : "w-20"}`}
       >
-        {/* Sidebar Header (Logo) */}
         <div className="h-16 flex items-center justify-between px-4 border-b border-gray-200 dark:border-gray-700">
           <div
             className={`flex items-center gap-3 overflow-hidden ${!isSidebarOpen && "justify-center w-full"}`}
@@ -232,7 +224,6 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Sidebar Navigation */}
         <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1 [&::-webkit-scrollbar]:hidden">
           {navItems
             .filter((item) => item.show)
@@ -253,12 +244,9 @@ const Dashboard = () => {
                     size={20}
                     className={`shrink-0 ${isActive ? "text-blue-600 dark:text-blue-400" : "text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300"}`}
                   />
-
                   {isSidebarOpen && (
                     <span className="truncate">{item.label}</span>
                   )}
-
-                  {/* Active Indicator Dot */}
                   {isActive && isSidebarOpen && (
                     <div className="absolute right-2 w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-blue-400"></div>
                   )}
@@ -267,7 +255,6 @@ const Dashboard = () => {
             })}
         </nav>
 
-        {/* Sidebar Footer (Collapse Toggle) */}
         <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-center">
           <button
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -282,7 +269,6 @@ const Dashboard = () => {
         </div>
       </aside>
 
-      {/* --- MOBILE SIDEBAR OVERLAY --- */}
       {isMobileMenuOpen && (
         <div
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden"
@@ -341,11 +327,8 @@ const Dashboard = () => {
         </nav>
       </aside>
 
-      {/* --- MAIN CONTENT WRAPPER --- */}
       <div className="flex-1 flex flex-col overflow-hidden relative">
-        {/* TOPBAR (Glassmorphism) */}
         <header className="h-16 shrink-0 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl border-b border-gray-200/60 dark:border-gray-700/50 flex items-center justify-between px-4 sm:px-6 z-10">
-          {/* Left: Mobile Toggle & Page Title */}
           <div className="flex items-center gap-4">
             <button
               onClick={() => setIsMobileMenuOpen(true)}
@@ -353,15 +336,12 @@ const Dashboard = () => {
             >
               <Menu size={24} />
             </button>
-
             <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100 hidden sm:block">
               {navItems.find((i) => i.id === activeTab)?.label || "Dashboard"}
             </h2>
           </div>
 
-          {/* Right: Actions & Profile */}
           <div className="flex items-center gap-3 sm:gap-5">
-            {/* Dark Mode Toggle */}
             <button
               onClick={toggleTheme}
               className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
@@ -369,8 +349,6 @@ const Dashboard = () => {
             >
               {isDark ? <Sun size={20} /> : <Moon size={20} />}
             </button>
-
-            {/* Notification Bell (Visual only for now) */}
             <button className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors relative hidden sm:block">
               <Bell size={20} />
               <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-gray-800"></span>
@@ -378,7 +356,6 @@ const Dashboard = () => {
 
             <div className="h-6 w-px bg-gray-200 dark:bg-gray-700 mx-1 hidden sm:block"></div>
 
-            {/* Profile Section */}
             <div className="flex items-center gap-3">
               <div className="hidden sm:flex flex-col items-end">
                 <span className="text-sm font-bold text-gray-900 dark:text-white leading-tight">
@@ -395,7 +372,6 @@ const Dashboard = () => {
               </div>
             </div>
 
-            {/* Logout */}
             <button
               onClick={logout}
               className="ml-2 p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
@@ -406,13 +382,11 @@ const Dashboard = () => {
           </div>
         </header>
 
-        {/* MAIN SCROLLABLE AREA */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-gray-50 dark:bg-gray-900 relative">
           <div className="max-w-[1400px] mx-auto pb-12">
-            {/* AnimatePresence handles the exit animations */}
             <AnimatePresence mode="wait">
               <motion.div
-                key={activeTab} // Changing the key triggers the animation
+                key={activeTab}
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -15 }}
@@ -423,7 +397,6 @@ const Dashboard = () => {
                 {activeTab === "overview" && isStudent && (
                   <StudentBento userData={userData} />
                 )}
-
                 {activeTab === "subjects" && !isParent && (
                   <SubjectsTab
                     isAdmin={isAdmin}

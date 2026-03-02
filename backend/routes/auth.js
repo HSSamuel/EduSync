@@ -9,10 +9,11 @@ const validate = require("../middleware/validate");
 const rateLimit = require("express-rate-limit");
 require("dotenv").config();
 
-// --- 1. RATE LIMITING SETUP ---
+const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
+
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // Limit each IP to 10 requests per window
+  windowMs: 15 * 60 * 1000,
+  max: 10,
   message: {
     error:
       "Too many login attempts from this IP, please try again after 15 minutes.",
@@ -21,14 +22,13 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// --- 2. ZOD SCHEMAS ---
 const registerSchema = z.object({
   full_name: z.string().min(3, "Name must be at least 3 characters"),
   email: z.string().email("Invalid email format"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   role: z.enum(["Admin", "Teacher", "Student", "Parent"]),
-  // 👈 NEW: Accept school_id, but default to 1 if the frontend doesn't provide it yet
-  school_id: z.coerce.number().positive().optional().default(1),
+  school_name: z.string().optional(),
+  school_id: z.coerce.number().positive().optional(),
 });
 
 const loginSchema = z.object({
@@ -36,15 +36,11 @@ const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
-// --- 3. ROUTES ---
-
-// REGISTER (Validated)
 router.post("/register", validate(registerSchema), async (req, res) => {
   try {
-    // 👈 NEW: Extract school_id from the validated body
-    const { full_name, email, password, role, school_id } = req.body;
+    const { full_name, email, password, role, school_name, school_id } =
+      req.body;
 
-    // Check if user already exists first!
     const userExists = await pool.query(
       "SELECT * FROM users WHERE email = $1",
       [email],
@@ -53,13 +49,41 @@ router.post("/register", validate(registerSchema), async (req, res) => {
       return res.status(400).json({ error: "User already exists" });
     }
 
+    let finalSchoolId = school_id;
+
+    if (role === "Admin") {
+      if (!school_name)
+        return res
+          .status(400)
+          .json({
+            error: "School name is required to register an Admin account.",
+          });
+
+      const newSchool = await pool.query(
+        "INSERT INTO schools (school_name, contact_email) VALUES ($1, $2) RETURNING school_id",
+        [school_name, email],
+      );
+      finalSchoolId = newSchool.rows[0].school_id;
+    } else {
+      if (!finalSchoolId)
+        return res
+          .status(400)
+          .json({ error: "School ID is required to join an existing school." });
+
+      const schoolExists = await pool.query(
+        "SELECT school_id FROM schools WHERE school_id = $1",
+        [finalSchoolId],
+      );
+      if (schoolExists.rows.length === 0)
+        return res.status(404).json({ error: "Invalid School ID provided." });
+    }
+
     const salt = await bcrypt.genSalt(10);
     const bcryptPassword = await bcrypt.hash(password, salt);
 
-    // 👈 NEW: Insert school_id into the database
     const newUser = await pool.query(
       "INSERT INTO users (full_name, email, password_hash, role, school_id) VALUES ($1, $2, $3, $4, $5) RETURNING user_id, full_name, email, role, school_id",
-      [full_name, email, bcryptPassword, role, school_id],
+      [full_name, email, bcryptPassword, role, finalSchoolId],
     );
 
     res.json(newUser.rows[0]);
@@ -69,11 +93,9 @@ router.post("/register", validate(registerSchema), async (req, res) => {
   }
 });
 
-// --- LOGIN (NOW WITH REFRESH TOKENS) ---
 router.post("/login", authLimiter, validate(loginSchema), async (req, res) => {
   try {
     const { email, password } = req.body;
-    // SELECT * ensures we grab the school_id from the DB
     const user = await pool.query("SELECT * FROM users WHERE email = $1", [
       email,
     ]);
@@ -88,35 +110,30 @@ router.post("/login", authLimiter, validate(loginSchema), async (req, res) => {
     if (!validPassword)
       return res.status(401).json({ error: "Invalid Credentials" });
 
-    // Inside router.post("/login" ...), look for the token generation:
-
-    // 1. Short-Lived Access Token (15 mins)
     const accessToken = jwt.sign(
       {
         user_id: user.rows[0].user_id,
         role: user.rows[0].role,
-        school_id: user.rows[0].school_id, // 👈 NEW: Inject the Tenant ID!
+        school_id: user.rows[0].school_id,
       },
       process.env.JWT_SECRET,
       { expiresIn: "15m" },
     );
 
-    // 2. Long-Lived Refresh Token (7 days)
     const refreshToken = jwt.sign(
       {
         user_id: user.rows[0].user_id,
-        school_id: user.rows[0].school_id, // 👈 NEW: Inject the Tenant ID!
+        school_id: user.rows[0].school_id,
       },
       process.env.JWT_SECRET,
       { expiresIn: "7d" },
     );
 
-    // 3. Send Refresh Token as a highly secure HTTP-Only Cookie
     res.cookie("refresh_token", refreshToken, {
-      httpOnly: true, // Javascript cannot access this (Prevents XSS attacks)
-      secure: process.env.NODE_ENV === "production", // Must be true in production (HTTPS)
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
     res.json({ token: accessToken, message: "Login successful!" });
@@ -126,20 +143,16 @@ router.post("/login", authLimiter, validate(loginSchema), async (req, res) => {
   }
 });
 
-// --- NEW: REFRESH TOKEN ROUTE ---
 router.post("/refresh", async (req, res) => {
   try {
-    // 1. Grab the refresh token from the cookie
     const refreshToken = req.cookies.refresh_token;
     if (!refreshToken)
       return res
         .status(401)
         .json({ error: "Session expired. Please log in again." });
 
-    // 2. Verify it
     const payload = jwt.verify(refreshToken, process.env.JWT_SECRET);
 
-    // 3. Look up the user's role AND school_id
     const user = await pool.query(
       "SELECT role, school_id FROM users WHERE user_id = $1",
       [payload.user_id],
@@ -147,12 +160,11 @@ router.post("/refresh", async (req, res) => {
     if (user.rows.length === 0)
       return res.status(401).json({ error: "User no longer exists." });
 
-    // 4. Issue a fresh 15-minute Access Token
     const newAccessToken = jwt.sign(
       {
         user_id: payload.user_id,
         role: user.rows[0].role,
-        school_id: user.rows[0].school_id, // 👈 NEW: Ensure school_id persists across refreshes
+        school_id: user.rows[0].school_id,
       },
       process.env.JWT_SECRET,
       { expiresIn: "15m" },
@@ -164,13 +176,11 @@ router.post("/refresh", async (req, res) => {
   }
 });
 
-// --- NEW: LOGOUT ROUTE ---
 router.post("/logout", (req, res) => {
   res.clearCookie("refresh_token");
   res.json({ message: "Logged out successfully" });
 });
 
-// --- NEW: 3. FORGOT PASSWORD ---
 router.post("/forgot-password", async (req, res) => {
   try {
     const { email } = req.body;
@@ -181,18 +191,16 @@ router.post("/forgot-password", async (req, res) => {
     if (user.rows.length === 0) {
       return res
         .status(404)
-        .json({ error: "If that email exists, a reset link has been sent." }); // Security best practice: don't reveal if email exists
+        .json({ error: "If that email exists, a reset link has been sent." });
     }
 
-    // Generate a temporary 15-minute token
     const resetToken = jwt.sign(
       { user_id: user.rows[0].user_id },
       process.env.JWT_SECRET,
       { expiresIn: "15m" },
     );
 
-    // The link they will click in their email
-    const resetLink = `http://localhost:5173/reset-password/${resetToken}`;
+    const resetLink = `${CLIENT_URL}/reset-password/${resetToken}`;
 
     const emailHTML = `
       <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden;">
@@ -210,7 +218,6 @@ router.post("/forgot-password", async (req, res) => {
       </div>
     `;
 
-    // Send the email in the background
     sendEmail({
       to: email,
       subject: "EduSync Password Reset",
@@ -224,20 +231,16 @@ router.post("/forgot-password", async (req, res) => {
   }
 });
 
-// --- NEW: 4. RESET PASSWORD ---
 router.put("/reset-password", async (req, res) => {
   try {
     const { token, newPassword } = req.body;
 
-    // Verify the temporary token is still valid
     const payload = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Hash the new password
     const saltRounds = 10;
     const salt = await bcrypt.genSalt(saltRounds);
     const bcryptPassword = await bcrypt.hash(newPassword, salt);
 
-    // Update the database
     await pool.query("UPDATE users SET password_hash = $1 WHERE user_id = $2", [
       bcryptPassword,
       payload.user_id,

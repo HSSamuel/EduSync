@@ -4,13 +4,12 @@ const pool = require("../db");
 const authorize = require("../middleware/authorize");
 const multer = require("multer");
 
-// Phase 2 Integrations: Cloud Storage & Background Queues
 const { storage } = require("../utils/cloudinary");
 const { emailQueue } = require("../utils/emailQueue");
 
 const upload = multer({ storage: storage });
+const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
 
-// 1. UPLOAD A NEW MODULE & TRIGGER BACKGROUND EMAIL ALERTS
 router.post("/", authorize, upload.single("module_file"), async (req, res) => {
   try {
     if (req.user.role !== "Admin" && req.user.role !== "Teacher") {
@@ -25,7 +24,6 @@ router.post("/", authorize, upload.single("module_file"), async (req, res) => {
 
     const file_url = req.file.path;
 
-    // 👈 NEW: Tag the module with the user's school_id
     const newModule = await pool.query(
       "INSERT INTO modules (subject_id, title, file_url, school_id) VALUES ($1, $2, $3, $4) RETURNING *",
       [subject_id, title, file_url, req.user.school_id],
@@ -37,7 +35,6 @@ router.post("/", authorize, upload.single("module_file"), async (req, res) => {
     );
     const subjectName = subjectQuery.rows[0]?.subject_name || "a subject";
 
-    // 👈 NEW: Only fetch students from THIS school
     const studentsQuery = await pool.query(
       "SELECT email, full_name FROM users WHERE role = 'Student' AND school_id = $1",
       [req.user.school_id],
@@ -59,7 +56,7 @@ router.post("/", authorize, upload.single("module_file"), async (req, res) => {
                 <p>A new learning module titled <strong>"${title}"</strong> has just been uploaded for <strong>${subjectName}</strong>.</p>
                 <p>Please log in to your EduSync dashboard to view and download the material.</p>
                 <div style="text-align: center; margin: 30px 0;">
-                  <a href="http://localhost:5173/dashboard" style="background-color: #2563EB; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">Go to Dashboard</a>
+                  <a href="${CLIENT_URL}/dashboard" style="background-color: #2563EB; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">Go to Dashboard</a>
                 </div>
                 <p style="margin-top: 30px;">Happy Learning,<br/><strong>The EduSync Team</strong></p>
               </div>
@@ -78,11 +75,9 @@ router.post("/", authorize, upload.single("module_file"), async (req, res) => {
   }
 });
 
-// 2. GET MODULES FOR A SPECIFIC SUBJECT
 router.get("/:subject_id", authorize, async (req, res) => {
   try {
     const { subject_id } = req.params;
-    // 👈 NEW: Only fetch modules for this school
     const modules = await pool.query(
       "SELECT * FROM modules WHERE subject_id = $1 AND school_id = $2 ORDER BY uploaded_at DESC",
       [subject_id, req.user.school_id],
@@ -94,7 +89,6 @@ router.get("/:subject_id", authorize, async (req, res) => {
   }
 });
 
-// 3. DELETE A MODULE
 router.delete("/:id", authorize, async (req, res) => {
   try {
     if (req.user.role !== "Admin" && req.user.role !== "Teacher") {
@@ -102,7 +96,6 @@ router.delete("/:id", authorize, async (req, res) => {
     }
 
     const { id } = req.params;
-    // 👈 NEW: Prevent cross-tenant deletion
     await pool.query(
       "DELETE FROM modules WHERE module_id = $1 AND school_id = $2",
       [id, req.user.school_id],

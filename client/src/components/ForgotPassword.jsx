@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 const ForgotPassword = () => {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState("");
@@ -12,14 +14,11 @@ const ForgotPassword = () => {
     setStatus("Sending...");
 
     try {
-      const response = await fetch(
-        "http://localhost:5000/api/auth/forgot-password",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email }),
-        },
-      );
+      const response = await fetch(`${API_URL}/auth/forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
       const parseRes = await response.json();
 
       if (response.ok) {

@@ -5,7 +5,8 @@ const bcrypt = require("bcrypt");
 const authorize = require("../middleware/authorize");
 const sendEmail = require("../utils/sendEmail");
 
-// 1. REGISTER A NEW STUDENT (Only Admins allowed)
+const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
+
 router.post("/", authorize, async (req, res) => {
   try {
     if (req.user.role !== "Admin") {
@@ -43,7 +44,7 @@ router.post("/", authorize, async (req, res) => {
           <p>Through your secure dashboard, you will be able to download study materials and view your official report cards.</p>
           <div style="background-color: white; padding: 15px; border-radius: 5px; margin: 20px 0; border: 1px dashed #cbd5e1;">
             <p style="margin: 0 0 10px 0;"><strong>Your Login Credentials:</strong></p>
-            <p style="margin: 0;"><strong>Portal Link:</strong> http://localhost:5173/</p>
+            <p style="margin: 0;"><strong>Portal Link:</strong> ${CLIENT_URL}</p>
             <p style="margin: 0;"><strong>Username:</strong> ${email}</p>
             <p style="margin: 0;"><strong>Temporary Password:</strong> ${password}</p>
           </div>
@@ -66,22 +67,17 @@ router.post("/", authorize, async (req, res) => {
     });
   } catch (err) {
     console.error(err.message);
-    res
-      .status(500)
-      .json({
-        error: "Server Error. (Did you use an email that already exists?)",
-      });
+    res.status(500).json({
+      error: "Server Error. (Did you use an email that already exists?)",
+    });
   }
 });
 
-// 2. GET ALL STUDENTS (NOW WITH SEARCH, FILTERS, AND PAGINATION)
 router.get("/", authorize, async (req, res) => {
   try {
-    // Extract query parameters with defaults
     const { search = "", class_grade = "", page = 1, limit = 10 } = req.query;
     const offset = (page - 1) * limit;
 
-    // Start building the dynamic query
     let baseQuery = `
       FROM students s 
       JOIN users u ON s.user_id = u.user_id
@@ -90,28 +86,24 @@ router.get("/", authorize, async (req, res) => {
     const queryParams = [req.user.school_id];
     let paramIndex = 2;
 
-    // Add Search Filter (ILIKE is case-insensitive in PostgreSQL)
     if (search) {
       baseQuery += ` AND u.full_name ILIKE $${paramIndex}`;
       queryParams.push(`%${search}%`);
       paramIndex++;
     }
 
-    // Add Class Filter
     if (class_grade) {
       baseQuery += ` AND s.class_grade = $${paramIndex}`;
       queryParams.push(class_grade);
       paramIndex++;
     }
 
-    // 1. Get the TOTAL count for pagination math
     const countResult = await pool.query(
       `SELECT COUNT(*) ${baseQuery}`,
       queryParams,
     );
     const totalItems = parseInt(countResult.rows[0].count);
 
-    // 2. Get the actual paginated data
     const dataQuery = `
       SELECT 
         s.student_id, 
@@ -124,12 +116,10 @@ router.get("/", authorize, async (req, res) => {
       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
     `;
 
-    // Add limit and offset to the parameters array
     queryParams.push(limit, offset);
 
     const students = await pool.query(dataQuery, queryParams);
 
-    // Return the data alongside the pagination metadata
     res.json({
       data: students.rows,
       pagination: {
@@ -144,7 +134,6 @@ router.get("/", authorize, async (req, res) => {
   }
 });
 
-// 3. LINK A PARENT TO A STUDENT (Admin only)
 router.put("/:id/link-parent", authorize, async (req, res) => {
   try {
     if (req.user.role !== "Admin") {
@@ -166,7 +155,6 @@ router.put("/:id/link-parent", authorize, async (req, res) => {
   }
 });
 
-// 4. GET A PARENT'S CHILDREN (Parent only)
 router.get("/my-children", authorize, async (req, res) => {
   try {
     if (req.user.role !== "Parent") {

@@ -14,31 +14,28 @@ import {
 } from "lucide-react";
 import PremiumEmptyState from "./PremiumEmptyState";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 const StudentsTab = ({ isAdmin }) => {
-  // Registration Form State
   const [studentName, setStudentName] = useState("");
   const [studentEmail, setStudentEmail] = useState("");
   const [studentPassword, setStudentPassword] = useState("");
   const [studentGrade, setStudentGrade] = useState("");
 
-  // Data Grid State
   const [students, setStudents] = useState([]);
   const [parents, setParents] = useState([]);
   const [selectedParents, setSelectedParents] = useState({});
 
-  // Pagination & Filter State
   const [searchTerm, setSearchTerm] = useState("");
   const [filterClass, setFilterClass] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalStudents, setTotalStudents] = useState(0);
 
-  // Reset page to 1 if search or filter changes
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, filterClass]);
 
-  // Fetch Students with Debounce (Wait 300ms after user stops typing to query backend)
   useEffect(() => {
     const delayDebounceFn = setTimeout(async () => {
       try {
@@ -47,14 +44,12 @@ const StudentsTab = ({ isAdmin }) => {
           search: searchTerm,
           class_grade: filterClass,
           page: currentPage,
-          limit: 9, // We show 9 cards per page for a neat 3x3 grid
+          limit: 9,
         });
 
         const response = await fetch(
-          `http://localhost:5000/api/students?${queryParams.toString()}`,
-          {
-            headers: { jwt_token: token },
-          },
+          `${API_URL}/students?${queryParams.toString()}`,
+          { headers: { jwt_token: token } },
         );
 
         if (response.ok) {
@@ -71,13 +66,12 @@ const StudentsTab = ({ isAdmin }) => {
     return () => clearTimeout(delayDebounceFn);
   }, [searchTerm, filterClass, currentPage]);
 
-  // Fetch Parents for the dropdown
   useEffect(() => {
     if (isAdmin) {
       const fetchParents = async () => {
         try {
           const token = localStorage.getItem("token");
-          const res = await fetch("http://localhost:5000/api/users/parents", {
+          const res = await fetch(`${API_URL}/users/parents`, {
             headers: { jwt_token: token },
           });
           if (res.ok) setParents(await res.json());
@@ -93,7 +87,7 @@ const StudentsTab = ({ isAdmin }) => {
     e.preventDefault();
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch("http://localhost:5000/api/students", {
+      const response = await fetch(`${API_URL}/students`, {
         method: "POST",
         headers: { "Content-Type": "application/json", jwt_token: token },
         body: JSON.stringify({
@@ -105,7 +99,6 @@ const StudentsTab = ({ isAdmin }) => {
       });
       const parseRes = await response.json();
       if (response.ok) {
-        // Trigger a re-fetch to get the updated list and pagination math
         setSearchTerm("");
         setFilterClass("");
         setCurrentPage(1);
@@ -131,7 +124,7 @@ const StudentsTab = ({ isAdmin }) => {
     try {
       const token = localStorage.getItem("token");
       const response = await fetch(
-        `http://localhost:5000/api/students/${student_id}/link-parent`,
+        `${API_URL}/students/${student_id}/link-parent`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json", jwt_token: token },

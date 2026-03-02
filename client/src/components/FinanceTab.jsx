@@ -21,7 +21,13 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
 
   useEffect(() => {
     fetchInvoices();
-    checkStripeRedirect();
+
+    // FIX: Secure Webhook Redirect handling
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get("payment_success") === "true") {
+      alert("🎉 Payment Successful! Your receipt is being processed securely.");
+      window.history.replaceState(null, "", window.location.pathname); // Clean URL
+    }
   }, []);
 
   const fetchInvoices = async () => {
@@ -33,37 +39,6 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
       if (res.ok) setInvoices(await res.json());
     } catch (err) {
       console.error(err);
-    }
-  };
-
-  // --- NEW: Detect if the user just returned from Stripe Checkout ---
-  const checkStripeRedirect = async () => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const paymentSuccess = urlParams.get("payment_success");
-    const invoiceId = urlParams.get("invoice_id");
-
-    if (paymentSuccess === "true" && invoiceId) {
-      setIsProcessing(true);
-      try {
-        const token = localStorage.getItem("token");
-        const res = await fetch(
-          `http://localhost:5000/api/finance/invoices/${invoiceId}/pay`,
-          {
-            method: "PUT",
-            headers: { jwt_token: token },
-          },
-        );
-        if (res.ok) {
-          alert("🎉 Payment Successful! Your receipt has been emailed.");
-          fetchInvoices();
-        }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        // Clean the URL so it doesn't trigger again on refresh
-        window.history.replaceState(null, "", window.location.pathname);
-        setIsProcessing(false);
-      }
     }
   };
 
@@ -86,7 +61,6 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
     }
   };
 
-  // --- NEW: Redirect to Stripe ---
   const handlePayment = async (invoice_id) => {
     setIsProcessing(true);
     try {

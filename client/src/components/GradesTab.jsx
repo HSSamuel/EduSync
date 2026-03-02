@@ -3,6 +3,8 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { Award, FileDown, PlusCircle, Check, X, Edit3, UserSearch } from "lucide-react";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
   const [gradeForm, setGradeForm] = useState({
     student_id: "", subject_id: "", academic_term: "", test_score: "", exam_score: "",
@@ -19,7 +21,7 @@ const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
       const fetchChildren = async () => {
         try {
           const token = localStorage.getItem("token");
-          const response = await fetch("http://localhost:5000/api/students/my-children", { headers: { jwt_token: token } });
+          const response = await fetch(`${API_URL}/students/my-children`, { headers: { jwt_token: token } });
           if (response.ok) setMyChildren(await response.json());
         } catch (err) { console.error(err); }
       };
@@ -30,7 +32,7 @@ const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
   const fetchMyReportCard = async () => {
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch("http://localhost:5000/api/results/me", { headers: { jwt_token: token } });
+      const response = await fetch(`${API_URL}/results/me`, { headers: { jwt_token: token } });
       if (response.ok) setReportCard(await response.json());
     } catch (err) { console.error(err.message); }
   };
@@ -39,7 +41,7 @@ const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
     if (!student_id) return setReportCard([]);
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch(`http://localhost:5000/api/results/student/${student_id}`, { headers: { jwt_token: token } });
+      const response = await fetch(`${API_URL}/results/student/${student_id}`, { headers: { jwt_token: token } });
       if (response.ok) setReportCard(await response.json());
     } catch (err) { console.error(err.message); }
   };
@@ -55,7 +57,7 @@ const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
     e.preventDefault();
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch("http://localhost:5000/api/results", {
+      const response = await fetch(`${API_URL}/results`, {
         method: "POST", headers: { "Content-Type": "application/json", jwt_token: token },
         body: JSON.stringify(gradeForm),
       });
@@ -79,7 +81,7 @@ const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
   const saveEdit = async (result_id) => {
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch(`http://localhost:5000/api/results/${result_id}`, {
+      const response = await fetch(`${API_URL}/results/${result_id}`, {
         method: "PUT", headers: { "Content-Type": "application/json", jwt_token: token },
         body: JSON.stringify(editScores),
       });

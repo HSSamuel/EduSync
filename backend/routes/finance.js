@@ -5,10 +5,9 @@ const authorize = require("../middleware/authorize");
 const { emailQueue } = require("../utils/emailQueue");
 require("dotenv").config();
 
-// Initialize Stripe
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
 
-// 1. CREATE A NEW INVOICE (Admin Only)
 router.post("/invoices", authorize, async (req, res) => {
   try {
     if (req.user.role !== "Admin")
@@ -60,7 +59,6 @@ router.post("/invoices", authorize, async (req, res) => {
   }
 });
 
-// 2. GET INVOICES
 router.get("/invoices", authorize, async (req, res) => {
   try {
     let query = `
@@ -103,12 +101,10 @@ router.get("/invoices", authorize, async (req, res) => {
   }
 });
 
-// --- NEW: 3. CREATE STRIPE CHECKOUT SESSION ---
 router.post("/invoices/:id/checkout", authorize, async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Verify invoice exists and belongs to the user's school
     const invoiceQuery = await pool.query(
       "SELECT * FROM invoices WHERE invoice_id = $1 AND school_id = $2",
       [id, req.user.school_id],
@@ -121,26 +117,28 @@ router.post("/invoices/:id/checkout", authorize, async (req, res) => {
     if (invoice.status === "Paid")
       return res.status(400).json({ error: "Invoice is already paid." });
 
-    // Generate Stripe Session
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       line_items: [
         {
           price_data: {
-            currency: "ngn", // Change to "usd" if you prefer
+            currency: "ngn",
             product_data: {
               name: invoice.title,
               description: "EduSync Academic Invoice",
             },
-            unit_amount: Math.round(invoice.amount * 100), // Stripe expects the amount in the smallest currency unit (kobo/cents)
+            unit_amount: Math.round(invoice.amount * 100),
           },
           quantity: 1,
         },
       ],
       mode: "payment",
-      // If payment succeeds, redirect back to Dashboard with success flags
-      success_url: `http://localhost:5173/dashboard?payment_success=true&invoice_id=${id}`,
-      cancel_url: `http://localhost:5173/dashboard?payment_canceled=true`,
+      metadata: {
+        invoice_id: id,
+        school_id: req.user.school_id,
+      },
+      success_url: `${CLIENT_URL}/dashboard?payment_success=true`,
+      cancel_url: `${CLIENT_URL}/dashboard?payment_canceled=true`,
     });
 
     res.json({ url: session.url });
@@ -150,57 +148,69 @@ router.post("/invoices/:id/checkout", authorize, async (req, res) => {
   }
 });
 
-// 4. PROCESS SUCCESSFUL PAYMENT (Called after Stripe redirects back)
-router.put("/invoices/:id/pay", authorize, async (req, res) => {
+router.post("/webhook", async (req, res) => {
+  const sig = req.headers["stripe-signature"];
+  let event;
+
   try {
-    const { id } = req.params;
-
-    const updatedInvoice = await pool.query(
-      "UPDATE invoices SET status = 'Paid' WHERE invoice_id = $1 AND school_id = $2 RETURNING *",
-      [id, req.user.school_id],
+    event = stripe.webhooks.constructEvent(
+      req.body,
+      sig,
+      process.env.STRIPE_WEBHOOK_SECRET,
     );
-
-    const invoiceDetails = await pool.query(
-      `
-      SELECT i.title, i.amount, u.email, u.full_name
-      FROM invoices i
-      JOIN students s ON i.student_id = s.student_id
-      JOIN users u ON s.user_id = u.user_id
-      WHERE i.invoice_id = $1 AND i.school_id = $2
-    `,
-      [id, req.user.school_id],
-    );
-
-    if (invoiceDetails.rows.length > 0) {
-      const details = invoiceDetails.rows[0];
-      const emailHTML = `
-        <div style="font-family: Arial; max-width: 500px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden;">
-          <div style="background-color: #10B981; padding: 20px; text-align: center;">
-            <h2 style="color: white; margin: 0;">Payment Receipt</h2>
-          </div>
-          <div style="padding: 30px; background-color: #f9fafb;">
-            <h3>Thank you, ${details.full_name}!</h3>
-            <p>We have successfully received your secure payment of <strong>₦${details.amount}</strong> for <strong>${details.title}</strong>.</p>
-            <p style="color: green; font-weight: bold;">Status: PAID ✅</p>
-          </div>
-        </div>
-      `;
-      // Send receipt via background queue
-      await emailQueue.add("payment-receipt", {
-        to: details.email,
-        subject: `Payment Receipt: ${details.title}`,
-        html: emailHTML,
-      });
-    }
-
-    res.json({
-      message: "Payment Successful!",
-      invoice: updatedInvoice.rows[0],
-    });
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send("Server Error");
+    console.error(`❌ Webhook Signature Error: ${err.message}`);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
   }
+
+  if (event.type === "checkout.session.completed") {
+    const session = event.data.object;
+    const invoiceId = session.metadata.invoice_id;
+    const schoolId = session.metadata.school_id;
+
+    try {
+      const updatedInvoice = await pool.query(
+        "UPDATE invoices SET status = 'Paid' WHERE invoice_id = $1 AND school_id = $2 RETURNING *",
+        [invoiceId, schoolId],
+      );
+
+      const invoiceDetails = await pool.query(
+        `
+        SELECT i.title, i.amount, u.email, u.full_name
+        FROM invoices i
+        JOIN students s ON i.student_id = s.student_id
+        JOIN users u ON s.user_id = u.user_id
+        WHERE i.invoice_id = $1 AND i.school_id = $2
+      `,
+        [invoiceId, schoolId],
+      );
+
+      if (invoiceDetails.rows.length > 0) {
+        const details = invoiceDetails.rows[0];
+        const emailHTML = `
+          <div style="font-family: Arial; max-width: 500px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden;">
+            <div style="background-color: #10B981; padding: 20px; text-align: center;">
+              <h2 style="color: white; margin: 0;">Payment Receipt</h2>
+            </div>
+            <div style="padding: 30px; background-color: #f9fafb;">
+              <h3>Thank you, ${details.full_name}!</h3>
+              <p>We have successfully received your secure payment of <strong>₦${details.amount}</strong> for <strong>${details.title}</strong>.</p>
+              <p style="color: green; font-weight: bold;">Status: PAID ✅</p>
+            </div>
+          </div>
+        `;
+        await emailQueue.add("payment-receipt", {
+          to: details.email,
+          subject: `Payment Receipt: ${details.title}`,
+          html: emailHTML,
+        });
+      }
+    } catch (dbErr) {
+      console.error(`❌ Webhook Database Error: ${dbErr.message}`);
+    }
+  }
+
+  res.status(200).json({ received: true });
 });
 
 module.exports = router;

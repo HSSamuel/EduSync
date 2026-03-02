@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 const CalendarTab = ({ isAdmin }) => {
   const [events, setEvents] = useState([]);
   const [formData, setFormData] = useState({
@@ -15,7 +17,7 @@ const CalendarTab = ({ isAdmin }) => {
   const fetchEvents = async () => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/school/events", {
+      const res = await fetch(`${API_URL}/school/events`, {
         headers: { jwt_token: token },
       });
       if (res.ok) setEvents(await res.json());
@@ -28,7 +30,7 @@ const CalendarTab = ({ isAdmin }) => {
     e.preventDefault();
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://localhost:5000/api/school/events", {
+      const res = await fetch(`${API_URL}/school/events`, {
         method: "POST",
         headers: { "Content-Type": "application/json", jwt_token: token },
         body: JSON.stringify(formData),
@@ -45,7 +47,7 @@ const CalendarTab = ({ isAdmin }) => {
   const deleteEvent = async (id) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`http://localhost:5000/api/school/events/${id}`, {
+      const res = await fetch(`${API_URL}/school/events/${id}`, {
         method: "DELETE",
         headers: { jwt_token: token },
       });

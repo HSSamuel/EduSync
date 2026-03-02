@@ -2,9 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import io from "socket.io-client";
 import { Users, MessageSquare } from "lucide-react";
 
-const socket = io.connect("http://localhost:5000");
-
 const ChatTab = ({ userData }) => {
+  const [socket, setSocket] = useState(null);
   const [currentMessage, setCurrentMessage] = useState("");
   const [messageList, setMessageList] = useState([]);
   const [room, setRoom] = useState("Global Lounge");
@@ -20,38 +19,50 @@ const ChatTab = ({ userData }) => {
     scrollToBottom();
   }, [messageList]);
 
-  // --- FIX: EMIT ROOM JOIN EVENT ON CHANGE ---
+  // --- FIX: INITIALIZE SOCKET SECURELY ---
   useEffect(() => {
-    socket.emit("join_room", room);
-    setMessageList([]); // Clear screen when changing rooms
-  }, [room]);
+    const token = localStorage.getItem("token");
+    if (!token) return;
 
-  useEffect(() => {
+    const newSocket = io("http://localhost:5000", {
+      auth: { token },
+    });
+
+    setSocket(newSocket);
+
     const receiveMessageHandler = (data) => {
       setMessageList((list) => [...list, data]);
     };
-    socket.on("receive_message", receiveMessageHandler);
+    newSocket.on("receive_message", receiveMessageHandler);
+
     return () => {
-      socket.off("receive_message", receiveMessageHandler);
+      newSocket.off("receive_message", receiveMessageHandler);
+      newSocket.close();
     };
   }, []);
 
+  // Join Room whenever room changes
+  useEffect(() => {
+    if (socket) {
+      socket.emit("join_room", room);
+      setMessageList([]); // Clear screen when changing rooms
+    }
+  }, [room, socket]);
+
   const sendMessage = async (e) => {
     e.preventDefault();
-    if (currentMessage.trim() !== "") {
+    if (currentMessage.trim() !== "" && socket) {
       const messageData = {
-        room: room, // Attach the room to direct the backend
-        sender: userData.message.replace("Welcome back, ", "").replace("!", ""),
-        role: userData.your_role,
+        room: room,
         message: currentMessage,
         time: new Date().toLocaleTimeString([], {
           hour: "2-digit",
           minute: "2-digit",
         }),
+        // NOTE: sender and role are NO LONGER sent. The backend reads them securely from the JWT.
       };
 
       await socket.emit("send_message", messageData);
-      setMessageList((list) => [...list, messageData]); // Optimistic UI update
       setCurrentMessage("");
     }
   };

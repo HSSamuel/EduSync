@@ -6,7 +6,10 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
+  Users
 } from "lucide-react";
+
+const API_URL = import.meta.env.VITE_API_URL;
 
 const AttendanceTab = ({ students }) => {
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
@@ -33,7 +36,7 @@ const AttendanceTab = ({ students }) => {
 
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch("http://localhost:5000/api/attendance", {
+      const response = await fetch(`${API_URL}/attendance`, {
         method: "POST",
         headers: { "Content-Type": "application/json", jwt_token: token },
         body: JSON.stringify({ date, attendanceList }),

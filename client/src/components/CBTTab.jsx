@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 const CBTTab = ({ isTeacher, isAdmin, isStudent, subjects }) => {
   const [quizzes, setQuizzes] = useState([]);
   const [activeQuiz, setActiveQuiz] = useState(null);
@@ -30,7 +32,7 @@ const CBTTab = ({ isTeacher, isAdmin, isStudent, subjects }) => {
 
   const fetchQuizzes = async () => {
     const token = localStorage.getItem("token");
-    const res = await fetch("http://localhost:5000/api/cbt", {
+    const res = await fetch(`${API_URL}/cbt`, {
       headers: { jwt_token: token },
     });
     if (res.ok) setQuizzes(await res.json());
@@ -45,7 +47,7 @@ const CBTTab = ({ isTeacher, isAdmin, isStudent, subjects }) => {
   const handleCreateQuiz = async (e) => {
     e.preventDefault();
     const token = localStorage.getItem("token");
-    const res = await fetch("http://localhost:5000/api/cbt", {
+    const res = await fetch(`${API_URL}/cbt`, {
       method: "POST",
       headers: { "Content-Type": "application/json", jwt_token: token },
       body: JSON.stringify({ ...newQuiz, questions }),
@@ -60,14 +62,13 @@ const CBTTab = ({ isTeacher, isAdmin, isStudent, subjects }) => {
 
   const startQuiz = async (id) => {
     const token = localStorage.getItem("token");
-    const res = await fetch(`http://localhost:5000/api/cbt/${id}`, {
+    const res = await fetch(`${API_URL}/cbt/${id}`, {
       headers: { jwt_token: token },
     });
     if (res.ok) {
       setActiveQuiz(await res.json());
       setStudentAnswers({});
       setTestResult(null);
-      // Optional: Request full screen on browser
       if (document.documentElement.requestFullscreen) {
         document.documentElement
           .requestFullscreen()
@@ -86,7 +87,7 @@ const CBTTab = ({ isTeacher, isAdmin, isStudent, subjects }) => {
     );
     const token = localStorage.getItem("token");
     const res = await fetch(
-      `http://localhost:5000/api/cbt/${activeQuiz.quiz_id}/submit`,
+      `${API_URL}/cbt/${activeQuiz.quiz_id}/submit`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json", jwt_token: token },
@@ -110,7 +111,6 @@ const CBTTab = ({ isTeacher, isAdmin, isStudent, subjects }) => {
     }
   };
 
-  // Calculate Progress for Focus Mode
   const totalQuestions = activeQuiz?.questions?.length || 0;
   const answeredQuestions = Object.keys(studentAnswers).length;
   const progressPercentage =
@@ -418,7 +418,7 @@ const CBTTab = ({ isTeacher, isAdmin, isStudent, subjects }) => {
                 setTestResult(null);
                 setActiveQuiz(null);
               }}
-              className="px-8 py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-bold text-lg rounded-xl hover:bg-gray-800 dark:hover:bg-gray-100 transition-all shadow-md transform hover:-translate-y-0.5"
+              className="px-8 py-4 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 font-bold text-lg rounded-xl hover:bg-gray-800 dark:hover:bg-gray-100 transition-all shadow-md transform hover:-translate-y-0.5"
             >
               Return to Dashboard
             </button>

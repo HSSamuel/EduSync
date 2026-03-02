@@ -19,6 +19,8 @@ import {
   Cell,
 } from "recharts";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 const AnalyticsCards = () => {
   const [stats, setStats] = useState({
     totalStudents: 0,
@@ -31,12 +33,9 @@ const AnalyticsCards = () => {
     const fetchStats = async () => {
       try {
         const token = localStorage.getItem("token");
-        const response = await fetch(
-          "http://localhost:5000/api/dashboard/stats",
-          {
-            headers: { jwt_token: token },
-          },
-        );
+        const response = await fetch(`${API_URL}/dashboard/stats`, {
+          headers: { jwt_token: token },
+        });
         if (response.ok) setStats(await response.json());
       } catch (err) {
         console.error("Failed to fetch stats", err);

@@ -64,32 +64,20 @@ const SchoolVaultTab = ({ isAdmin }) => {
     }
   };
 
-  // --- FIX: SECURE BLOB DOWNLOAD LOGIC ---
-  const handleSecureDownload = async (e, fileUrl, fileName) => {
+  // --- FIX: CLOUDINARY DOWNLOAD LOGIC ---
+  const handleSecureDownload = (e, fileUrl, fileName) => {
     e.preventDefault();
-    try {
-      const token = localStorage.getItem("token");
-      // Fallback fallback fix for older files saved in DB before the update
-      const secureUrl = fileUrl.replace("/uploads/", "/api/downloads/");
-
-      const response = await fetch(secureUrl, {
-        headers: { jwt_token: token },
-      });
-
-      if (!response.ok) throw new Error("Unauthorized or file missing");
-
-      const blob = await response.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = downloadUrl;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(downloadUrl);
-    } catch (err) {
-      alert("❌ Secure download failed: " + err.message);
+    if (!fileUrl) return alert("File URL is missing.");
+    
+    // If the file is hosted on Cloudinary, append 'fl_attachment' to force download
+    let downloadUrl = fileUrl;
+    if (fileUrl.includes("cloudinary.com")) {
+      const parts = fileUrl.split("/upload/");
+      downloadUrl = `${parts[0]}/upload/fl_attachment/${parts[1]}`;
     }
+
+    // Open in a new tab which triggers the cloud download securely
+    window.open(downloadUrl, '_blank');
   };
 
   return (
@@ -148,7 +136,6 @@ const SchoolVaultTab = ({ isAdmin }) => {
                   <p className="text-xs font-semibold text-gray-500 mt-1 uppercase tracking-wider">
                     {new Date(doc.uploaded_at).toLocaleDateString()}
                   </p>
-                  {/* Replaced <a> with <button> targeting our Secure Download function */}
                   <button
                     onClick={(e) =>
                       handleSecureDownload(e, doc.file_url, `${doc.title}.pdf`)

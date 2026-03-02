@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 const BroadcastTab = ({ isAdmin }) => {
   const [formData, setFormData] = useState({
     audience: "All",
@@ -18,14 +20,11 @@ const BroadcastTab = ({ isAdmin }) => {
 
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch(
-        "http://localhost:5000/api/school/broadcast",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", jwt_token: token },
-          body: JSON.stringify(formData),
-        },
-      );
+      const response = await fetch(`${API_URL}/school/broadcast`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", jwt_token: token },
+        body: JSON.stringify(formData),
+      });
 
       const parseRes = await response.json();
 

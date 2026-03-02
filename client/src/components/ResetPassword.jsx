@@ -1,8 +1,10 @@
 import React, { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 const ResetPassword = () => {
-  const { token } = useParams(); // Grabs the secret token from the URL!
+  const { token } = useParams(); 
   const navigate = useNavigate();
 
   const [newPassword, setNewPassword] = useState("");
@@ -16,19 +18,16 @@ const ResetPassword = () => {
     }
 
     try {
-      const response = await fetch(
-        "http://localhost:5000/api/auth/reset-password",
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token, newPassword }),
-        },
-      );
+      const response = await fetch(`${API_URL}/auth/reset-password`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, newPassword }),
+      });
       const parseRes = await response.json();
 
       if (response.ok) {
         setStatus(parseRes.message);
-        setTimeout(() => navigate("/login"), 3000); // Send them to login after 3 seconds
+        setTimeout(() => navigate("/login"), 3000); 
       } else {
         setStatus("❌ " + parseRes.error);
       }
