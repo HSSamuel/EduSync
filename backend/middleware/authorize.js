@@ -12,7 +12,11 @@ module.exports = function (req, res, next) {
   }
 
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    // 👈 FIX: Verify using the new ACCESS_TOKEN_SECRET (falling back to JWT_SECRET if missing)
+    const payload = jwt.verify(
+      token,
+      process.env.ACCESS_TOKEN_SECRET || process.env.JWT_SECRET,
+    );
 
     // Payload now contains: { user_id, role, school_id }
     req.user = payload;

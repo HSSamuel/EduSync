@@ -3,100 +3,94 @@ const router = express.Router();
 const pool = require("../db");
 const authorize = require("../middleware/authorize");
 const multer = require("multer");
-const sendEmail = require("../utils/sendEmail");
-const { storage } = require("../utils/cloudinary");
+const { storage, cloudinary } = require("../utils/cloudinary");
 const { emailQueue } = require("../utils/emailQueue");
 
 const upload = multer({ storage: storage });
 
-// 1. UPLOAD A GLOBAL DOCUMENT (Admin Only)
 router.post(
   "/documents",
   authorize,
   upload.single("document_file"),
-  async (req, res) => {
+  async (req, res, next) => {
     try {
-      if (req.user.role !== "Admin")
-        return res.status(403).json({ error: "Access Denied." });
+      if (req.user.role !== "Admin") return res.status(403).json({ error: "Access Denied." });
 
       const { title } = req.body;
-      if (!req.file)
-        return res.status(400).json({ error: "No file was uploaded." });
+      if (!req.file) return res.status(400).json({ error: "No file was uploaded." });
 
       const file_url = req.file.path;
 
-      // 👈 NEW: Tag document with school_id
       const newDoc = await pool.query(
         "INSERT INTO school_documents (title, file_url, uploaded_by, school_id) VALUES ($1, $2, $3, $4) RETURNING *",
         [title, file_url, req.user.user_id, req.user.school_id],
       );
       res.json(newDoc.rows[0]);
     } catch (err) {
-      console.error(err.message);
-      res.status(500).send("Server Error");
+      next(err);
     }
   },
 );
 
-// 2. GET ALL GLOBAL DOCUMENTS (All Users)
-router.get("/documents", authorize, async (req, res) => {
+router.get("/documents", authorize, async (req, res, next) => {
   try {
-    // 👈 NEW: Only fetch documents for this user's school
     const docs = await pool.query(
       "SELECT * FROM school_documents WHERE school_id = $1 ORDER BY uploaded_at DESC",
       [req.user.school_id],
     );
     res.json(docs.rows);
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send("Server Error");
+    next(err);
   }
 });
 
-// 3. DELETE A DOCUMENT (Admin Only)
-router.delete("/documents/:id", authorize, async (req, res) => {
+router.delete("/documents/:id", authorize, async (req, res, next) => {
   try {
-    if (req.user.role !== "Admin")
-      return res.status(403).json({ error: "Access Denied." });
+    if (req.user.role !== "Admin") return res.status(403).json({ error: "Access Denied." });
 
-    // 👈 NEW: Ensure they only delete their own school's document
+    const docQuery = await pool.query(
+      "SELECT file_url FROM school_documents WHERE doc_id = $1 AND school_id = $2",
+      [req.params.id, req.user.school_id]
+    );
+
+    if (docQuery.rows.length === 0) return res.status(404).json({ error: "Document not found" });
+
+    const fileUrl = docQuery.rows[0].file_url;
+
+    const urlParts = fileUrl.split('/');
+    const fileWithExt = urlParts[urlParts.length - 1];
+    const publicId = `edusync_vault/${fileWithExt.split('.')[0]}`;
+
+    await cloudinary.uploader.destroy(publicId);
+
     await pool.query(
       "DELETE FROM school_documents WHERE doc_id = $1 AND school_id = $2",
       [req.params.id, req.user.school_id],
     );
-    res.json({ message: "Document deleted successfully!" });
+    res.json({ message: "Document deleted successfully from DB and Cloudinary!" });
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send("Server Error");
+    next(err);
   }
 });
 
-// 4. SEND MASS BROADCAST (Admin Only)
-router.post("/broadcast", authorize, async (req, res) => {
+router.post("/broadcast", authorize, async (req, res, next) => {
   try {
-    if (req.user.role !== "Admin") {
-      return res.status(403).json({ error: "Access Denied." });
-    }
+    if (req.user.role !== "Admin") return res.status(403).json({ error: "Access Denied." });
 
     const { audience, subject, message } = req.body;
 
-    // 👈 NEW: Only broadcast to users IN THIS SPECIFIC SCHOOL
-    let query =
-      "SELECT email, full_name FROM users WHERE role != 'Admin' AND school_id = $1";
+    let query = "SELECT email, full_name FROM users WHERE role != 'Admin' AND school_id = $1";
     let queryParams = [req.user.school_id];
 
     if (audience !== "All") {
-      query =
-        "SELECT email, full_name FROM users WHERE role = $2 AND school_id = $1";
+      query = "SELECT email, full_name FROM users WHERE role = $2 AND school_id = $1";
       queryParams = [req.user.school_id, audience];
     }
 
     const targetUsers = await pool.query(query, queryParams);
 
     if (targetUsers.rows.length === 0) {
-      return res
-        .status(400)
-        .json({ error: "No users found in this audience category." });
+      return res.status(400).json({ error: "No users found in this audience category." });
     }
 
     const jobs = targetUsers.rows.map((user) => ({
@@ -125,65 +119,49 @@ router.post("/broadcast", authorize, async (req, res) => {
       message: `✅ Broadcast queued successfully! Dispatching to ${targetUsers.rows.length} recipient(s) in the background.`,
     });
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send("Server Error");
+    next(err);
   }
 });
 
-// ==========================================
-// INTERACTIVE CALENDAR ROUTES
-// ==========================================
-
-// 5. GET ALL EVENTS (All Users)
-router.get("/events", authorize, async (req, res) => {
+router.get("/events", authorize, async (req, res, next) => {
   try {
-    // 👈 NEW: Only fetch events for this school
     const events = await pool.query(
       "SELECT * FROM events WHERE school_id = $1 ORDER BY event_date ASC",
       [req.user.school_id],
     );
     res.json(events.rows);
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send("Server Error");
+    next(err);
   }
 });
 
-// 6. ADD A NEW EVENT (Admin Only)
-router.post("/events", authorize, async (req, res) => {
+router.post("/events", authorize, async (req, res, next) => {
   try {
-    if (req.user.role !== "Admin")
-      return res.status(403).json({ error: "Access Denied." });
+    if (req.user.role !== "Admin") return res.status(403).json({ error: "Access Denied." });
 
     const { title, event_date, event_type } = req.body;
 
-    // 👈 NEW: Tag event with school_id
     const newEvent = await pool.query(
       "INSERT INTO events (title, event_date, event_type, created_by, school_id) VALUES ($1, $2, $3, $4, $5) RETURNING *",
       [title, event_date, event_type, req.user.user_id, req.user.school_id],
     );
     res.json(newEvent.rows[0]);
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send("Server Error");
+    next(err);
   }
 });
 
-// 7. DELETE AN EVENT (Admin Only)
-router.delete("/events/:id", authorize, async (req, res) => {
+router.delete("/events/:id", authorize, async (req, res, next) => {
   try {
-    if (req.user.role !== "Admin")
-      return res.status(403).json({ error: "Access Denied." });
+    if (req.user.role !== "Admin") return res.status(403).json({ error: "Access Denied." });
 
-    // 👈 NEW: Prevent deleting other schools' events
     await pool.query(
       "DELETE FROM events WHERE event_id = $1 AND school_id = $2",
       [req.params.id, req.user.school_id],
     );
     res.json({ message: "Event deleted!" });
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send("Server Error");
+    next(err);
   }
 });
 

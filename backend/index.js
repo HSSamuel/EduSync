@@ -47,6 +47,7 @@ app.get("/", (req, res) => {
   res.send("Welcome to the EduSync API! The server is alive.");
 });
 
+// Routes
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/dashboard", require("./routes/dashboard"));
 app.use("/api/subjects", require("./routes/subjects"));
@@ -59,6 +60,26 @@ app.use("/api/attendance", require("./routes/attendance"));
 app.use("/api/finance", require("./routes/finance"));
 app.use("/api/cbt", require("./routes/cbt"));
 app.use("/api/timetable", require("./routes/timetable"));
+// NEW: Chat history route
+app.use("/api/chat", require("./routes/chat"));
+
+// ==========================================
+// GLOBAL ERROR HANDLER
+// ==========================================
+app.use((err, req, res, next) => {
+  console.error("🔥 Global Error Handler Caught:", err.message);
+
+  if (err.name === "MulterError") {
+    return res.status(400).json({ error: "File upload error occurred." });
+  }
+
+  res.status(err.status || 500).json({
+    error:
+      process.env.NODE_ENV === "development"
+        ? err.message
+        : "Internal Server Error",
+  });
+});
 
 // ==========================================
 // WEBSOCKET (SOCKET.IO) ENGINE
@@ -69,7 +90,10 @@ io.use(async (socket, next) => {
     if (!token)
       return next(new Error("Authentication error: No token provided"));
 
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    const payload = jwt.verify(
+      token,
+      process.env.ACCESS_TOKEN_SECRET || process.env.JWT_SECRET,
+    );
 
     const userQuery = await pool.query(
       "SELECT full_name, role FROM users WHERE user_id = $1",
@@ -98,18 +122,36 @@ io.on("connection", (socket) => {
     console.log(`User ${socket.user.name} joined room: ${secureRoom}`);
   });
 
-  socket.on("send_message", (data) => {
+  socket.on("send_message", async (data) => {
     const secureRoom = `${socket.user.school_id}_${data.room}`;
-    const secureMessage = {
-      id: data.id || Math.random().toString(36).substring(7), // 👈 NEW: Unique ID for optimistic UI
-      room: data.room,
-      message: data.message,
-      time: data.time,
-      sender: socket.user.name,
-      role: socket.user.role,
-    };
-    // Broadcast message to everyone in the room
-    io.to(secureRoom).emit("receive_message", secureMessage);
+
+    try {
+      // NEW: Persistent Storage - Save message to PostgreSQL
+      await pool.query(
+        "INSERT INTO messages (room, message, sender_name, sender_role, school_id) VALUES ($1, $2, $3, $4, $5)",
+        [
+          data.room,
+          data.message,
+          socket.user.name,
+          socket.user.role,
+          socket.user.school_id,
+        ],
+      );
+
+      const secureMessage = {
+        id: data.id || Math.random().toString(36).substring(7),
+        room: data.room,
+        message: data.message,
+        time: data.time,
+        sender: socket.user.name,
+        role: socket.user.role,
+      };
+
+      // Broadcast to everyone in the room
+      io.to(secureRoom).emit("receive_message", secureMessage);
+    } catch (err) {
+      console.error("❌ Chat persistence error:", err.message);
+    }
   });
 
   socket.on("disconnect", () => {

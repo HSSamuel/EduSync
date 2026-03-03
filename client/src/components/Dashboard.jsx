@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useAppContext } from "../context/AppContext";
 import DashboardSkeleton from "./DashboardSkeleton";
 import UtilitySidebar from "./UtilitySidebar";
 import {
@@ -44,26 +44,25 @@ import TimetableTab from "./TimetableTab";
 import StudentBento from "./StudentBento";
 import CommandPalette from "./CommandPalette";
 
-const API_URL = import.meta.env.VITE_API_URL;
-
 const Dashboard = () => {
-  const [userData, setUserData] = useState(null);
-  const [subjects, setSubjects] = useState([]);
-  const [students, setStudents] = useState([]);
-  const [error, setError] = useState("");
-  const [activeTab, setActiveTab] = useState("");
+  const { 
+    userData, 
+    subjects, 
+    setSubjects, 
+    students, 
+    setStudents, 
+    loading, 
+    logout 
+  } = useAppContext();
 
+  const [activeTab, setActiveTab] = useState("overview");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  
-  // 👈 PRO FIX: Added state for the Mobile Slide-out Activity Feed
   const [isUtilityOpen, setIsUtilityOpen] = useState(false);
-  
   const [isDark, setIsDark] = useState(
     document.documentElement.classList.contains("dark"),
   );
 
-  // Expanded categories state for the collapsible sidebar
   const [expandedCategories, setExpandedCategories] = useState({
     Academics: true,
     Administration: true,
@@ -72,8 +71,6 @@ const Dashboard = () => {
 
   const mainContentRef = useRef(null);
   const [showTopBtn, setShowTopBtn] = useState(false);
-
-  const navigate = useNavigate();
 
   const toggleTheme = () => {
     const root = document.documentElement;
@@ -110,91 +107,15 @@ const Dashboard = () => {
     });
   };
 
-  useEffect(() => {
-    let isMounted = true;
-
-    const fetchDashboardData = async () => {
-      try {
-        const token = localStorage.getItem("token");
-        if (!token) return navigate("/login");
-
-        const profileRes = await fetch(`${API_URL}/dashboard`, {
-          headers: { jwt_token: token },
-        });
-
-        if (profileRes.ok) {
-          const profileData = await profileRes.json();
-          if (!isMounted) return;
-
-          setUserData(profileData);
-
-          if (profileData.your_role === "Admin") setActiveTab("overview");
-          else if (profileData.your_role === "Parent") setActiveTab("grades");
-          else if (profileData.your_role === "Student")
-            setActiveTab("overview");
-          else setActiveTab("subjects");
-
-          const subjectsRes = await fetch(`${API_URL}/subjects`, {
-            headers: { jwt_token: token },
-          });
-          if (subjectsRes.ok) {
-            const parsedSubjects = await subjectsRes.json();
-            if (isMounted) setSubjects(parsedSubjects);
-          }
-
-          const studentsRes = await fetch(`${API_URL}/students?limit=1000`, {
-            headers: { jwt_token: token },
-          });
-          if (studentsRes.ok) {
-            const parsedStudents = await studentsRes.json();
-            if (isMounted) {
-              setStudents(
-                parsedStudents.data ? parsedStudents.data : parsedStudents,
-              );
-            }
-          }
-        } else {
-          localStorage.removeItem("token");
-          navigate("/login");
-        }
-      } catch (err) {
-        if (isMounted) {
-          console.error("Dashboard Fetch Error:", err);
-          setError(`System Error: ${err.message}`);
-        }
-      }
-    };
-
-    fetchDashboardData();
-    return () => {
-      isMounted = false;
-    };
-  }, [navigate]);
+  if (loading) return <DashboardSkeleton />;
+  if (!userData) return null;
 
   const isAdmin = userData?.your_role === "Admin";
   const isTeacher = userData?.your_role === "Teacher";
   const isParent = userData?.your_role === "Parent";
-  const isStudent = !isAdmin && !isTeacher && !isParent;
+  const isStudent = userData?.your_role === "Student";
 
-  const userInitial = userData?.message
-    ? userData.message.replace("Welcome back, ", "").charAt(0)
-    : "U";
-
-  const logout = async (e) => {
-    if (e) e.preventDefault();
-
-    try {
-      await fetch(`${API_URL}/auth/logout`, {
-        method: "POST",
-        credentials: "include",
-      });
-    } catch (err) {
-      console.error("Logout error", err);
-    }
-
-    localStorage.removeItem("token");
-    navigate("/login");
-  };
+  const userInitial = userData?.full_name ? userData.full_name.charAt(0) : "U";
 
   const navItems = [
     {
@@ -242,25 +163,15 @@ const Dashboard = () => {
     Workspace: ["vault", "calendar", "broadcast", "chat"],
   };
 
-  if (error)
-    return (
-      <div className="flex h-screen items-center justify-center text-red-500 font-bold">
-        {error}
-      </div>
-    );
-  if (!userData) return <DashboardSkeleton />;
-
   return (
     <div className="flex h-screen w-full bg-gray-50 dark:bg-gray-900 overflow-hidden font-sans">
       
-      {/* --- DESKTOP SIDEBAR --- */}
+      {/* DESKTOP SIDEBAR */}
       <aside
         className={`hidden md:flex flex-col bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 transition-all duration-300 ease-in-out z-20 ${isSidebarOpen ? "w-64" : "w-20"}`}
       >
         <div className="h-16 flex items-center justify-between px-4 border-b border-gray-200 dark:border-gray-700 shrink-0">
-          <div
-            className={`flex items-center gap-3 overflow-hidden ${!isSidebarOpen && "justify-center w-full"}`}
-          >
+          <div className={`flex items-center gap-3 overflow-hidden ${!isSidebarOpen && "justify-center w-full"}`}>
             <div className="w-8 h-8 shrink-0 bg-blue-600 rounded-lg flex items-center justify-center text-white font-black text-xl shadow-md">
               E
             </div>
@@ -291,14 +202,11 @@ const Dashboard = () => {
                     </h3>
                     <ChevronDown
                       size={14}
-                      className={`transition-transform duration-300 ${
-                        expandedCategories[category] ? "rotate-180" : ""
-                      }`}
+                      className={`transition-transform duration-300 ${expandedCategories[category] ? "rotate-180" : ""}`}
                     />
                   </button>
                 )}
 
-                {/* 👈 PRO UI: Smooth Framer Motion Collapse */}
                 <motion.div
                   initial={false}
                   animate={{
@@ -331,9 +239,7 @@ const Dashboard = () => {
                           size={18}
                           className={`shrink-0 transition-colors ${isActive ? "text-blue-600 dark:text-blue-400" : "text-gray-400 group-hover:text-gray-500 dark:group-hover:text-gray-300"}`}
                         />
-                        {isSidebarOpen && (
-                          <span className="truncate">{item.label}</span>
-                        )}
+                        {isSidebarOpen && <span className="truncate">{item.label}</span>}
                       </button>
                     );
                   })}
@@ -348,116 +254,117 @@ const Dashboard = () => {
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
             className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors"
           >
-            {isSidebarOpen ? (
-              <ChevronLeft size={20} />
-            ) : (
-              <ChevronRight size={20} />
-            )}
+            {isSidebarOpen ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
           </button>
         </div>
       </aside>
 
-      {/* --- MOBILE SIDEBAR --- */}
-      {isMobileMenuOpen && (
-        <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden"
-          onClick={() => setIsMobileMenuOpen(false)}
-        />
-      )}
-      <aside
-        className={`fixed inset-y-0 left-0 w-64 bg-white dark:bg-gray-800 shadow-2xl z-50 transform transition-transform duration-300 ease-in-out md:hidden flex flex-col ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"}`}
-      >
-        <div className="h-16 flex items-center justify-between px-6 border-b border-gray-200 dark:border-gray-700 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-black text-xl shadow-md">
-              E
-            </div>
-            <h1 className="text-xl font-black tracking-tight text-gray-900 dark:text-white font-serif">
-              Edu<span className="text-blue-600 font-sans">Sync.</span>
-            </h1>
-          </div>
-          <button
-            onClick={() => setIsMobileMenuOpen(false)}
-            className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
-          >
-            <X size={20} />
-          </button>
-        </div>
-
-        <nav className="flex-1 overflow-y-auto py-6 px-4 space-y-4">
-          {Object.entries(navCategories).map(([category, itemIds]) => {
-            const categoryItems = navItems.filter(
-              (i) => itemIds.includes(i.id) && i.show,
-            );
-            if (categoryItems.length === 0) return null;
-
-            return (
-              <div key={`mobile-${category}`} className="mb-2">
+      {/* MOBILE SIDEBAR */}
+      <AnimatePresence>
+        {isMobileMenuOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden"
+              onClick={() => setIsMobileMenuOpen(false)}
+            />
+            <motion.aside
+              initial={{ x: "-100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "-100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="fixed inset-y-0 left-0 w-64 bg-white dark:bg-gray-800 shadow-2xl z-50 md:hidden flex flex-col"
+            >
+              <div className="h-16 flex items-center justify-between px-6 border-b border-gray-200 dark:border-gray-700 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-black text-xl shadow-md">
+                    E
+                  </div>
+                  <h1 className="text-xl font-black tracking-tight text-gray-900 dark:text-white font-serif">
+                    Edu<span className="text-blue-600 font-sans">Sync.</span>
+                  </h1>
+                </div>
                 <button
-                  onClick={() => toggleCategory(category)}
-                  className="w-full flex items-center justify-between px-4 py-2 mb-1 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors outline-none group"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
                 >
-                  <h3 className="text-[10px] font-black uppercase tracking-widest group-hover:text-gray-600 dark:group-hover:text-gray-300 transition-colors">
-                    {category}
-                  </h3>
-                  <ChevronDown
-                    size={14}
-                    className={`transition-transform duration-300 ${
-                      expandedCategories[category] ? "rotate-180" : ""
-                    }`}
-                  />
+                  <X size={20} />
                 </button>
-
-                <motion.div
-                  initial={false}
-                  animate={{
-                    height: expandedCategories[category] ? "auto" : 0,
-                    opacity: expandedCategories[category] ? 1 : 0,
-                    marginTop: expandedCategories[category] ? 4 : 0
-                  }}
-                  className="space-y-1 overflow-hidden"
-                >
-                  {categoryItems.map((item) => {
-                    const isActive = activeTab === item.id;
-                    return (
-                      <button
-                        key={item.id}
-                        onClick={() => {
-                          setActiveTab(item.id);
-                          setIsMobileMenuOpen(false);
-                        }}
-                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all relative ${
-                          isActive
-                            ? "text-blue-600 dark:text-blue-400 bg-blue-50/80 dark:bg-blue-900/20"
-                            : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50"
-                        }`}
-                      >
-                        {isActive && (
-                          <motion.div
-                            layoutId="mobile-active-indicator"
-                            className="absolute left-0 top-2 bottom-2 w-1 bg-blue-600 dark:bg-blue-500 rounded-r-full"
-                          />
-                        )}
-                        <item.icon
-                          size={18}
-                          className={
-                            isActive
-                              ? "text-blue-600 dark:text-blue-400"
-                              : "text-gray-400"
-                          }
-                        />
-                        {item.label}
-                      </button>
-                    );
-                  })}
-                </motion.div>
               </div>
-            );
-          })}
-        </nav>
-      </aside>
 
-      {/* --- RIGHT SIDE LAYOUT CONTAINER --- */}
+              <nav className="flex-1 overflow-y-auto py-6 px-4 space-y-4">
+                {Object.entries(navCategories).map(([category, itemIds]) => {
+                  const categoryItems = navItems.filter(
+                    (i) => itemIds.includes(i.id) && i.show,
+                  );
+                  if (categoryItems.length === 0) return null;
+
+                  return (
+                    <div key={`mobile-${category}`} className="mb-2">
+                      <button
+                        onClick={() => toggleCategory(category)}
+                        className="w-full flex items-center justify-between px-4 py-2 mb-1 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors outline-none group"
+                      >
+                        <h3 className="text-[10px] font-black uppercase tracking-widest group-hover:text-gray-600 dark:group-hover:text-gray-300 transition-colors">
+                          {category}
+                        </h3>
+                        <ChevronDown
+                          size={14}
+                          className={`transition-transform duration-300 ${expandedCategories[category] ? "rotate-180" : ""}`}
+                        />
+                      </button>
+
+                      <motion.div
+                        initial={false}
+                        animate={{
+                          height: expandedCategories[category] ? "auto" : 0,
+                          opacity: expandedCategories[category] ? 1 : 0,
+                          marginTop: expandedCategories[category] ? 4 : 0
+                        }}
+                        className="space-y-1 overflow-hidden"
+                      >
+                        {categoryItems.map((item) => {
+                          const isActive = activeTab === item.id;
+                          return (
+                            <button
+                              key={item.id}
+                              onClick={() => {
+                                setActiveTab(item.id);
+                                setIsMobileMenuOpen(false);
+                              }}
+                              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all relative ${
+                                isActive
+                                  ? "text-blue-600 dark:text-blue-400 bg-blue-50/80 dark:bg-blue-900/20"
+                                  : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50"
+                              }`}
+                            >
+                              {isActive && (
+                                <motion.div
+                                  layoutId="mobile-active-indicator"
+                                  className="absolute left-0 top-2 bottom-2 w-1 bg-blue-600 dark:bg-blue-500 rounded-r-full"
+                                />
+                              )}
+                              <item.icon
+                                size={18}
+                                className={isActive ? "text-blue-600 dark:text-blue-400" : "text-gray-400"}
+                              />
+                              {item.label}
+                            </button>
+                          );
+                        })}
+                      </motion.div>
+                    </div>
+                  );
+                })}
+              </nav>
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* RIGHT SIDE LAYOUT CONTAINER */}
       <div className="flex-1 flex flex-col overflow-hidden relative">
         <AnimatePresence>
           {showTopBtn && (
@@ -476,11 +383,10 @@ const Dashboard = () => {
           )}
         </AnimatePresence>
 
-        {/* Global Command Palette Component */}
         <CommandPalette
           toggleTheme={toggleTheme}
           isDark={isDark}
-          logout={() => logout()}
+          logout={logout}
         />
 
         <header className="h-16 shrink-0 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl border-b border-gray-200/60 dark:border-gray-700/50 flex items-center justify-between px-4 sm:px-6 z-10">
@@ -496,7 +402,6 @@ const Dashboard = () => {
               {navItems.find((i) => i.id === activeTab)?.label || "Dashboard"}
             </h2>
 
-            {/* Fake Search Bar trigger for CmdK */}
             <button
               onClick={() =>
                 document.dispatchEvent(
@@ -527,7 +432,6 @@ const Dashboard = () => {
               {isDark ? <Sun size={20} /> : <Moon size={20} />}
             </button>
 
-            {/* 👈 PRO FIX: Added Mobile Trigger for Utility Sidebar */}
             {(!isTeacher && !isParent) && (
               <button
                 onClick={() => setIsUtilityOpen(true)}
@@ -543,12 +447,10 @@ const Dashboard = () => {
             <div className="flex items-center gap-3">
               <div className="hidden sm:flex flex-col items-end">
                 <span className="text-sm font-bold text-gray-900 dark:text-white leading-tight">
-                  {userData.message
-                    .replace("Welcome back, ", "")
-                    .replace("!", "")}
+                  {userData?.full_name}
                 </span>
                 <span className="text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
-                  {userData.your_role}
+                  {userData?.your_role}
                 </span>
               </div>
               <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-600 text-white rounded-full flex items-center justify-center font-bold shadow-md cursor-default border-2 border-white dark:border-gray-700">
@@ -566,10 +468,7 @@ const Dashboard = () => {
           </div>
         </header>
 
-        {/* Main Content & Utility Sidebar Wrapper */}
         <div className="flex flex-1 overflow-hidden bg-gray-50 dark:bg-gray-900">
-          
-          {/* Main Work Area */}
           <main
             ref={mainContentRef}
             onScroll={handleScroll}
@@ -586,9 +485,7 @@ const Dashboard = () => {
                   className="w-full"
                 >
                   {activeTab === "overview" && isAdmin && <AnalyticsCards />}
-                  {activeTab === "overview" && isStudent && (
-                    <StudentBento userData={userData} />
-                  )}
+                  {activeTab === "overview" && isStudent && <StudentBento userData={userData} />}
                   {activeTab === "subjects" && !isParent && (
                     <SubjectsTab
                       isAdmin={isAdmin}
@@ -598,11 +495,7 @@ const Dashboard = () => {
                     />
                   )}
                   {activeTab === "students" && isAdmin && (
-                    <StudentsTab
-                      isAdmin={isAdmin}
-                      students={students}
-                      setStudents={setStudents}
-                    />
+                    <StudentsTab isAdmin={isAdmin} />
                   )}
                   {activeTab === "attendance" && (isAdmin || isTeacher) && (
                     <AttendanceTab students={students} />
@@ -623,15 +516,9 @@ const Dashboard = () => {
                       subjects={subjects}
                     />
                   )}
-                  {activeTab === "vault" && (
-                    <SchoolVaultTab isAdmin={isAdmin} />
-                  )}
-                  {activeTab === "broadcast" && (
-                    <BroadcastTab isAdmin={isAdmin} />
-                  )}
-                  {activeTab === "calendar" && (
-                    <CalendarTab isAdmin={isAdmin} />
-                  )}
+                  {activeTab === "vault" && <SchoolVaultTab isAdmin={isAdmin} />}
+                  {activeTab === "broadcast" && <BroadcastTab isAdmin={isAdmin} />}
+                  {activeTab === "calendar" && <CalendarTab isAdmin={isAdmin} />}
                   {activeTab === "finance" && !isTeacher && (
                     <FinanceTab
                       isAdmin={isAdmin}
@@ -655,7 +542,6 @@ const Dashboard = () => {
             </div>
           </main>
 
-          {/* 👈 PRO FIX: Passed the props to UtilitySidebar */}
           {(!isTeacher && !isParent) && (
             <UtilitySidebar 
               userData={userData} 
@@ -663,7 +549,6 @@ const Dashboard = () => {
               setIsOpen={setIsUtilityOpen} 
             />
           )}
-
         </div>
       </div>
     </div>

@@ -8,10 +8,9 @@ require("dotenv").config();
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
 
-router.post("/invoices", authorize, async (req, res) => {
+router.post("/invoices", authorize, async (req, res, next) => {
   try {
-    if (req.user.role !== "Admin")
-      return res.status(403).json({ error: "Access Denied." });
+    if (req.user.role !== "Admin") return res.status(403).json({ error: "Access Denied." });
 
     const { student_id, title, amount, due_date } = req.body;
 
@@ -54,12 +53,11 @@ router.post("/invoices", authorize, async (req, res) => {
 
     res.json(newInvoice.rows[0]);
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send("Server Error");
+    next(err);
   }
 });
 
-router.get("/invoices", authorize, async (req, res) => {
+router.get("/invoices", authorize, async (req, res, next) => {
   try {
     let query = `
       SELECT i.*, u.full_name AS student_name, s.class_grade 
@@ -96,12 +94,11 @@ router.get("/invoices", authorize, async (req, res) => {
     const invoices = await pool.query(query, queryParams);
     res.json(invoices.rows);
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send("Server Error");
+    next(err);
   }
 });
 
-router.post("/invoices/:id/checkout", authorize, async (req, res) => {
+router.post("/invoices/:id/checkout", authorize, async (req, res, next) => {
   try {
     const { id } = req.params;
 
@@ -110,12 +107,10 @@ router.post("/invoices/:id/checkout", authorize, async (req, res) => {
       [id, req.user.school_id],
     );
 
-    if (invoiceQuery.rows.length === 0)
-      return res.status(404).json({ error: "Invoice not found" });
+    if (invoiceQuery.rows.length === 0) return res.status(404).json({ error: "Invoice not found" });
     const invoice = invoiceQuery.rows[0];
 
-    if (invoice.status === "Paid")
-      return res.status(400).json({ error: "Invoice is already paid." });
+    if (invoice.status === "Paid") return res.status(400).json({ error: "Invoice is already paid." });
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
@@ -143,7 +138,6 @@ router.post("/invoices/:id/checkout", authorize, async (req, res) => {
 
     res.json({ url: session.url });
   } catch (err) {
-    console.error(err.message);
     res.status(500).json({ error: "Stripe connection failed." });
   }
 });
@@ -153,11 +147,7 @@ router.post("/webhook", async (req, res) => {
   let event;
 
   try {
-    event = stripe.webhooks.constructEvent(
-      req.body,
-      sig,
-      process.env.STRIPE_WEBHOOK_SECRET,
-    );
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
   } catch (err) {
     console.error(`❌ Webhook Signature Error: ${err.message}`);
     return res.status(400).send(`Webhook Error: ${err.message}`);
@@ -169,7 +159,13 @@ router.post("/webhook", async (req, res) => {
     const schoolId = session.metadata.school_id;
 
     try {
-      const updatedInvoice = await pool.query(
+      const invoiceCheck = await pool.query("SELECT status FROM invoices WHERE invoice_id = $1", [invoiceId]);
+      
+      if(invoiceCheck.rows.length > 0 && invoiceCheck.rows[0].status === 'Paid') {
+          return res.status(200).json({ received: true, message: "Invoice already processed" });
+      }
+
+      await pool.query(
         "UPDATE invoices SET status = 'Paid' WHERE invoice_id = $1 AND school_id = $2 RETURNING *",
         [invoiceId, schoolId],
       );
