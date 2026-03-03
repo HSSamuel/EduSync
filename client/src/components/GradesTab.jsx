@@ -9,6 +9,7 @@ import {
   X,
   Edit3,
   UserSearch,
+  Loader2
 } from "lucide-react";
 
 const API_URL = import.meta.env.VITE_API_URL;
@@ -21,6 +22,9 @@ const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
     test_score: "",
     exam_score: "",
   });
+  
+  const [isSubmitting, setIsSubmitting] = useState(false); // 👈 NEW
+
   const [selectedReportStudent, setSelectedReportStudent] = useState("");
   const [reportCard, setReportCard] = useState([]);
   const [editingId, setEditingId] = useState(null);
@@ -82,6 +86,7 @@ const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
 
   const onSubmitGrade = async (e) => {
     e.preventDefault();
+    setIsSubmitting(true); // 👈 Start Loading
     try {
       const token = localStorage.getItem("token");
       const response = await fetch(`${API_URL}/results`, {
@@ -102,6 +107,8 @@ const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
       } else alert("❌ Error saving grade.");
     } catch (err) {
       console.error(err.message);
+    } finally {
+      setIsSubmitting(false); // 👈 Stop Loading
     }
   };
 
@@ -176,7 +183,6 @@ const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
 
   return (
     <div className="animate-fade-in space-y-8">
-      {/* Grade Entry Form */}
       {(isAdmin || isTeacher) && (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm transition-all">
           <div className="flex items-center gap-3 mb-6">
@@ -188,98 +194,78 @@ const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
             </h4>
           </div>
 
-          <form
-            onSubmit={onSubmitGrade}
-            className="grid grid-cols-1 md:grid-cols-5 gap-4"
-          >
+          <form onSubmit={onSubmitGrade} className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <select
               required
-              className="md:col-span-2 px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm font-medium cursor-pointer"
+              className="md:col-span-2 px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm font-medium cursor-pointer disabled:opacity-50"
               value={gradeForm.student_id}
-              onChange={(e) =>
-                setGradeForm({ ...gradeForm, student_id: e.target.value })
-              }
+              onChange={(e) => setGradeForm({ ...gradeForm, student_id: e.target.value })}
+              disabled={isSubmitting}
             >
               <option value="">Select Student...</option>
-              {students.map((s) => (
-                <option key={s.student_id} value={s.student_id}>
-                  {s.full_name}
-                </option>
-              ))}
+              {students.map((s) => <option key={s.student_id} value={s.student_id}>{s.full_name}</option>)}
             </select>
             <select
               required
-              className="md:col-span-2 px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm font-medium cursor-pointer"
+              className="md:col-span-2 px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm font-medium cursor-pointer disabled:opacity-50"
               value={gradeForm.subject_id}
-              onChange={(e) =>
-                setGradeForm({ ...gradeForm, subject_id: e.target.value })
-              }
+              onChange={(e) => setGradeForm({ ...gradeForm, subject_id: e.target.value })}
+              disabled={isSubmitting}
             >
               <option value="">Select Subject...</option>
-              {subjects.map((s) => (
-                <option key={s.subject_id} value={s.subject_id}>
-                  {s.subject_name}
-                </option>
-              ))}
+              {subjects.map((s) => <option key={s.subject_id} value={s.subject_id}>{s.subject_name}</option>)}
             </select>
             <input
               type="text"
               placeholder="Term (e.g. T1)"
               required
-              className="px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm font-medium uppercase"
+              className="px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm font-medium uppercase disabled:opacity-50"
               value={gradeForm.academic_term}
-              onChange={(e) =>
-                setGradeForm({ ...gradeForm, academic_term: e.target.value })
-              }
+              onChange={(e) => setGradeForm({ ...gradeForm, academic_term: e.target.value })}
+              disabled={isSubmitting}
             />
 
             <div className="md:col-span-2 relative">
-              <span className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 font-bold text-xs">
-                / 40
-              </span>
+              <span className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 font-bold text-xs">/ 40</span>
               <input
                 type="number"
                 step="0.01"
                 max="40"
                 placeholder="Test Score"
                 required
-                className="w-full pl-4 pr-10 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm font-medium font-mono"
+                className="w-full pl-4 pr-10 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm font-medium font-mono disabled:opacity-50"
                 value={gradeForm.test_score}
-                onChange={(e) =>
-                  setGradeForm({ ...gradeForm, test_score: e.target.value })
-                }
+                onChange={(e) => setGradeForm({ ...gradeForm, test_score: e.target.value })}
+                disabled={isSubmitting}
               />
             </div>
             <div className="md:col-span-2 relative">
-              <span className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 font-bold text-xs">
-                / 60
-              </span>
+              <span className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 font-bold text-xs">/ 60</span>
               <input
                 type="number"
                 step="0.01"
                 max="60"
                 placeholder="Exam Score"
                 required
-                className="w-full pl-4 pr-10 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm font-medium font-mono"
+                className="w-full pl-4 pr-10 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-sm font-medium font-mono disabled:opacity-50"
                 value={gradeForm.exam_score}
-                onChange={(e) =>
-                  setGradeForm({ ...gradeForm, exam_score: e.target.value })
-                }
+                onChange={(e) => setGradeForm({ ...gradeForm, exam_score: e.target.value })}
+                disabled={isSubmitting}
               />
             </div>
             <button
               type="submit"
-              className="md:col-span-1 py-3 bg-purple-600 text-white font-bold text-sm rounded-xl shadow-md shadow-purple-500/30 hover:bg-purple-700 hover:-translate-y-0.5 transition-all"
+              disabled={isSubmitting}
+              className="md:col-span-1 flex items-center justify-center gap-2 py-3 bg-purple-600 text-white font-bold text-sm rounded-xl shadow-md shadow-purple-500/30 hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
-              Save Grade
+              {isSubmitting ? <><Loader2 size={16} className="animate-spin"/> Saving...</> : "Save Grade"}
             </button>
           </form>
         </div>
       )}
 
-      {/* Report Card Viewer */}
+      {/* Report Card Viewer (identical logic, omitted for brevity but functionally identical) */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden flex flex-col">
-        {/* Header Actions */}
         <div className="p-6 md:p-8 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-3 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl">
@@ -287,183 +273,74 @@ const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
             </div>
             <div>
               <h4 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">
-                {isAdmin || isTeacher
-                  ? "Official Transcript"
-                  : isParent
-                    ? "Child's Report Card"
-                    : "My Report Card"}
+                {isAdmin || isTeacher ? "Official Transcript" : isParent ? "Child's Report Card" : "My Report Card"}
               </h4>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                Digital Academic Records
-              </p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Digital Academic Records</p>
             </div>
           </div>
 
           <div className="flex flex-col sm:flex-row w-full md:w-auto gap-3 items-center">
             {(isAdmin || isTeacher || isParent) && (
               <div className="relative w-full sm:w-64">
-                <UserSearch
-                  className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-                  size={16}
-                />
+                <UserSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
                 <select
                   className="w-full pl-9 pr-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-bold cursor-pointer transition-all"
                   value={selectedReportStudent}
                   onChange={handleStudentSelect}
                 >
                   <option value="">Select Student...</option>
-                  {(isParent ? myChildren : students).map((s) => (
-                    <option key={s.student_id} value={s.student_id}>
-                      {s.full_name}
-                    </option>
-                  ))}
+                  {(isParent ? myChildren : students).map((s) => <option key={s.student_id} value={s.student_id}>{s.full_name}</option>)}
                 </select>
               </div>
             )}
 
             {reportCard.length > 0 && (
-              <button
-                onClick={downloadPDF}
-                className="w-full sm:w-auto px-5 py-2.5 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 font-bold rounded-xl shadow-md hover:bg-gray-800 dark:hover:bg-white hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 text-sm"
-              >
+              <button onClick={downloadPDF} className="w-full sm:w-auto px-5 py-2.5 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 font-bold rounded-xl shadow-md hover:bg-gray-800 dark:hover:bg-white hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 text-sm">
                 <FileDown size={18} /> Download PDF
               </button>
             )}
           </div>
         </div>
 
-        {/* Data Grid */}
         {(isAdmin || isTeacher || isParent) && !selectedReportStudent ? (
-          <div className="p-12 text-center text-gray-400">
-            <UserSearch size={48} className="mx-auto mb-4 opacity-50" />
-            <p className="font-medium">
-              Please select a student to view their transcript.
-            </p>
-          </div>
+          <div className="p-12 text-center text-gray-400"><UserSearch size={48} className="mx-auto mb-4 opacity-50" /><p className="font-medium">Please select a student to view their transcript.</p></div>
         ) : reportCard.length === 0 ? (
-          <div className="p-12 text-center text-gray-400">
-            <p className="font-medium italic">
-              No academic records found for this student.
-            </p>
-          </div>
+          <div className="p-12 text-center text-gray-400"><p className="font-medium italic">No academic records found for this student.</p></div>
         ) : (
           <div className="overflow-auto max-h-[60vh] w-full relative">
             <table className="w-full text-left border-collapse min-w-[700px]">
               <thead className="sticky top-0 z-10 bg-gray-100 dark:bg-gray-900/95 backdrop-blur-sm shadow-sm">
                 <tr className="text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">
-                  <th className="p-4 font-bold border-b border-gray-200 dark:border-gray-700">
-                    Subject
-                  </th>
-                  <th className="p-4 font-bold border-b border-gray-200 dark:border-gray-700">
-                    Term
-                  </th>
-                  <th className="p-4 font-bold text-center border-b border-gray-200 dark:border-gray-700">
-                    Test (/40)
-                  </th>
-                  <th className="p-4 font-bold text-center border-b border-gray-200 dark:border-gray-700">
-                    Exam (/60)
-                  </th>
-                  <th className="p-4 font-black text-indigo-600 dark:text-indigo-400 text-center border-b border-gray-200 dark:border-gray-700">
-                    Total (%)
-                  </th>
-                  {(isAdmin || isTeacher) && (
-                    <th className="p-4 font-bold text-right pr-6 border-b border-gray-200 dark:border-gray-700">
-                      Action
-                    </th>
-                  )}
+                  <th className="p-4 font-bold border-b border-gray-200 dark:border-gray-700">Subject</th>
+                  <th className="p-4 font-bold border-b border-gray-200 dark:border-gray-700">Term</th>
+                  <th className="p-4 font-bold text-center border-b border-gray-200 dark:border-gray-700">Test (/40)</th>
+                  <th className="p-4 font-bold text-center border-b border-gray-200 dark:border-gray-700">Exam (/60)</th>
+                  <th className="p-4 font-black text-indigo-600 dark:text-indigo-400 text-center border-b border-gray-200 dark:border-gray-700">Total (%)</th>
+                  {(isAdmin || isTeacher) && <th className="p-4 font-bold text-right pr-6 border-b border-gray-200 dark:border-gray-700">Action</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
                 {reportCard.map((row) => (
-                  <tr
-                    key={row.result_id}
-                    className="hover:bg-indigo-50/30 dark:hover:bg-gray-800/50 transition-colors group"
-                  >
-                    <td className="p-4 font-bold text-gray-900 dark:text-white">
-                      {row.subject_name}
-                    </td>
-                    <td className="p-4 text-sm font-semibold text-gray-500">
-                      {row.academic_term}
-                    </td>
-
+                  <tr key={row.result_id} className="hover:bg-indigo-50/30 dark:hover:bg-gray-800/50 transition-colors group">
+                    <td className="p-4 font-bold text-gray-900 dark:text-white">{row.subject_name}</td>
+                    <td className="p-4 text-sm font-semibold text-gray-500">{row.academic_term}</td>
                     {editingId === row.result_id ? (
                       <>
-                        <td className="p-4 text-center">
-                          <input
-                            type="number"
-                            step="0.01"
-                            max="40"
-                            className="w-16 px-2 py-1.5 text-sm bg-white dark:bg-gray-900 border border-indigo-300 dark:border-indigo-600 rounded focus:ring-2 focus:ring-indigo-500 outline-none text-center font-bold shadow-inner font-mono"
-                            value={editScores.test_score}
-                            onChange={(e) =>
-                              setEditScores({
-                                ...editScores,
-                                test_score: e.target.value,
-                              })
-                            }
-                          />
-                        </td>
-                        <td className="p-4 text-center">
-                          <input
-                            type="number"
-                            step="0.01"
-                            max="60"
-                            className="w-16 px-2 py-1.5 text-sm bg-white dark:bg-gray-900 border border-indigo-300 dark:border-indigo-600 rounded focus:ring-2 focus:ring-indigo-500 outline-none text-center font-bold shadow-inner font-mono"
-                            value={editScores.exam_score}
-                            onChange={(e) =>
-                              setEditScores({
-                                ...editScores,
-                                exam_score: e.target.value,
-                              })
-                            }
-                          />
-                        </td>
-                        <td className="p-4 text-center text-xs text-gray-400 italic">
-                          Calculating...
-                        </td>
+                        <td className="p-4 text-center"><input type="number" step="0.01" max="40" className="w-16 px-2 py-1.5 text-sm bg-white dark:bg-gray-900 border border-indigo-300 dark:border-indigo-600 rounded focus:ring-2 focus:ring-indigo-500 outline-none text-center font-bold shadow-inner font-mono" value={editScores.test_score} onChange={(e) => setEditScores({ ...editScores, test_score: e.target.value })} /></td>
+                        <td className="p-4 text-center"><input type="number" step="0.01" max="60" className="w-16 px-2 py-1.5 text-sm bg-white dark:bg-gray-900 border border-indigo-300 dark:border-indigo-600 rounded focus:ring-2 focus:ring-indigo-500 outline-none text-center font-bold shadow-inner font-mono" value={editScores.exam_score} onChange={(e) => setEditScores({ ...editScores, exam_score: e.target.value })} /></td>
+                        <td className="p-4 text-center text-xs text-gray-400 italic">Calculating...</td>
                         <td className="p-4 text-right pr-4 space-x-2">
-                          <button
-                            onClick={() => saveEdit(row.result_id)}
-                            className="p-2 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors"
-                            title="Save"
-                          >
-                            <Check size={16} />
-                          </button>
-                          <button
-                            onClick={cancelEditing}
-                            className="p-2 bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition-colors"
-                            title="Cancel"
-                          >
-                            <X size={16} />
-                          </button>
+                          <button onClick={() => saveEdit(row.result_id)} className="p-2 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors" title="Save"><Check size={16} /></button>
+                          <button onClick={cancelEditing} className="p-2 bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition-colors" title="Cancel"><X size={16} /></button>
                         </td>
                       </>
                     ) : (
                       <>
-                        {/* 👈 PRO UI: Monospace font for perfect vertical number alignment */}
-                        <td className="p-4 text-center font-mono font-medium text-gray-600 dark:text-gray-300">
-                          {Number(row.test_score).toFixed(2)}
-                        </td>
-                        <td className="p-4 text-center font-mono font-medium text-gray-600 dark:text-gray-300">
-                          {Number(row.exam_score).toFixed(2)}
-                        </td>
-                        <td className="p-4 text-center">
-                          <span
-                            className={`inline-flex items-center justify-center px-4 py-1.5 rounded-full text-sm font-black font-mono ${row.total_score >= 50 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"}`}
-                          >
-                            {Number(row.total_score).toFixed(2)}%
-                          </span>
-                        </td>
+                        <td className="p-4 text-center font-mono font-medium text-gray-600 dark:text-gray-300">{Number(row.test_score).toFixed(2)}</td>
+                        <td className="p-4 text-center font-mono font-medium text-gray-600 dark:text-gray-300">{Number(row.exam_score).toFixed(2)}</td>
+                        <td className="p-4 text-center"><span className={`inline-flex items-center justify-center px-4 py-1.5 rounded-full text-sm font-black font-mono ${row.total_score >= 50 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"}`}>{Number(row.total_score).toFixed(2)}%</span></td>
                         {(isAdmin || isTeacher) && (
-                          <td className="p-4 text-right pr-6">
-                            <button
-                              onClick={() => startEditing(row)}
-                              className="p-2 text-gray-400 hover:text-indigo-600 bg-gray-50 dark:bg-gray-900 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-all opacity-0 group-hover:opacity-100 ml-auto"
-                              title="Edit Grade"
-                            >
-                              <Edit3 size={16} />
-                            </button>
-                          </td>
+                          <td className="p-4 text-right pr-6"><button onClick={() => startEditing(row)} className="p-2 text-gray-400 hover:text-indigo-600 bg-gray-50 dark:bg-gray-900 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-all opacity-0 group-hover:opacity-100 ml-auto" title="Edit Grade"><Edit3 size={16} /></button></td>
                         )}
                       </>
                     )}

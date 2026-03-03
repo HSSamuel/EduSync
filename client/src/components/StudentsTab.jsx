@@ -11,6 +11,7 @@ import {
   Filter,
   ChevronLeft,
   ChevronRight,
+  Loader2
 } from "lucide-react";
 import PremiumEmptyState from "./PremiumEmptyState";
 
@@ -21,6 +22,8 @@ const StudentsTab = ({ isAdmin }) => {
   const [studentEmail, setStudentEmail] = useState("");
   const [studentPassword, setStudentPassword] = useState("");
   const [studentGrade, setStudentGrade] = useState("");
+  
+  const [isSubmitting, setIsSubmitting] = useState(false); // 👈 NEW
 
   const [students, setStudents] = useState([]);
   const [parents, setParents] = useState([]);
@@ -44,7 +47,7 @@ const StudentsTab = ({ isAdmin }) => {
           search: searchTerm,
           class_grade: filterClass,
           page: currentPage,
-          limit: 15, // 👈 PRO UI: Increased limit because tables are denser
+          limit: 15, 
         });
 
         const response = await fetch(
@@ -85,6 +88,7 @@ const StudentsTab = ({ isAdmin }) => {
 
   const onSubmitStudent = async (e) => {
     e.preventDefault();
+    setIsSubmitting(true); // 👈 Start Loading
     try {
       const token = localStorage.getItem("token");
       const response = await fetch(`${API_URL}/students`, {
@@ -102,7 +106,6 @@ const StudentsTab = ({ isAdmin }) => {
         setSearchTerm("");
         setFilterClass("");
         setCurrentPage(1);
-
         setStudentName("");
         setStudentEmail("");
         setStudentPassword("");
@@ -113,6 +116,8 @@ const StudentsTab = ({ isAdmin }) => {
       }
     } catch (err) {
       console.error(err.message);
+    } finally {
+      setIsSubmitting(false); // 👈 Stop Loading
     }
   };
 
@@ -165,69 +170,65 @@ const StudentsTab = ({ isAdmin }) => {
         <form onSubmit={onSubmitStudent} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="relative md:col-span-1">
-              <Users
-                className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-                size={18}
-              />
+              <Users className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
               <input
                 type="text"
                 placeholder="Full Name"
-                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition-all text-sm font-medium"
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition-all text-sm font-medium disabled:opacity-50"
                 value={studentName}
                 onChange={(e) => setStudentName(e.target.value)}
                 required
+                disabled={isSubmitting}
               />
             </div>
             <div className="relative md:col-span-1">
-              <Mail
-                className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-                size={18}
-              />
+              <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
               <input
                 type="email"
                 placeholder="Email Address"
-                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition-all text-sm font-medium"
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition-all text-sm font-medium disabled:opacity-50"
                 value={studentEmail}
                 onChange={(e) => setStudentEmail(e.target.value)}
                 required
+                disabled={isSubmitting}
               />
             </div>
             <div className="relative md:col-span-1">
-              <Lock
-                className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-                size={18}
-              />
+              <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
               <input
                 type="password"
                 placeholder="Temp Password"
-                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition-all text-sm font-medium"
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition-all text-sm font-medium disabled:opacity-50"
                 value={studentPassword}
                 onChange={(e) => setStudentPassword(e.target.value)}
                 required
+                disabled={isSubmitting}
               />
             </div>
             <div className="relative md:col-span-1">
-              <GraduationCap
-                className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-                size={18}
-              />
+              <GraduationCap className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
               <input
                 type="text"
                 placeholder="Class (e.g. JSS 1)"
-                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition-all text-sm font-medium"
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-green-500 outline-none transition-all text-sm font-medium disabled:opacity-50"
                 value={studentGrade}
                 onChange={(e) => setStudentGrade(e.target.value)}
                 required
+                disabled={isSubmitting}
               />
             </div>
           </div>
           <div className="pt-2 flex justify-end">
             <button
               type="submit"
-              className="w-full md:w-auto px-8 py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 shadow-md shadow-green-500/30 transition-all flex items-center justify-center gap-2"
+              disabled={isSubmitting}
+              className="w-full md:w-auto px-8 py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 shadow-md shadow-green-500/30 transition-all flex items-center justify-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
-              <CheckCircle2 size={18} />
-              <span>Register Student</span>
+              {isSubmitting ? (
+                <><Loader2 size={18} className="animate-spin" /> Enrolling...</>
+              ) : (
+                <><CheckCircle2 size={18} /> Register Student</>
+              )}
             </button>
           </div>
         </form>
@@ -248,10 +249,7 @@ const StudentsTab = ({ isAdmin }) => {
 
         <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
           <div className="relative w-full sm:w-64">
-            <Search
-              className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-              size={18}
-            />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
             <input
               type="text"
               placeholder="Search by name..."
@@ -261,10 +259,7 @@ const StudentsTab = ({ isAdmin }) => {
             />
           </div>
           <div className="relative w-full sm:w-48">
-            <Filter
-              className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-              size={18}
-            />
+            <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
             <select
               value={filterClass}
               onChange={(e) => setFilterClass(e.target.value)}
@@ -282,7 +277,6 @@ const StudentsTab = ({ isAdmin }) => {
         </div>
       </div>
 
-      {/* 👈 PRO UI: High Density Roster Table */}
       {students.length === 0 ? (
         <PremiumEmptyState
           icon={Users}
@@ -295,38 +289,23 @@ const StudentsTab = ({ isAdmin }) => {
             <table className="w-full text-left border-collapse min-w-[800px]">
               <thead className="sticky top-0 z-10 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-sm shadow-sm">
                 <tr className="text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">
-                  <th className="p-4 font-bold border-b border-gray-200 dark:border-gray-700 w-12 text-center">
-                    #
-                  </th>
-                  <th className="p-4 font-bold border-b border-gray-200 dark:border-gray-700">
-                    Student Info
-                  </th>
-                  <th className="p-4 font-bold border-b border-gray-200 dark:border-gray-700 w-32 text-center">
-                    Class
-                  </th>
-                  <th className="p-4 font-bold border-b border-gray-200 dark:border-gray-700">
-                    Parent Linkage
-                  </th>
+                  <th className="p-4 font-bold border-b border-gray-200 dark:border-gray-700 w-12 text-center">#</th>
+                  <th className="p-4 font-bold border-b border-gray-200 dark:border-gray-700">Student Info</th>
+                  <th className="p-4 font-bold border-b border-gray-200 dark:border-gray-700 w-32 text-center">Class</th>
+                  <th className="p-4 font-bold border-b border-gray-200 dark:border-gray-700">Parent Linkage</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
                 {students.map((student, index) => (
-                  <tr
-                    key={student.student_id}
-                    className="hover:bg-blue-50/30 dark:hover:bg-gray-800/50 transition-colors group"
-                  >
-                    <td className="p-4 text-center font-mono text-gray-400 text-xs">
-                      {(currentPage - 1) * 15 + index + 1}
-                    </td>
+                  <tr key={student.student_id} className="hover:bg-blue-50/30 dark:hover:bg-gray-800/50 transition-colors group">
+                    <td className="p-4 text-center font-mono text-gray-400 text-xs">{(currentPage - 1) * 15 + index + 1}</td>
                     <td className="p-4">
                       <div className="flex items-center gap-3">
                         <div className="flex items-center justify-center w-9 h-9 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full font-black text-sm">
                           {student.full_name.charAt(0)}
                         </div>
                         <div>
-                          <p className="font-bold text-gray-900 dark:text-white leading-none mb-1">
-                            {student.full_name}
-                          </p>
+                          <p className="font-bold text-gray-900 dark:text-white leading-none mb-1">{student.full_name}</p>
                           <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
                             <Mail size={12} /> {student.email}
                           </p>
@@ -341,27 +320,15 @@ const StudentsTab = ({ isAdmin }) => {
                     <td className="p-4">
                       <div className="flex items-center gap-2 max-w-sm">
                         <div className="relative flex-1">
-                          <Link2
-                            className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-gray-400"
-                            size={14}
-                          />
+                          <Link2 className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-gray-400" size={14} />
                           <select
                             className="w-full pl-8 pr-3 py-2 text-sm bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all cursor-pointer text-gray-700 dark:text-gray-200"
                             value={selectedParents[student.student_id] || ""}
-                            onChange={(e) =>
-                              setSelectedParents({
-                                ...selectedParents,
-                                [student.student_id]: e.target.value,
-                              })
-                            }
+                            onChange={(e) => setSelectedParents({ ...selectedParents, [student.student_id]: e.target.value })}
                           >
-                            <option value="" className="text-gray-400">
-                              Select Parent...
-                            </option>
+                            <option value="" className="text-gray-400">Select Parent...</option>
                             {parents.map((p) => (
-                              <option key={p.user_id} value={p.user_id}>
-                                {p.full_name}
-                              </option>
+                              <option key={p.user_id} value={p.user_id}>{p.full_name}</option>
                             ))}
                           </select>
                         </div>
@@ -379,7 +346,6 @@ const StudentsTab = ({ isAdmin }) => {
             </table>
           </div>
 
-          {/* Pagination Footer inside Table container */}
           {totalPages > 1 && (
             <div className="p-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20 flex items-center justify-between">
               <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">
@@ -387,28 +353,18 @@ const StudentsTab = ({ isAdmin }) => {
               </span>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() =>
-                    setCurrentPage((prev) => Math.max(prev - 1, 1))
-                  }
+                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
                   disabled={currentPage === 1}
                   className="p-1.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
                 >
-                  <ChevronLeft
-                    size={16}
-                    className="text-gray-600 dark:text-gray-300"
-                  />
+                  <ChevronLeft size={16} className="text-gray-600 dark:text-gray-300" />
                 </button>
                 <button
-                  onClick={() =>
-                    setCurrentPage((prev) => Math.min(prev + 1, totalPages))
-                  }
+                  onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
                   disabled={currentPage === totalPages}
                   className="p-1.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
                 >
-                  <ChevronRight
-                    size={16}
-                    className="text-gray-600 dark:text-gray-300"
-                  />
+                  <ChevronRight size={16} className="text-gray-600 dark:text-gray-300" />
                 </button>
               </div>
             </div>

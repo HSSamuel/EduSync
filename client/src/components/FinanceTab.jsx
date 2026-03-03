@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Clock,
   CreditCard,
+  Loader2
 } from "lucide-react";
 
 const API_URL = import.meta.env.VITE_API_URL;
@@ -19,7 +20,9 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
     amount: "",
     due_date: "",
   });
-  const [isProcessing, setIsProcessing] = useState(false);
+  
+  const [isProcessing, setIsProcessing] = useState(false); // For Stripe checkout
+  const [isGenerating, setIsGenerating] = useState(false); // 👈 NEW: For invoice generation
 
   useEffect(() => {
     fetchInvoices();
@@ -44,6 +47,7 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
 
   const onCreateInvoice = async (e) => {
     e.preventDefault();
+    setIsGenerating(true); // 👈 Start Loading
     try {
       const token = localStorage.getItem("token");
       const res = await fetch(`${API_URL}/finance/invoices`, {
@@ -58,6 +62,8 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
       }
     } catch (err) {
       console.error(err);
+    } finally {
+      setIsGenerating(false); // 👈 Stop Loading
     }
   };
 
@@ -110,12 +116,11 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
           >
             <div className="md:col-span-4 relative">
               <select
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none text-sm font-medium cursor-pointer"
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none text-sm font-medium cursor-pointer disabled:opacity-50"
                 value={formData.student_id}
-                onChange={(e) =>
-                  setFormData({ ...formData, student_id: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, student_id: e.target.value })}
                 required
+                disabled={isGenerating}
               >
                 <option value="">-- Select Student --</option>
                 {students.map((s) => (
@@ -129,48 +134,43 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
               <input
                 type="text"
                 placeholder="Description (e.g., Tuition)"
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none text-sm font-medium"
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none text-sm font-medium disabled:opacity-50"
                 value={formData.title}
-                onChange={(e) =>
-                  setFormData({ ...formData, title: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                 required
+                disabled={isGenerating}
               />
             </div>
             <div className="md:col-span-2 relative">
-              <DollarSign
-                className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-                size={16}
-              />
+              <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
               <input
                 type="number"
                 placeholder="Amount"
-                className="w-full pl-9 pr-3 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none text-sm font-medium"
+                className="w-full pl-9 pr-3 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none text-sm font-medium disabled:opacity-50"
                 value={formData.amount}
-                onChange={(e) =>
-                  setFormData({ ...formData, amount: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
                 required
                 min="1"
+                disabled={isGenerating}
               />
             </div>
             <div className="md:col-span-2 relative">
               <input
                 type="date"
-                className="w-full px-3 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none text-sm font-medium cursor-pointer"
+                className="w-full px-3 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none text-sm font-medium cursor-pointer disabled:opacity-50"
                 value={formData.due_date}
-                onChange={(e) =>
-                  setFormData({ ...formData, due_date: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
                 required
+                disabled={isGenerating}
               />
             </div>
             <button
               type="submit"
-              className="md:col-span-1 flex items-center justify-center py-3 bg-amber-500 text-white font-bold rounded-xl shadow-md shadow-amber-500/30 hover:bg-amber-600 transition-all hover:-translate-y-0.5"
+              disabled={isGenerating}
+              className="md:col-span-1 flex items-center justify-center py-3 bg-amber-500 text-white font-bold rounded-xl shadow-md shadow-amber-500/30 hover:bg-amber-600 transition-all disabled:bg-gray-400"
               title="Send Invoice"
             >
-              <Send size={18} />
+              {isGenerating ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
             </button>
           </form>
         </div>
@@ -192,7 +192,6 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
             />
           </div>
         ) : (
-          /* 👈 PRO UI: Sticky Header & Scrollable Body Container */
           <div className="overflow-auto max-h-[60vh] w-full relative">
             <table className="w-full text-left border-collapse min-w-[700px]">
               <thead className="sticky top-0 z-10 bg-gray-100 dark:bg-gray-900/95 backdrop-blur-sm shadow-sm">
@@ -211,17 +210,9 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
                 {invoices.map((inv) => {
                   const isPaid = inv.status === "Paid";
                   return (
-                    <tr
-                      key={inv.invoice_id}
-                      className="hover:bg-blue-50/30 dark:hover:bg-gray-800/50 transition-colors group"
-                    >
-                      <td className="p-4 font-bold text-gray-900 dark:text-white">
-                        {inv.student_name}
-                      </td>
-                      <td className="p-4 font-medium text-gray-600 dark:text-gray-300">
-                        {inv.title}
-                      </td>
-                      {/* 👈 PRO UI: font-mono for perfect vertical alignment of numbers */}
+                    <tr key={inv.invoice_id} className="hover:bg-blue-50/30 dark:hover:bg-gray-800/50 transition-colors group">
+                      <td className="p-4 font-bold text-gray-900 dark:text-white">{inv.student_name}</td>
+                      <td className="p-4 font-medium text-gray-600 dark:text-gray-300">{inv.title}</td>
                       <td className="p-4 font-mono font-bold text-gray-900 dark:text-white text-[15px]">
                         ₦{Number(inv.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </td>
@@ -229,14 +220,8 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
                         {new Date(inv.due_date).toLocaleDateString()}
                       </td>
                       <td className="p-4 text-center">
-                        <span
-                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${isPaid ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-500"}`}
-                        >
-                          {isPaid ? (
-                            <CheckCircle2 size={12} />
-                          ) : (
-                            <Clock size={12} />
-                          )}
+                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${isPaid ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-500"}`}>
+                          {isPaid ? <CheckCircle2 size={12} /> : <Clock size={12} />}
                           {inv.status}
                         </span>
                       </td>

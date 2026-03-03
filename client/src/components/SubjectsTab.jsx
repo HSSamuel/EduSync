@@ -8,15 +8,17 @@ import {
   FolderOpen,
   FileText,
   CheckCircle2,
+  Loader2, // 👈 NEW: Imported Loader2 for the spinner
 } from "lucide-react";
 
-const API_URL = import.meta.env.VITE_API_URL; // 👈 Fixed
+const API_URL = import.meta.env.VITE_API_URL; 
 
 const SubjectsTab = ({ isAdmin, subjects, setSubjects }) => {
   const [subjectName, setSubjectName] = useState("");
   const [teacherId, setTeacherId] = useState("");
   const [teachers, setTeachers] = useState([]);
   const [modules, setModules] = useState({});
+  const [uploadingIds, setUploadingIds] = useState({}); // 👈 NEW: Track uploads per subject
 
   useEffect(() => {
     if (isAdmin) {
@@ -24,7 +26,6 @@ const SubjectsTab = ({ isAdmin, subjects, setSubjects }) => {
         try {
           const token = localStorage.getItem("token");
           const response = await fetch(`${API_URL}/users/teachers`, {
-            // 👈 Fixed
             headers: { jwt_token: token },
           });
           if (response.ok) setTeachers(await response.json());
@@ -41,7 +42,6 @@ const SubjectsTab = ({ isAdmin, subjects, setSubjects }) => {
     try {
       const token = localStorage.getItem("token");
       const response = await fetch(`${API_URL}/subjects`, {
-        // 👈 Fixed
         method: "POST",
         headers: { "Content-Type": "application/json", jwt_token: token },
         body: JSON.stringify({
@@ -65,7 +65,6 @@ const SubjectsTab = ({ isAdmin, subjects, setSubjects }) => {
     try {
       const token = localStorage.getItem("token");
       const response = await fetch(`${API_URL}/subjects/${id}`, {
-        // 👈 Fixed
         method: "DELETE",
         headers: { jwt_token: token },
       });
@@ -77,12 +76,15 @@ const SubjectsTab = ({ isAdmin, subjects, setSubjects }) => {
 
   const uploadModule = async (e, subject_id) => {
     e.preventDefault();
+    
+    // 👈 NEW: Set the specific subject to a loading state
+    setUploadingIds((prev) => ({ ...prev, [subject_id]: true })); 
+    
     try {
       const token = localStorage.getItem("token");
       const formData = new FormData(e.target);
       formData.append("subject_id", subject_id);
       const response = await fetch(`${API_URL}/modules`, {
-        // 👈 Fixed
         method: "POST",
         headers: { jwt_token: token },
         body: formData,
@@ -93,6 +95,9 @@ const SubjectsTab = ({ isAdmin, subjects, setSubjects }) => {
       }
     } catch (err) {
       console.error(err.message);
+    } finally {
+      // 👈 NEW: Remove the loading state regardless of success or failure
+      setUploadingIds((prev) => ({ ...prev, [subject_id]: false })); 
     }
   };
 
@@ -100,7 +105,6 @@ const SubjectsTab = ({ isAdmin, subjects, setSubjects }) => {
     try {
       const token = localStorage.getItem("token");
       const response = await fetch(`${API_URL}/modules/${subject_id}`, {
-        // 👈 Fixed
         headers: { jwt_token: token },
       });
       if (response.ok)
@@ -110,7 +114,6 @@ const SubjectsTab = ({ isAdmin, subjects, setSubjects }) => {
     }
   };
 
-  // --- FIX: CLOUDINARY DOWNLOAD LOGIC FOR MODULES ---
   const handleSecureDownload = (e, fileUrl, fileName) => {
     e.preventDefault();
     if (!fileUrl) return alert("File URL is missing.");
@@ -187,118 +190,133 @@ const SubjectsTab = ({ isAdmin, subjects, setSubjects }) => {
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {subjects.map((subject) => (
-            <div
-              key={subject.subject_id}
-              className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-lg transition-all duration-300 group flex flex-col overflow-hidden"
-            >
-              {/* Card Header */}
-              <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-start bg-gray-50/50 dark:bg-gray-800/50">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg">
-                    <BookOpen size={20} />
-                  </div>
-                  <h4 className="text-lg font-bold text-gray-900 dark:text-white tracking-tight">
-                    {subject.subject_name}
-                  </h4>
-                </div>
-                {isAdmin && (
-                  <button
-                    onClick={() => deleteSubject(subject.subject_id)}
-                    className="text-gray-400 hover:text-red-500 p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
-                    title="Delete Subject"
-                  >
-                    <Trash2 size={18} />
-                  </button>
-                )}
-              </div>
-
-              {/* Upload Section */}
-              {isAdmin && (
-                <div className="p-5">
-                  <form
-                    onSubmit={(e) => uploadModule(e, subject.subject_id)}
-                    className="space-y-3"
-                  >
-                    <input
-                      type="text"
-                      name="title"
-                      placeholder="Material Title (e.g., Syllabus)"
-                      className="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                      required
-                    />
-                    <div className="relative">
-                      <input
-                        type="file"
-                        name="module_file"
-                        accept=".pdf,.doc,.docx"
-                        className="w-full text-sm text-gray-500 file:cursor-pointer file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900/20 dark:file:text-blue-400 transition-all cursor-pointer"
-                        required
-                      />
-                    </div>
-                    <button
-                      type="submit"
-                      className="w-full py-2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-sm font-bold rounded-lg hover:bg-gray-800 dark:hover:bg-white transition-colors flex items-center justify-center gap-2"
-                    >
-                      <UploadCloud size={16} /> Upload File
-                    </button>
-                  </form>
-                </div>
-              )}
-
-              {/* Materials Section */}
+          {subjects.map((subject) => {
+            const isUploading = uploadingIds[subject.subject_id]; // 👈 NEW: Check status for this specific card
+            
+            return (
               <div
-                className={`p-5 ${isAdmin ? "bg-gray-50 dark:bg-gray-900/50 mt-auto" : "flex-grow"}`}
+                key={subject.subject_id}
+                className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-lg transition-all duration-300 group flex flex-col overflow-hidden"
               >
-                <button
-                  onClick={() => fetchModules(subject.subject_id)}
-                  className="w-full flex items-center justify-between text-sm font-bold text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors group/btn"
-                >
-                  <span className="flex items-center gap-2">
-                    <FolderOpen size={16} className="text-amber-500" /> View
-                    Materials
-                  </span>
-                  <span className="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs px-2 py-0.5 rounded-full group-hover/btn:bg-blue-100 group-hover/btn:text-blue-600 transition-colors">
-                    Open
-                  </span>
-                </button>
+                {/* Card Header */}
+                <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-start bg-gray-50/50 dark:bg-gray-800/50">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg">
+                      <BookOpen size={20} />
+                    </div>
+                    <h4 className="text-lg font-bold text-gray-900 dark:text-white tracking-tight">
+                      {subject.subject_name}
+                    </h4>
+                  </div>
+                  {isAdmin && (
+                    <button
+                      onClick={() => deleteSubject(subject.subject_id)}
+                      className="text-gray-400 hover:text-red-500 p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
+                      title="Delete Subject"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  )}
+                </div>
 
-                {modules[subject.subject_id] && (
-                  <div className="mt-4 space-y-2 animate-fade-in">
-                    {modules[subject.subject_id].length === 0 ? (
-                      <div className="text-center py-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700">
-                        <p className="text-xs text-gray-500 italic">
-                          No files uploaded yet.
-                        </p>
+                {/* Upload Section */}
+                {isAdmin && (
+                  <div className="p-5">
+                    <form
+                      onSubmit={(e) => uploadModule(e, subject.subject_id)}
+                      className="space-y-3"
+                    >
+                      <input
+                        type="text"
+                        name="title"
+                        placeholder="Material Title (e.g., Syllabus)"
+                        className="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all disabled:opacity-50"
+                        required
+                        disabled={isUploading} // 👈 NEW: Disable input during upload
+                      />
+                      <div className="relative">
+                        <input
+                          type="file"
+                          name="module_file"
+                          accept=".pdf,.doc,.docx"
+                          className="w-full text-sm text-gray-500 file:cursor-pointer file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900/20 dark:file:text-blue-400 transition-all cursor-pointer disabled:opacity-50"
+                          required
+                          disabled={isUploading} // 👈 NEW: Disable input during upload
+                        />
                       </div>
-                    ) : (
-                      modules[subject.subject_id].map((mod) => (
-                        <button
-                          key={mod.module_id}
-                          onClick={(e) =>
-                            handleSecureDownload(
-                              e,
-                              mod.file_url,
-                              `${mod.title}.pdf`,
-                            )
-                          }
-                          className="w-full flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 hover:border-blue-300 hover:shadow transition-all group/link text-left"
-                        >
-                          <FileText
-                            size={16}
-                            className="text-blue-500 group-hover/link:text-blue-600"
-                          />
-                          <span className="text-sm font-medium text-gray-700 dark:text-gray-200 group-hover/link:text-blue-600 truncate flex-1">
-                            {mod.title}
-                          </span>
-                        </button>
-                      ))
-                    )}
+                      <button
+                        type="submit"
+                        disabled={isUploading} // 👈 NEW: Disable button during upload
+                        className="w-full py-2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-sm font-bold rounded-lg hover:bg-gray-800 dark:hover:bg-white transition-colors flex items-center justify-center gap-2 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed"
+                      >
+                        {isUploading ? (
+                          <>
+                            <Loader2 size={16} className="animate-spin" /> Uploading...
+                          </>
+                        ) : (
+                          <>
+                            <UploadCloud size={16} /> Upload File
+                          </>
+                        )}
+                      </button>
+                    </form>
                   </div>
                 )}
+
+                {/* Materials Section */}
+                <div
+                  className={`p-5 ${isAdmin ? "bg-gray-50 dark:bg-gray-900/50 mt-auto" : "flex-grow"}`}
+                >
+                  <button
+                    onClick={() => fetchModules(subject.subject_id)}
+                    className="w-full flex items-center justify-between text-sm font-bold text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors group/btn"
+                  >
+                    <span className="flex items-center gap-2">
+                      <FolderOpen size={16} className="text-amber-500" /> View
+                      Materials
+                    </span>
+                    <span className="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs px-2 py-0.5 rounded-full group-hover/btn:bg-blue-100 group-hover/btn:text-blue-600 transition-colors">
+                      Open
+                    </span>
+                  </button>
+
+                  {modules[subject.subject_id] && (
+                    <div className="mt-4 space-y-2 animate-fade-in">
+                      {modules[subject.subject_id].length === 0 ? (
+                        <div className="text-center py-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700">
+                          <p className="text-xs text-gray-500 italic">
+                            No files uploaded yet.
+                          </p>
+                        </div>
+                      ) : (
+                        modules[subject.subject_id].map((mod) => (
+                          <button
+                            key={mod.module_id}
+                            onClick={(e) =>
+                              handleSecureDownload(
+                                e,
+                                mod.file_url,
+                                `${mod.title}.pdf`,
+                              )
+                            }
+                            className="w-full flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 hover:border-blue-300 hover:shadow transition-all group/link text-left"
+                          >
+                            <FileText
+                              size={16}
+                              className="text-blue-500 group-hover/link:text-blue-600"
+                            />
+                            <span className="text-sm font-medium text-gray-700 dark:text-gray-200 group-hover/link:text-blue-600 truncate flex-1">
+                              {mod.title}
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

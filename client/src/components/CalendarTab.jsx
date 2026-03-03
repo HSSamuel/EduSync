@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { Loader2 } from "lucide-react"; // 👈 NEW
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -9,6 +10,8 @@ const CalendarTab = ({ isAdmin }) => {
     event_date: "",
     event_type: "Event",
   });
+
+  const [isAdding, setIsAdding] = useState(false); // 👈 NEW
 
   useEffect(() => {
     fetchEvents();
@@ -28,6 +31,7 @@ const CalendarTab = ({ isAdmin }) => {
 
   const onSubmitEvent = async (e) => {
     e.preventDefault();
+    setIsAdding(true); // 👈 Start Loading
     try {
       const token = localStorage.getItem("token");
       const res = await fetch(`${API_URL}/school/events`, {
@@ -41,6 +45,8 @@ const CalendarTab = ({ isAdmin }) => {
       }
     } catch (err) {
       console.error(err);
+    } finally {
+      setIsAdding(false); // 👈 Stop Loading
     }
   };
 
@@ -57,7 +63,6 @@ const CalendarTab = ({ isAdmin }) => {
     }
   };
 
-  // Helper function to color-code event types
   const getEventColor = (type) => {
     switch (type) {
       case "Exam":
@@ -71,7 +76,6 @@ const CalendarTab = ({ isAdmin }) => {
 
   return (
     <div className="animate-fade-in space-y-6">
-      {/* Admin Controls */}
       {isAdmin && (
         <form
           onSubmit={onSubmitEvent}
@@ -83,12 +87,13 @@ const CalendarTab = ({ isAdmin }) => {
             </label>
             <input
               type="text"
-              className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600"
+              className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 disabled:opacity-50"
               value={formData.title}
               onChange={(e) =>
                 setFormData({ ...formData, title: e.target.value })
               }
               required
+              disabled={isAdding}
             />
           </div>
           <div className="w-full md:w-auto">
@@ -97,12 +102,13 @@ const CalendarTab = ({ isAdmin }) => {
             </label>
             <input
               type="date"
-              className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600"
+              className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 disabled:opacity-50"
               value={formData.event_date}
               onChange={(e) =>
                 setFormData({ ...formData, event_date: e.target.value })
               }
               required
+              disabled={isAdding}
             />
           </div>
           <div className="w-full md:w-auto">
@@ -110,11 +116,12 @@ const CalendarTab = ({ isAdmin }) => {
               Type
             </label>
             <select
-              className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600"
+              className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 disabled:opacity-50"
               value={formData.event_type}
               onChange={(e) =>
                 setFormData({ ...formData, event_type: e.target.value })
               }
+              disabled={isAdding}
             >
               <option value="Event">General Event</option>
               <option value="Exam">Exam / Test</option>
@@ -123,14 +130,20 @@ const CalendarTab = ({ isAdmin }) => {
           </div>
           <button
             type="submit"
-            className="w-full md:w-auto px-6 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 shadow-md"
+            disabled={isAdding}
+            className="w-full md:w-auto px-6 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 shadow-md flex items-center justify-center gap-2 disabled:bg-gray-400"
           >
-            Add Event
+            {isAdding ? (
+              <>
+                <Loader2 size={16} className="animate-spin" /> Adding...
+              </>
+            ) : (
+              "Add Event"
+            )}
           </button>
         </form>
       )}
 
-      {/* Events List */}
       <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border dark:border-gray-700">
         <h4 className="text-xl font-bold mb-4 dark:text-white">
           📅 Upcoming School Events
