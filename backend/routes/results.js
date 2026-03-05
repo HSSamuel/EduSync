@@ -130,7 +130,7 @@ router.get("/student/:student_id", authorize, async (req, res) => {
     );
     res.json(reportCard.rows);
   } catch (err) {
-    res.status(500).send("Server Error");
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
@@ -149,7 +149,7 @@ router.get("/me", authorize, async (req, res) => {
     );
     res.json(myGrades.rows);
   } catch (err) {
-    res.status(500).send("Server Error");
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
@@ -199,7 +199,7 @@ router.put("/:id", authorize, validate(updateGradeSchema), async (req, res) => {
     });
   } catch (err) {
     console.error(err.message);
-    res.status(500).send("Server Error");
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 

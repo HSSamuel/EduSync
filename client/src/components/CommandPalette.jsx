@@ -43,10 +43,11 @@ export default function CommandPalette({ toggleTheme, isDark, logout }) {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] sm:pt-[20vh]">
-      {/* Blurred Backdrop */}
+      {/* Blurred Backdrop - optimized for mobile */}
       <div
-        className="fixed inset-0 bg-black/40 backdrop-blur-sm transition-opacity"
+        className="fixed inset-0 bg-black/60 md:bg-black/40 md:backdrop-blur-sm transition-opacity"
         onClick={() => setOpen(false)}
+        aria-hidden="true"
       />
 
       {/* Command Modal */}

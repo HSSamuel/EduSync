@@ -2,8 +2,13 @@ const jwt = require("jsonwebtoken");
 require("dotenv").config();
 
 module.exports = function (req, res, next) {
-  // Note: Since we implemented cookies in Phase 1, we check headers OR cookies
-  const token = req.header("jwt_token") || req.cookies?.access_token;
+  // 👈 FIX: Check standard Authorization Bearer header first, fallback to jwt_token or cookie
+  let token = req.cookies?.access_token || req.header("jwt_token");
+  
+  const authHeader = req.header("Authorization");
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    token = authHeader.split(" ")[1];
+  }
 
   if (!token) {
     return res
@@ -12,7 +17,6 @@ module.exports = function (req, res, next) {
   }
 
   try {
-    // 👈 FIX: Verify using the new ACCESS_TOKEN_SECRET (falling back to JWT_SECRET if missing)
     const payload = jwt.verify(
       token,
       process.env.ACCESS_TOKEN_SECRET || process.env.JWT_SECRET,

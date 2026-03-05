@@ -11,7 +11,9 @@ import {
   Filter,
   ChevronLeft,
   ChevronRight,
-  Loader2
+  Loader2,
+  LayoutList,
+  List
 } from "lucide-react";
 import PremiumEmptyState from "./PremiumEmptyState";
 
@@ -23,7 +25,7 @@ const StudentsTab = ({ isAdmin }) => {
   const [studentPassword, setStudentPassword] = useState("");
   const [studentGrade, setStudentGrade] = useState("");
   
-  const [isSubmitting, setIsSubmitting] = useState(false); // 👈 NEW
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [students, setStudents] = useState([]);
   const [parents, setParents] = useState([]);
@@ -34,6 +36,8 @@ const StudentsTab = ({ isAdmin }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalStudents, setTotalStudents] = useState(0);
+
+  const [isCompactView, setIsCompactView] = useState(false); // 👈 Density Toggle State
 
   useEffect(() => {
     setCurrentPage(1);
@@ -88,7 +92,7 @@ const StudentsTab = ({ isAdmin }) => {
 
   const onSubmitStudent = async (e) => {
     e.preventDefault();
-    setIsSubmitting(true); // 👈 Start Loading
+    setIsSubmitting(true);
     try {
       const token = localStorage.getItem("token");
       const response = await fetch(`${API_URL}/students`, {
@@ -117,7 +121,7 @@ const StudentsTab = ({ isAdmin }) => {
     } catch (err) {
       console.error(err.message);
     } finally {
-      setIsSubmitting(false); // 👈 Stop Loading
+      setIsSubmitting(false);
     }
   };
 
@@ -236,7 +240,7 @@ const StudentsTab = ({ isAdmin }) => {
 
       <hr className="border-gray-200 dark:border-gray-700" />
 
-      {/* Toolbar: Search & Filter */}
+      {/* Toolbar: Search, Filter & Density Toggle */}
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-2">
           <h4 className="text-xl font-bold text-gray-900 dark:text-white">
@@ -247,7 +251,16 @@ const StudentsTab = ({ isAdmin }) => {
           </span>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto items-center">
+          <button
+            onClick={() => setIsCompactView(!isCompactView)}
+            aria-label="Toggle table density"
+            title="Toggle Compact View"
+            className="p-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 shadow-sm transition-colors hidden sm:block"
+          >
+            {isCompactView ? <LayoutList size={18} /> : <List size={18} />}
+          </button>
+          
           <div className="relative w-full sm:w-64">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
             <input
@@ -289,42 +302,43 @@ const StudentsTab = ({ isAdmin }) => {
             <table className="w-full text-left border-collapse min-w-[800px]">
               <thead className="sticky top-0 z-10 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-sm shadow-sm">
                 <tr className="text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">
-                  <th className="p-4 font-bold border-b border-gray-200 dark:border-gray-700 w-12 text-center">#</th>
-                  <th className="p-4 font-bold border-b border-gray-200 dark:border-gray-700">Student Info</th>
-                  <th className="p-4 font-bold border-b border-gray-200 dark:border-gray-700 w-32 text-center">Class</th>
-                  <th className="p-4 font-bold border-b border-gray-200 dark:border-gray-700">Parent Linkage</th>
+                  <th className={`${isCompactView ? 'p-2.5' : 'p-4'} font-bold border-b border-gray-200 dark:border-gray-700 w-12 text-center transition-all`}>#</th>
+                  <th className={`${isCompactView ? 'p-2.5' : 'p-4'} font-bold border-b border-gray-200 dark:border-gray-700 transition-all`}>Student Info</th>
+                  <th className={`${isCompactView ? 'p-2.5' : 'p-4'} font-bold border-b border-gray-200 dark:border-gray-700 w-32 text-center transition-all`}>Class</th>
+                  <th className={`${isCompactView ? 'p-2.5' : 'p-4'} font-bold border-b border-gray-200 dark:border-gray-700 transition-all`}>Parent Linkage</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
                 {students.map((student, index) => (
                   <tr key={student.student_id} className="hover:bg-blue-50/30 dark:hover:bg-gray-800/50 transition-colors group">
-                    <td className="p-4 text-center font-mono text-gray-400 text-xs">{(currentPage - 1) * 15 + index + 1}</td>
-                    <td className="p-4">
+                    <td className={`${isCompactView ? 'p-2.5 text-[11px]' : 'p-4 text-xs'} text-center font-mono text-gray-400 transition-all`}>{(currentPage - 1) * 15 + index + 1}</td>
+                    <td className={`${isCompactView ? 'p-2.5' : 'p-4'} transition-all`}>
                       <div className="flex items-center gap-3">
-                        <div className="flex items-center justify-center w-9 h-9 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full font-black text-sm">
+                        <div className={`flex items-center justify-center bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full font-black ${isCompactView ? 'w-7 h-7 text-xs' : 'w-9 h-9 text-sm'} transition-all`}>
                           {student.full_name.charAt(0)}
                         </div>
                         <div>
-                          <p className="font-bold text-gray-900 dark:text-white leading-none mb-1">{student.full_name}</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
-                            <Mail size={12} /> {student.email}
+                          <p className={`font-bold text-gray-900 dark:text-white leading-none mb-1 ${isCompactView ? 'text-sm' : 'text-base'}`}>{student.full_name}</p>
+                          <p className={`text-gray-500 dark:text-gray-400 flex items-center gap-1 ${isCompactView ? 'text-[10px]' : 'text-xs'}`}>
+                            <Mail size={isCompactView ? 10 : 12} /> {student.email}
                           </p>
                         </div>
                       </div>
                     </td>
-                    <td className="p-4 text-center">
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-black uppercase tracking-wider bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600">
+                    <td className={`${isCompactView ? 'p-2.5' : 'p-4'} text-center transition-all`}>
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-md font-black uppercase tracking-wider bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 ${isCompactView ? 'text-[10px]' : 'text-xs'}`}>
                         {student.class_grade}
                       </span>
                     </td>
-                    <td className="p-4">
+                    <td className={`${isCompactView ? 'p-2.5' : 'p-4'} transition-all`}>
                       <div className="flex items-center gap-2 max-w-sm">
                         <div className="relative flex-1">
-                          <Link2 className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-gray-400" size={14} />
+                          <Link2 className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-gray-400" size={isCompactView ? 12 : 14} />
                           <select
-                            className="w-full pl-8 pr-3 py-2 text-sm bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all cursor-pointer text-gray-700 dark:text-gray-200"
+                            className={`w-full pl-8 pr-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all cursor-pointer text-gray-700 dark:text-gray-200 ${isCompactView ? 'py-1.5 text-xs' : 'py-2 text-sm'}`}
                             value={selectedParents[student.student_id] || ""}
                             onChange={(e) => setSelectedParents({ ...selectedParents, [student.student_id]: e.target.value })}
+                            aria-label={`Select parent for ${student.full_name}`}
                           >
                             <option value="" className="text-gray-400">Select Parent...</option>
                             {parents.map((p) => (
@@ -334,7 +348,7 @@ const StudentsTab = ({ isAdmin }) => {
                         </div>
                         <button
                           onClick={() => linkParent(student.student_id)}
-                          className="px-3 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-sm font-bold rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors shrink-0"
+                          className={`bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors shrink-0 ${isCompactView ? 'px-2 py-1.5 text-xs' : 'px-3 py-2 text-sm'}`}
                         >
                           Link
                         </button>
@@ -356,6 +370,7 @@ const StudentsTab = ({ isAdmin }) => {
                   onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
                   disabled={currentPage === 1}
                   className="p-1.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+                  aria-label="Previous Page"
                 >
                   <ChevronLeft size={16} className="text-gray-600 dark:text-gray-300" />
                 </button>
@@ -363,6 +378,7 @@ const StudentsTab = ({ isAdmin }) => {
                   onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
                   disabled={currentPage === totalPages}
                   className="p-1.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+                  aria-label="Next Page"
                 >
                   <ChevronRight size={16} className="text-gray-600 dark:text-gray-300" />
                 </button>

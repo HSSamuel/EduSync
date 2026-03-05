@@ -183,7 +183,7 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <nav className="flex-1 overflow-y-auto py-6 px-3 space-y-4 [&::-webkit-scrollbar]:hidden">
+        <nav className="flex-1 overflow-y-auto py-6 px-3 space-y-4 [&::-webkit-scrollbar]:hidden" aria-label="Main Navigation">
           {Object.entries(navCategories).map(([category, itemIds]) => {
             const categoryItems = navItems.filter(
               (i) => itemIds.includes(i.id) && i.show,
@@ -195,6 +195,8 @@ const Dashboard = () => {
                 {isSidebarOpen && (
                   <button
                     onClick={() => toggleCategory(category)}
+                    aria-expanded={expandedCategories[category]}
+                    aria-controls={`category-${category}`}
                     className="w-full flex items-center justify-between px-4 py-2 mb-1 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors outline-none group"
                   >
                     <h3 className="text-[10px] font-black uppercase tracking-widest group-hover:text-gray-600 dark:group-hover:text-gray-300 transition-colors">
@@ -208,6 +210,7 @@ const Dashboard = () => {
                 )}
 
                 <motion.div
+                  id={`category-${category}`}
                   initial={false}
                   animate={{
                     height: !isSidebarOpen || expandedCategories[category] ? "auto" : 0,
@@ -223,6 +226,7 @@ const Dashboard = () => {
                         key={item.id}
                         onClick={() => setActiveTab(item.id)}
                         title={!isSidebarOpen ? item.label : ""}
+                        aria-current={isActive ? "page" : undefined}
                         className={`w-full flex items-center gap-3 px-4 py-2.5 font-semibold text-sm transition-all rounded-xl relative group ${
                           isActive
                             ? "text-blue-600 dark:text-blue-400 bg-blue-50/80 dark:bg-blue-900/20"
@@ -252,6 +256,7 @@ const Dashboard = () => {
         <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-center shrink-0">
           <button
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            aria-label={isSidebarOpen ? "Collapse Sidebar" : "Expand Sidebar"}
             className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-500 hover:text-gray-900 dark:hover:text-white transition-colors"
           >
             {isSidebarOpen ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
@@ -267,8 +272,9 @@ const Dashboard = () => {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden"
+              className="fixed inset-0 bg-black/80 md:bg-black/60 md:backdrop-blur-sm z-40 md:hidden"
               onClick={() => setIsMobileMenuOpen(false)}
+              aria-hidden="true"
             />
             <motion.aside
               initial={{ x: "-100%" }}
@@ -276,6 +282,7 @@ const Dashboard = () => {
               exit={{ x: "-100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
               className="fixed inset-y-0 left-0 w-64 bg-white dark:bg-gray-800 shadow-2xl z-50 md:hidden flex flex-col"
+              aria-label="Mobile Navigation"
             >
               <div className="h-16 flex items-center justify-between px-6 border-b border-gray-200 dark:border-gray-700 shrink-0">
                 <div className="flex items-center gap-3">
@@ -288,6 +295,7 @@ const Dashboard = () => {
                 </div>
                 <button
                   onClick={() => setIsMobileMenuOpen(false)}
+                  aria-label="Close mobile menu"
                   className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
                 >
                   <X size={20} />
@@ -305,6 +313,7 @@ const Dashboard = () => {
                     <div key={`mobile-${category}`} className="mb-2">
                       <button
                         onClick={() => toggleCategory(category)}
+                        aria-expanded={expandedCategories[category]}
                         className="w-full flex items-center justify-between px-4 py-2 mb-1 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors outline-none group"
                       >
                         <h3 className="text-[10px] font-black uppercase tracking-widest group-hover:text-gray-600 dark:group-hover:text-gray-300 transition-colors">
@@ -334,6 +343,7 @@ const Dashboard = () => {
                                 setActiveTab(item.id);
                                 setIsMobileMenuOpen(false);
                               }}
+                              aria-current={isActive ? "page" : undefined}
                               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all relative ${
                                 isActive
                                   ? "text-blue-600 dark:text-blue-400 bg-blue-50/80 dark:bg-blue-900/20"
@@ -367,21 +377,22 @@ const Dashboard = () => {
       {/* RIGHT SIDE LAYOUT CONTAINER */}
       <div className="flex-1 flex flex-col overflow-hidden relative">
         <AnimatePresence>
-          {showTopBtn && (
-            <motion.button
-              initial={{ opacity: 0, y: 20, scale: 0.8 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 20, scale: 0.8 }}
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              onClick={scrollToTop}
-              className="absolute bottom-8 right-8 xl:right-[350px] z-[100] p-3.5 bg-blue-600 text-white rounded-full shadow-2xl hover:bg-blue-700 transition-colors focus:outline-none focus:ring-4 focus:ring-blue-500/50"
-              title="Back to top"
-            >
-              <ArrowUp size={24} strokeWidth={2.5} />
-            </motion.button>
-          )}
-        </AnimatePresence>
+  {showTopBtn && (
+    <motion.button
+      initial={{ opacity: 0, y: 20, scale: 0.8 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 20, scale: 0.8 }}
+      whileHover={{ scale: 1.1 }}
+      whileTap={{ scale: 0.9 }}
+      onClick={scrollToTop}
+      aria-label="Scroll to top"
+      className="absolute bottom-8 right-8 xl:right-[350px] z-[100] p-2 bg-blue-600 text-white rounded-full shadow-2xl hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+      title="Back to top"
+    >
+      <ArrowUp size={16} strokeWidth={2.0} />
+    </motion.button>
+  )}
+</AnimatePresence>
 
         <CommandPalette
           toggleTheme={toggleTheme}
@@ -389,10 +400,11 @@ const Dashboard = () => {
           logout={logout}
         />
 
-        <header className="h-16 shrink-0 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl border-b border-gray-200/60 dark:border-gray-700/50 flex items-center justify-between px-4 sm:px-6 z-10">
+        <header className="h-16 shrink-0 bg-white/95 md:bg-white/80 dark:bg-gray-800/95 md:dark:bg-gray-800/80 md:backdrop-blur-xl border-b border-gray-200/60 dark:border-gray-700/50 flex items-center justify-between px-4 sm:px-6 z-10">
           <div className="flex items-center gap-4 flex-1">
             <button
               onClick={() => setIsMobileMenuOpen(true)}
+              aria-label="Open Mobile Menu"
               className="md:hidden p-2 -ml-2 text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700 rounded-lg transition-colors"
             >
               <Menu size={24} />
@@ -408,6 +420,7 @@ const Dashboard = () => {
                   new KeyboardEvent("keydown", { key: "k", metaKey: true }),
                 )
               }
+              aria-label="Open Command Palette"
               className="hidden sm:flex items-center justify-between w-full max-w-md px-4 py-2 text-sm text-gray-500 bg-gray-100 dark:bg-gray-900 border border-transparent hover:border-gray-200 dark:hover:border-gray-700 rounded-full transition-all group"
             >
               <span className="flex items-center gap-2">
@@ -426,8 +439,8 @@ const Dashboard = () => {
           <div className="flex items-center gap-3 sm:gap-5 pl-4">
             <button
               onClick={toggleTheme}
+              aria-label={`Toggle ${isDark ? 'Light' : 'Dark'} Mode`}
               className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
-              title="Toggle Theme"
             >
               {isDark ? <Sun size={20} /> : <Moon size={20} />}
             </button>
@@ -435,6 +448,7 @@ const Dashboard = () => {
             {(!isTeacher && !isParent) && (
               <button
                 onClick={() => setIsUtilityOpen(true)}
+                aria-label="Open Notifications Center"
                 className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors relative xl:hidden"
               >
                 <Bell size={20} />
@@ -460,8 +474,8 @@ const Dashboard = () => {
 
             <button
               onClick={logout}
+              aria-label="Log out"
               className="ml-2 p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors hidden sm:block"
-              title="Logout"
             >
               <LogOut size={20} />
             </button>

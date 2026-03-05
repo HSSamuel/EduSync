@@ -5,7 +5,6 @@ const authorize = require("../middleware/authorize");
 const { z } = require("zod");
 const validate = require("../middleware/validate");
 
-// 👈 NEW: Validation Schema
 const timetableSchema = z.object({
   class_grade: z.string().min(1, "Class Grade is required"),
   schedule: z.record(
@@ -41,7 +40,7 @@ router.get("/:class_grade", authorize, async (req, res) => {
     res.json(timetable.rows[0].schedule);
   } catch (err) {
     console.error(err.message);
-    res.status(500).send("Server Error");
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
@@ -57,7 +56,7 @@ router.post("/", authorize, validate(timetableSchema), async (req, res) => {
       `INSERT INTO timetables (class_grade, schedule, updated_by, school_id) 
        VALUES ($1, $2, $3, $4) 
        ON CONFLICT (class_grade, school_id) 
-       DO UPDATE SET schedule = EXCLUDED.schedule, updated_by = EXCLUDED.updated_by, updated_at = CURRENT_TIMESTAMP 
+       DO UPDATE SET schedule = EXCLUDED.schedule, updated_by = EXCLUDED.updated_by
        RETURNING *`,
       [
         class_grade,
@@ -73,7 +72,7 @@ router.post("/", authorize, validate(timetableSchema), async (req, res) => {
     });
   } catch (err) {
     console.error(err.message);
-    res.status(500).send("Server Error");
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 

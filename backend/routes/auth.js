@@ -14,8 +14,11 @@ require("dotenv").config();
 const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+// ==========================================
+// 🛡️ SECURITY: RATE LIMITERS
+// ==========================================
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
+  windowMs: 15 * 60 * 1000, // 15 minutes
   max: 10,
   message: {
     error:
@@ -25,6 +28,32 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// 👈 NEW: Prevent mass fake-account creation
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 15,
+  message: {
+    error: "Registration limit reached from this IP. Please try again later.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// 👈 NEW: Prevent email spam / inbox flooding
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5,
+  message: {
+    error:
+      "Too many password reset requests. Please check your inbox or try again later.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// ==========================================
+// 📋 VALIDATION SCHEMAS
+// ==========================================
 const registerSchema = z.object({
   full_name: z.string().min(3, "Name must be at least 3 characters"),
   email: z.string().email("Invalid email format"),
@@ -39,73 +68,84 @@ const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
-router.post("/register", validate(registerSchema), async (req, res, next) => {
-  try {
-    const {
-      full_name,
-      email,
-      password,
-      role,
-      school_name,
-      school_id: invite_code,
-    } = req.body;
+// ==========================================
+// 🚀 ROUTES
+// ==========================================
 
-    const userExists = await pool.query(
-      "SELECT * FROM users WHERE email = $1",
-      [email],
-    );
-    if (userExists.rows.length > 0) {
-      return res.status(400).json({ error: "User already exists" });
-    }
+// 👈 FIX: Applied registerLimiter
+router.post(
+  "/register",
+  registerLimiter,
+  validate(registerSchema),
+  async (req, res, next) => {
+    try {
+      const {
+        full_name,
+        email,
+        password,
+        role,
+        school_name,
+        school_id: invite_code,
+      } = req.body;
 
-    let finalSchoolId;
+      const userExists = await pool.query(
+        "SELECT * FROM users WHERE email = $1",
+        [email],
+      );
+      if (userExists.rows.length > 0) {
+        return res.status(400).json({ error: "User already exists" });
+      }
 
-    if (role === "Admin") {
-      if (!school_name)
-        return res
-          .status(400)
-          .json({
+      let finalSchoolId;
+
+      if (role === "Admin") {
+        if (!school_name)
+          return res.status(400).json({
             error: "School name is required to register an Admin account.",
           });
 
-      const newInviteCode = crypto.randomBytes(4).toString("hex").toUpperCase();
+        const newInviteCode = crypto
+          .randomBytes(4)
+          .toString("hex")
+          .toUpperCase();
 
-      const newSchool = await pool.query(
-        "INSERT INTO schools (school_name, contact_email, invite_code) VALUES ($1, $2, $3) RETURNING school_id",
-        [school_name, email, newInviteCode],
-      );
-      finalSchoolId = newSchool.rows[0].school_id;
-    } else {
-      if (!invite_code)
-        return res
-          .status(400)
-          .json({
+        const newSchool = await pool.query(
+          "INSERT INTO schools (school_name, contact_email, invite_code) VALUES ($1, $2, $3) RETURNING school_id",
+          [school_name, email, newInviteCode],
+        );
+        finalSchoolId = newSchool.rows[0].school_id;
+      } else {
+        if (!invite_code)
+          return res.status(400).json({
             error: "School Invite Code is required to join an existing school.",
           });
 
-      const schoolExists = await pool.query(
-        "SELECT school_id FROM schools WHERE invite_code = $1",
-        [invite_code],
+        const schoolExists = await pool.query(
+          "SELECT school_id FROM schools WHERE invite_code = $1",
+          [invite_code],
+        );
+        if (schoolExists.rows.length === 0)
+          return res
+            .status(404)
+            .json({ error: "Invalid Invite Code provided." });
+
+        finalSchoolId = schoolExists.rows[0].school_id;
+      }
+
+      const salt = await bcrypt.genSalt(10);
+      const bcryptPassword = await bcrypt.hash(password, salt);
+
+      const newUser = await pool.query(
+        "INSERT INTO users (full_name, email, password_hash, role, school_id, auth_provider) VALUES ($1, $2, $3, $4, $5, 'local') RETURNING user_id, full_name, email, role, school_id",
+        [full_name, email, bcryptPassword, role, finalSchoolId],
       );
-      if (schoolExists.rows.length === 0)
-        return res.status(404).json({ error: "Invalid Invite Code provided." });
 
-      finalSchoolId = schoolExists.rows[0].school_id;
+      res.json(newUser.rows[0]);
+    } catch (err) {
+      next(err);
     }
-
-    const salt = await bcrypt.genSalt(10);
-    const bcryptPassword = await bcrypt.hash(password, salt);
-
-    const newUser = await pool.query(
-      "INSERT INTO users (full_name, email, password_hash, role, school_id, auth_provider) VALUES ($1, $2, $3, $4, $5, 'local') RETURNING user_id, full_name, email, role, school_id",
-      [full_name, email, bcryptPassword, role, finalSchoolId],
-    );
-
-    res.json(newUser.rows[0]);
-  } catch (err) {
-    next(err);
-  }
-});
+  },
+);
 
 router.post(
   "/login",
@@ -122,12 +162,10 @@ router.post(
         return res.status(401).json({ error: "Invalid Credentials" });
 
       if (user.rows[0].auth_provider === "google") {
-        return res
-          .status(400)
-          .json({
-            error:
-              "This account was created via Google. Please log in using the Google button.",
-          });
+        return res.status(400).json({
+          error:
+            "This account was created via Google. Please log in using the Google button.",
+        });
       }
 
       const validPassword = await bcrypt.compare(
@@ -208,28 +246,32 @@ router.post("/logout", (req, res) => {
   res.json({ message: "Logged out successfully" });
 });
 
-router.post("/forgot-password", async (req, res, next) => {
-  try {
-    const { email } = req.body;
-    const user = await pool.query("SELECT * FROM users WHERE email = $1", [
-      email,
-    ]);
+// 👈 FIX: Applied forgotPasswordLimiter
+router.post(
+  "/forgot-password",
+  forgotPasswordLimiter,
+  async (req, res, next) => {
+    try {
+      const { email } = req.body;
+      const user = await pool.query("SELECT * FROM users WHERE email = $1", [
+        email,
+      ]);
 
-    if (user.rows.length === 0) {
-      return res
-        .status(404)
-        .json({ error: "If that email exists, a reset link has been sent." });
-    }
+      if (user.rows.length === 0) {
+        return res
+          .status(404)
+          .json({ error: "If that email exists, a reset link has been sent." });
+      }
 
-    const secretHashSlice = user.rows[0].password_hash.substring(0, 10);
-    const resetToken = jwt.sign(
-      { user_id: user.rows[0].user_id, secret: secretHashSlice },
-      process.env.ACCESS_TOKEN_SECRET || process.env.JWT_SECRET,
-      { expiresIn: "15m" },
-    );
+      const secretHashSlice = user.rows[0].password_hash.substring(0, 10);
+      const resetToken = jwt.sign(
+        { user_id: user.rows[0].user_id, secret: secretHashSlice },
+        process.env.ACCESS_TOKEN_SECRET || process.env.JWT_SECRET,
+        { expiresIn: "15m" },
+      );
 
-    const resetLink = `${CLIENT_URL}/reset-password/${resetToken}`;
-    const emailHTML = `
+      const resetLink = `${CLIENT_URL}/reset-password/${resetToken}`;
+      const emailHTML = `
       <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden;">
         <div style="background-color: #2563EB; padding: 20px; text-align: center;">
           <h2 style="color: white; margin: 0;">Password Reset Request</h2>
@@ -245,16 +287,17 @@ router.post("/forgot-password", async (req, res, next) => {
       </div>
     `;
 
-    sendEmail({
-      to: email,
-      subject: "EduSync Password Reset",
-      html: emailHTML,
-    });
-    res.json({ message: "Password reset link sent to your email!" });
-  } catch (err) {
-    next(err);
-  }
-});
+      sendEmail({
+        to: email,
+        subject: "EduSync Password Reset",
+        html: emailHTML,
+      });
+      res.json({ message: "Password reset link sent to your email!" });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 router.put("/reset-password", async (req, res, next) => {
   try {
@@ -273,11 +316,9 @@ router.put("/reset-password", async (req, res, next) => {
 
     const currentHashSlice = user.rows[0].password_hash.substring(0, 10);
     if (payload.secret !== currentHashSlice) {
-      return res
-        .status(401)
-        .json({
-          error: "This reset link has already been used or is invalid.",
-        });
+      return res.status(401).json({
+        error: "This reset link has already been used or is invalid.",
+      });
     }
 
     const salt = await bcrypt.genSalt(10);

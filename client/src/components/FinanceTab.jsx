@@ -7,7 +7,9 @@ import {
   CheckCircle2,
   Clock,
   CreditCard,
-  Loader2
+  Loader2,
+  LayoutList,
+  List
 } from "lucide-react";
 
 const API_URL = import.meta.env.VITE_API_URL;
@@ -21,8 +23,9 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
     due_date: "",
   });
   
-  const [isProcessing, setIsProcessing] = useState(false); // For Stripe checkout
-  const [isGenerating, setIsGenerating] = useState(false); // 👈 NEW: For invoice generation
+  const [isProcessing, setIsProcessing] = useState(false); 
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isCompactView, setIsCompactView] = useState(false); // 👈 Density Toggle State
 
   useEffect(() => {
     fetchInvoices();
@@ -47,7 +50,7 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
 
   const onCreateInvoice = async (e) => {
     e.preventDefault();
-    setIsGenerating(true); // 👈 Start Loading
+    setIsGenerating(true); 
     try {
       const token = localStorage.getItem("token");
       const res = await fetch(`${API_URL}/finance/invoices`, {
@@ -63,7 +66,7 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
     } catch (err) {
       console.error(err);
     } finally {
-      setIsGenerating(false); // 👈 Stop Loading
+      setIsGenerating(false);
     }
   };
 
@@ -121,6 +124,7 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
                 onChange={(e) => setFormData({ ...formData, student_id: e.target.value })}
                 required
                 disabled={isGenerating}
+                aria-label="Select Student"
               >
                 <option value="">-- Select Student --</option>
                 {students.map((s) => (
@@ -139,6 +143,7 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                 required
                 disabled={isGenerating}
+                aria-label="Invoice Description"
               />
             </div>
             <div className="md:col-span-2 relative">
@@ -152,6 +157,7 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
                 required
                 min="1"
                 disabled={isGenerating}
+                aria-label="Invoice Amount"
               />
             </div>
             <div className="md:col-span-2 relative">
@@ -162,6 +168,7 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
                 onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
                 required
                 disabled={isGenerating}
+                aria-label="Due Date"
               />
             </div>
             <button
@@ -169,6 +176,7 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
               disabled={isGenerating}
               className="md:col-span-1 flex items-center justify-center py-3 bg-amber-500 text-white font-bold rounded-xl shadow-md shadow-amber-500/30 hover:bg-amber-600 transition-all disabled:bg-gray-400"
               title="Send Invoice"
+              aria-label="Send Invoice"
             >
               {isGenerating ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
             </button>
@@ -177,10 +185,18 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
       )}
 
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden flex flex-col">
-        <div className="p-6 md:p-8 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20 shrink-0">
+        <div className="p-6 md:p-8 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20 shrink-0 flex justify-between items-center">
           <h4 className="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-2 tracking-tight">
             <CreditCard className="text-amber-500" size={24} /> Financial Ledger
           </h4>
+          <button
+            onClick={() => setIsCompactView(!isCompactView)}
+            aria-label="Toggle table density"
+            title="Toggle Compact View"
+            className="p-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-500 hover:text-amber-600 dark:hover:text-amber-400 shadow-sm transition-colors hidden sm:block"
+          >
+            {isCompactView ? <LayoutList size={18} /> : <List size={18} />}
+          </button>
         </div>
 
         {invoices.length === 0 ? (
@@ -196,13 +212,13 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
             <table className="w-full text-left border-collapse min-w-[700px]">
               <thead className="sticky top-0 z-10 bg-gray-100 dark:bg-gray-900/95 backdrop-blur-sm shadow-sm">
                 <tr className="text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">
-                  <th className="p-4 font-bold border-b border-gray-200 dark:border-gray-700">Student</th>
-                  <th className="p-4 font-bold border-b border-gray-200 dark:border-gray-700">Description</th>
-                  <th className="p-4 font-bold border-b border-gray-200 dark:border-gray-700">Amount (₦)</th>
-                  <th className="p-4 font-bold border-b border-gray-200 dark:border-gray-700">Due Date</th>
-                  <th className="p-4 font-bold text-center border-b border-gray-200 dark:border-gray-700">Status</th>
+                  <th className={`${isCompactView ? 'p-2.5' : 'p-4'} font-bold border-b border-gray-200 dark:border-gray-700 transition-all`}>Student</th>
+                  <th className={`${isCompactView ? 'p-2.5' : 'p-4'} font-bold border-b border-gray-200 dark:border-gray-700 transition-all`}>Description</th>
+                  <th className={`${isCompactView ? 'p-2.5' : 'p-4'} font-bold border-b border-gray-200 dark:border-gray-700 transition-all`}>Amount (₦)</th>
+                  <th className={`${isCompactView ? 'p-2.5' : 'p-4'} font-bold border-b border-gray-200 dark:border-gray-700 transition-all`}>Due Date</th>
+                  <th className={`${isCompactView ? 'p-2.5' : 'p-4'} font-bold text-center border-b border-gray-200 dark:border-gray-700 transition-all`}>Status</th>
                   {(isParent || isStudent) && (
-                    <th className="p-4 font-bold text-right pr-6 border-b border-gray-200 dark:border-gray-700">Action</th>
+                    <th className={`${isCompactView ? 'p-2.5' : 'p-4'} font-bold text-right pr-6 border-b border-gray-200 dark:border-gray-700 transition-all`}>Action</th>
                   )}
                 </tr>
               </thead>
@@ -211,33 +227,33 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
                   const isPaid = inv.status === "Paid";
                   return (
                     <tr key={inv.invoice_id} className="hover:bg-blue-50/30 dark:hover:bg-gray-800/50 transition-colors group">
-                      <td className="p-4 font-bold text-gray-900 dark:text-white">{inv.student_name}</td>
-                      <td className="p-4 font-medium text-gray-600 dark:text-gray-300">{inv.title}</td>
-                      <td className="p-4 font-mono font-bold text-gray-900 dark:text-white text-[15px]">
+                      <td className={`${isCompactView ? 'p-2.5 text-sm' : 'p-4'} font-bold text-gray-900 dark:text-white transition-all`}>{inv.student_name}</td>
+                      <td className={`${isCompactView ? 'p-2.5 text-sm' : 'p-4'} font-medium text-gray-600 dark:text-gray-300 transition-all`}>{inv.title}</td>
+                      <td className={`${isCompactView ? 'p-2.5 text-sm' : 'p-4 text-[15px]'} font-mono font-bold text-gray-900 dark:text-white transition-all`}>
                         ₦{Number(inv.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </td>
-                      <td className="p-4 text-sm font-mono font-medium text-gray-500">
+                      <td className={`${isCompactView ? 'p-2.5 text-xs' : 'p-4 text-sm'} font-mono font-medium text-gray-500 transition-all`}>
                         {new Date(inv.due_date).toLocaleDateString()}
                       </td>
-                      <td className="p-4 text-center">
-                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${isPaid ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-500"}`}>
-                          {isPaid ? <CheckCircle2 size={12} /> : <Clock size={12} />}
+                      <td className={`${isCompactView ? 'p-2.5' : 'p-4'} text-center transition-all`}>
+                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-black uppercase tracking-wider ${isCompactView ? 'text-[10px]' : 'text-xs'} ${isPaid ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-500"}`}>
+                          {isPaid ? <CheckCircle2 size={isCompactView ? 10 : 12} /> : <Clock size={isCompactView ? 10 : 12} />}
                           {inv.status}
                         </span>
                       </td>
                       {(isParent || isStudent) && (
-                        <td className="p-4 text-right">
+                        <td className={`${isCompactView ? 'p-2.5' : 'p-4'} text-right transition-all`}>
                           {!isPaid ? (
                             <button
                               onClick={() => handlePayment(inv.invoice_id)}
                               disabled={isProcessing}
-                              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg shadow-md transition-all flex items-center gap-2 ml-auto disabled:opacity-50"
+                              className={`bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-md transition-all flex items-center gap-2 ml-auto disabled:opacity-50 ${isCompactView ? 'px-3 py-1.5 text-xs' : 'px-5 py-2 text-sm'}`}
                             >
                               <CreditCard size={14} />{" "}
-                              {isProcessing ? "Loading..." : "Pay via Stripe"}
+                              {isProcessing ? "..." : "Pay"}
                             </button>
                           ) : (
-                            <span className="text-green-600 dark:text-green-400 font-bold text-sm flex items-center justify-end gap-1">
+                            <span className={`text-green-600 dark:text-green-400 font-bold flex items-center justify-end gap-1 ${isCompactView ? 'text-xs' : 'text-sm'}`}>
                               <CheckCircle2 size={16} /> Settled
                             </span>
                           )}

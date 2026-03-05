@@ -14,7 +14,7 @@ import {
   Github,
   Sun,
   Moon,
-  ArrowUp, // 👈 IMPORT ARROW UP
+  ArrowUp,
 } from "lucide-react";
 
 const staggerContainer = {
@@ -39,10 +39,8 @@ const Landing = () => {
     document.documentElement.classList.contains("dark")
   );
   
-  // 👈 NEW: State for Back-to-Top Button
   const [showTopBtn, setShowTopBtn] = useState(false);
 
-  // 👈 NEW: Listen for Window Scroll
   useEffect(() => {
     const handleScroll = () => {
       if (window.scrollY > 400) {
@@ -56,7 +54,6 @@ const Landing = () => {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // 👈 NEW: Scroll to Top Function
   const scrollToTop = () => {
     window.scrollTo({
       top: 0,
@@ -80,23 +77,23 @@ const Landing = () => {
   return (
     <div className="relative min-h-screen bg-[#fafafa] dark:bg-gray-950 text-gray-900 dark:text-gray-100 font-sans transition-colors duration-300 flex flex-col overflow-x-hidden">
       
-      {/* 👈 NEW: Animated Back-to-Top Button */}
       <AnimatePresence>
-        {showTopBtn && (
-          <motion.button
-            initial={{ opacity: 0, y: 20, scale: 0.8 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.8 }}
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-            onClick={scrollToTop}
-            className="fixed bottom-8 right-8 z-[100] p-3.5 bg-blue-600 text-white rounded-full shadow-2xl hover:bg-blue-700 transition-colors focus:outline-none focus:ring-4 focus:ring-blue-500/50"
-            title="Back to top"
-          >
-            <ArrowUp size={24} strokeWidth={2.5} />
-          </motion.button>
-        )}
-      </AnimatePresence>
+  {showTopBtn && (
+    <motion.button
+      initial={{ opacity: 0, y: 20, scale: 0.8 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 20, scale: 0.8 }}
+      whileHover={{ scale: 1.1 }}
+      whileTap={{ scale: 0.9 }}
+      onClick={scrollToTop}
+      className="fixed bottom-8 right-8 z-[100] p-2 bg-blue-600 text-white rounded-full shadow-2xl hover:bg-blue-700 transition-colors focus:outline-none focus:ring-4 focus:ring-blue-500/50"
+      aria-label="Back to top"
+      title="Back to top"
+    >
+      <ArrowUp size={16} strokeWidth={2.5} />
+    </motion.button>
+  )}
+</AnimatePresence>
 
       {/* --- PREMIUM DEPTH BACKGROUND --- */}
       <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden" aria-hidden="true">
@@ -109,7 +106,7 @@ const Landing = () => {
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease: "easeOut" }}
-        className="relative z-50 w-full max-w-7xl mx-auto px-6 py-4 flex justify-between items-center bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border border-white/40 dark:border-gray-800/60 rounded-full mt-6 shadow-[0_4px_30px_rgb(0,0,0,0.04)]"
+        className="relative z-50 w-full max-w-7xl mx-auto px-6 py-4 flex justify-between items-center bg-white/90 md:bg-white/50 dark:bg-gray-900/90 md:dark:bg-gray-900/50 md:backdrop-blur-xl border border-white/40 dark:border-gray-800/60 rounded-full mt-6 shadow-[0_4px_30px_rgb(0,0,0,0.04)]"
       >
         <div className="text-2xl font-black font-serif tracking-tighter text-blue-600 dark:text-blue-400 flex items-center gap-2">
           <div className="w-9 h-9 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center text-white font-sans text-xl shadow-lg shadow-blue-500/30">
@@ -126,6 +123,7 @@ const Landing = () => {
           <button
             onClick={toggleTheme}
             className="p-2 text-gray-500 hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-gray-800 rounded-full transition-colors mr-2"
+            aria-label={`Toggle ${isDark ? 'Light' : 'Dark'} Theme`}
             title="Toggle Theme"
           >
             {isDark ? <Sun size={20} /> : <Moon size={20} />}
@@ -173,9 +171,9 @@ const Landing = () => {
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.8, duration: 1 }} className="mt-20 w-full max-w-5xl mx-auto border-y border-gray-200/50 dark:border-gray-800/50 py-8">
           <p className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-6">Trusted by Forward-Thinking Institutions</p>
           <div className="flex flex-wrap justify-center gap-8 md:gap-16 opacity-60 grayscale dark:opacity-40">
-            <div className="flex items-center gap-2 font-black text-xl"><BookOpen size={24} /> Academica</div>
-            <div className="flex items-center gap-2 font-black text-xl"><ShieldCheck size={24} /> Crestview Prep</div>
-            <div className="flex items-center gap-2 font-black text-xl"><Zap size={24} /> Spark College</div>
+            <div className="flex items-center gap-2 font-black text-xl"><BookOpen size={24} aria-hidden="true" /> Academica</div>
+            <div className="flex items-center gap-2 font-black text-xl"><ShieldCheck size={24} aria-hidden="true" /> Crestview Prep</div>
+            <div className="flex items-center gap-2 font-black text-xl"><Zap size={24} aria-hidden="true" /> Spark College</div>
           </div>
         </motion.div>
 
@@ -228,7 +226,7 @@ const Landing = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto text-left">
               <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700">
-                <div className="flex gap-1 text-amber-400 mb-4">
+                <div className="flex gap-1 text-amber-400 mb-4" aria-label="5 out of 5 stars">
                   <Star fill="currentColor" size={20} />
                   <Star fill="currentColor" size={20} />
                   <Star fill="currentColor" size={20} />
@@ -248,7 +246,7 @@ const Landing = () => {
               </div>
 
               <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-700">
-                <div className="flex gap-1 text-amber-400 mb-4">
+                <div className="flex gap-1 text-amber-400 mb-4" aria-label="5 out of 5 stars">
                   <Star fill="currentColor" size={20} />
                   <Star fill="currentColor" size={20} />
                   <Star fill="currentColor" size={20} />
@@ -299,9 +297,9 @@ const Landing = () => {
               The Next-Generation School Management & Learning Platform.
             </p>
             <div className="flex gap-4 mt-6 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-              <a href="#" className="transition-colors"><Twitter size={20} /></a>
-              <a href="#" className="transition-colors"><Linkedin size={20} /></a>
-              <a href="#" className="transition-colors"><Github size={20} /></a>
+              <a href="#" aria-label="Twitter" className="transition-colors"><Twitter size={20} /></a>
+              <a href="#" aria-label="LinkedIn" className="transition-colors"><Linkedin size={20} /></a>
+              <a href="#" aria-label="GitHub" className="transition-colors"><Github size={20} /></a>
             </div>
           </div>
 

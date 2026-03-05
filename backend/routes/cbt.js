@@ -5,7 +5,6 @@ const authorize = require("../middleware/authorize");
 const { z } = require("zod");
 const validate = require("../middleware/validate");
 
-// 👈 NEW: Strict validation schema prevents bad DB inserts
 const createQuizSchema = z.object({
   subject_id: z.coerce.number().positive(),
   title: z.string().min(3, "Title must be at least 3 characters"),
@@ -43,7 +42,7 @@ router.post("/", authorize, validate(createQuizSchema), async (req, res) => {
     res.json({ message: "Quiz successfully created!", quiz: newQuiz.rows[0] });
   } catch (err) {
     console.error(err.message);
-    res.status(500).send("Server Error");
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
@@ -63,7 +62,7 @@ router.get("/", authorize, async (req, res) => {
     res.json(quizzes.rows);
   } catch (err) {
     console.error(err.message);
-    res.status(500).send("Server Error");
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
@@ -90,7 +89,7 @@ router.get("/:id", authorize, async (req, res) => {
     res.json(quiz.rows[0]);
   } catch (err) {
     console.error(err.message);
-    res.status(500).send("Server Error");
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
@@ -107,6 +106,11 @@ router.post("/:id/submit", authorize, async (req, res) => {
       "SELECT student_id FROM students WHERE user_id = $1",
       [req.user.user_id],
     );
+    
+    // 👈 FIX: Prevent fatal crash if student record is somehow missing
+    if (studentQuery.rows.length === 0) {
+      return res.status(400).json({ error: "Valid student academic record not found." });
+    }
     const student_id = studentQuery.rows[0].student_id;
 
     const quiz = await pool.query(
@@ -118,7 +122,7 @@ router.post("/:id/submit", authorize, async (req, res) => {
 
     const realQuestions = quiz.rows[0].questions;
 
-    // 👈 NEW: Security Fix - Prevent array out-of-bounds manipulation
+    // Security Fix - Prevent array out-of-bounds manipulation
     if (
       !Array.isArray(student_answers) ||
       student_answers.length !== realQuestions.length
@@ -126,7 +130,7 @@ router.post("/:id/submit", authorize, async (req, res) => {
       return res.status(400).json({ error: "Invalid submission payload." });
     }
 
-    // The Auto-Grading Engine!
+    // The Auto-Grading Engine
     let score = 0;
     for (let i = 0; i < realQuestions.length; i++) {
       if (student_answers[i] === realQuestions[i].answer) {
@@ -146,7 +150,7 @@ router.post("/:id/submit", authorize, async (req, res) => {
     });
   } catch (err) {
     console.error(err.message);
-    res.status(500).send("Server Error");
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 

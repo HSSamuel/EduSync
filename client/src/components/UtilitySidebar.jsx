@@ -18,11 +18,12 @@ const UtilitySidebar = ({ userData, isOpen, setIsOpen }) => {
 
   return (
     <>
-      {/* Mobile Overlay Backdrop */}
+      {/* Mobile Overlay Backdrop (Solid on mobile for performance, blurred on larger screens) */}
       {isOpen && (
         <div 
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 xl:hidden transition-opacity" 
+          className="fixed inset-0 bg-black/80 md:bg-black/60 md:backdrop-blur-sm z-40 xl:hidden transition-opacity" 
           onClick={() => setIsOpen(false)} 
+          aria-hidden="true"
         />
       )}
 
@@ -30,10 +31,10 @@ const UtilitySidebar = ({ userData, isOpen, setIsOpen }) => {
       <aside className={`
         fixed inset-y-0 right-0 z-50 xl:static 
         w-80 bg-white/95 dark:bg-gray-900/95 xl:bg-white/50 xl:dark:bg-gray-900/30 
-        backdrop-blur-xl border-l border-gray-200/60 dark:border-gray-800/60 
+        md:backdrop-blur-xl border-l border-gray-200/60 dark:border-gray-800/60 
         overflow-y-auto transform transition-transform duration-300 ease-in-out flex flex-col
         ${isOpen ? "translate-x-0" : "translate-x-full xl:translate-x-0"}
-      `}>
+      `} aria-label="Utility Center">
         <div className="p-6 flex-1 space-y-8">
           
           {/* Mobile Close Button & Header */}
@@ -43,6 +44,7 @@ const UtilitySidebar = ({ userData, isOpen, setIsOpen }) => {
             </h3>
             <button 
               onClick={() => setIsOpen(false)} 
+              aria-label="Close utility sidebar"
               className="p-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full transition-colors text-gray-600 dark:text-gray-300"
             >
               <X size={16} />
@@ -113,7 +115,7 @@ const UtilitySidebar = ({ userData, isOpen, setIsOpen }) => {
                 {studentTasks.map((task) => (
                   <div key={task.id} className="p-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-sm flex items-start gap-3">
                     <div className="mt-0.5">
-                      <div className="w-4 h-4 rounded border-2 border-gray-300 dark:border-gray-600 cursor-pointer hover:border-blue-500 transition-colors"></div>
+                      <div className="w-4 h-4 rounded border-2 border-gray-300 dark:border-gray-600 cursor-pointer hover:border-blue-500 transition-colors" aria-label={`Mark task ${task.text} complete`} role="checkbox" aria-checked="false" tabIndex="0"></div>
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">{task.text}</p>

@@ -68,7 +68,7 @@ router.delete("/:id", authorize, async (req, res) => {
     res.json({ message: "Subject deleted successfully!" });
   } catch (err) {
     console.error(err.message);
-    res.status(500).send("Server Error");
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 

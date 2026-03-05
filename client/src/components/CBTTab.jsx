@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   BrainCircuit,
   Plus,
@@ -27,9 +27,36 @@ const CBTTab = ({ isTeacher, isAdmin, isStudent, subjects }) => {
   const [studentAnswers, setStudentAnswers] = useState({});
   const [testResult, setTestResult] = useState(null);
 
+  // Maintain ref to track submission state cleanly inside the event listener
+  const isSubmittingRef = useRef(false);
+  useEffect(() => {
+    isSubmittingRef.current = isSubmitting;
+  }, [isSubmitting]);
+
   useEffect(() => {
     fetchQuizzes();
   }, []);
+
+  // 👈 FIX: Fullscreen Escape Listener
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      // If we exit fullscreen, but we are still in a quiz and NOT actively submitting or viewing results
+      if (
+        !document.fullscreenElement &&
+        activeQuiz &&
+        !testResult &&
+        !isSubmittingRef.current
+      ) {
+        setActiveQuiz(null); // Force exit
+        alert("Exam exited. You must remain in Fullscreen mode to take a CBT.");
+      }
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
+  }, [activeQuiz, testResult]);
 
   const fetchQuizzes = async () => {
     const token = localStorage.getItem("token");
@@ -87,6 +114,7 @@ const CBTTab = ({ isTeacher, isAdmin, isStudent, subjects }) => {
       !window.confirm("Submit your answers? You cannot change them after this.")
     )
       return;
+
     setIsSubmitting(true);
     const answerArray = activeQuiz.questions.map(
       (_, index) => studentAnswers[index] ?? null,
@@ -99,7 +127,9 @@ const CBTTab = ({ isTeacher, isAdmin, isStudent, subjects }) => {
     });
     if (res.ok) {
       setTestResult(await res.json());
-      if (document.fullscreenElement) document.exitFullscreen();
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch((err) => console.log(err));
+      }
     }
     setIsSubmitting(false);
   };
@@ -111,7 +141,9 @@ const CBTTab = ({ isTeacher, isAdmin, isStudent, subjects }) => {
       )
     ) {
       setActiveQuiz(null);
-      if (document.fullscreenElement) document.exitFullscreen();
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch((err) => console.log(err));
+      }
     }
   };
 
@@ -152,6 +184,7 @@ const CBTTab = ({ isTeacher, isAdmin, isStudent, subjects }) => {
                     setNewQuiz({ ...newQuiz, subject_id: e.target.value })
                   }
                   required
+                  aria-label="Select Subject"
                 >
                   <option value="">-- Select Subject --</option>
                   {subjects.map((s) => (
@@ -169,6 +202,7 @@ const CBTTab = ({ isTeacher, isAdmin, isStudent, subjects }) => {
                     setNewQuiz({ ...newQuiz, title: e.target.value })
                   }
                   required
+                  aria-label="Assessment Title"
                 />
               </div>
 
@@ -178,7 +212,6 @@ const CBTTab = ({ isTeacher, isAdmin, isStudent, subjects }) => {
                     key={qIndex}
                     className="bg-gray-50 dark:bg-gray-900 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 relative transition-all hover:border-fuchsia-300 dark:hover:border-fuchsia-700"
                   >
-                    {/* 👈 PRO UI: font-mono for Question Numbers */}
                     <div className="absolute top-4 right-4 bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-xs font-black font-mono px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600">
                       Q.{String(qIndex + 1).padStart(2, "0")}
                     </div>
@@ -188,26 +221,39 @@ const CBTTab = ({ isTeacher, isAdmin, isStudent, subjects }) => {
                       className="w-full md:w-5/6 px-4 py-3 mb-5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl font-bold text-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-fuchsia-500 outline-none transition-all shadow-sm"
                       value={q.text}
                       onChange={(e) => {
-                        const newQ = [...questions];
-                        newQ[qIndex].text = e.target.value;
+                        const newQ = questions.map((question, i) =>
+                          i === qIndex
+                            ? { ...question, text: e.target.value }
+                            : question,
+                        );
                         setQuestions(newQ);
                       }}
                       required
+                      aria-label={`Question ${qIndex + 1} text`}
                     />
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <fieldset className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <legend className="sr-only">
+                        Options for Question {qIndex + 1}
+                      </legend>
                       {q.options.map((opt, oIndex) => (
                         <div
                           key={oIndex}
                           className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${q.answer === oIndex ? "bg-fuchsia-50 border-fuchsia-400 dark:bg-fuchsia-900/20 dark:border-fuchsia-600 shadow-sm" : "bg-white border-gray-200 dark:bg-gray-800 dark:border-gray-700"}`}
                         >
-                          <div
-                            className="cursor-pointer shrink-0"
+                          <button
+                            type="button"
+                            className="cursor-pointer shrink-0 focus:outline-none focus:ring-2 focus:ring-fuchsia-500 rounded-full"
                             onClick={() => {
-                              const newQ = [...questions];
-                              newQ[qIndex].answer = oIndex;
+                              const newQ = questions.map((question, i) =>
+                                i === qIndex
+                                  ? { ...question, answer: oIndex }
+                                  : question,
+                              );
                               setQuestions(newQ);
                             }}
+                            aria-label={`Mark Option ${String.fromCharCode(65 + oIndex)} as correct answer`}
+                            aria-pressed={q.answer === oIndex}
                           >
                             {q.answer === oIndex ? (
                               <CheckCircle2
@@ -220,22 +266,29 @@ const CBTTab = ({ isTeacher, isAdmin, isStudent, subjects }) => {
                                 size={20}
                               />
                             )}
-                          </div>
+                          </button>
                           <input
                             type="text"
                             placeholder={`Option ${String.fromCharCode(65 + oIndex)}`}
                             className="w-full bg-transparent border-none focus:outline-none text-sm font-medium dark:text-white"
                             value={opt}
                             onChange={(e) => {
-                              const newQ = [...questions];
-                              newQ[qIndex].options[oIndex] = e.target.value;
+                              const newQ = questions.map((question, i) => {
+                                if (i === qIndex) {
+                                  const newOptions = [...question.options];
+                                  newOptions[oIndex] = e.target.value;
+                                  return { ...question, options: newOptions };
+                                }
+                                return question;
+                              });
                               setQuestions(newQ);
                             }}
                             required
+                            aria-label={`Option ${String.fromCharCode(65 + oIndex)} text`}
                           />
                         </div>
                       ))}
-                    </div>
+                    </fieldset>
                   </div>
                 ))}
               </div>
@@ -249,7 +302,6 @@ const CBTTab = ({ isTeacher, isAdmin, isStudent, subjects }) => {
               </button>
             </div>
 
-            {/* 👈 PRO UI: Sticky Floating Action Bar */}
             <div className="sticky bottom-0 z-20 p-4 bg-white/90 dark:bg-gray-800/90 backdrop-blur-md border-t border-gray-200 dark:border-gray-700 flex justify-end shadow-[0_-4px_6px_-1px_rgb(0,0,0,0.05)]">
               <button
                 type="submit"
@@ -273,7 +325,7 @@ const CBTTab = ({ isTeacher, isAdmin, isStudent, subjects }) => {
             transition={{ duration: 0.3, ease: "easeInOut" }}
             className="fixed inset-0 z-[100] bg-gray-50 dark:bg-gray-900 overflow-y-auto flex flex-col"
           >
-            <header className="sticky top-0 z-50 bg-white/95 dark:bg-gray-800/95 backdrop-blur-xl border-b border-gray-200/60 dark:border-gray-700/50 shadow-sm">
+            <header className="sticky top-0 z-50 bg-white/95 dark:bg-gray-800/95 md:bg-white/80 md:dark:bg-gray-800/80 md:backdrop-blur-xl border-b border-gray-200/60 dark:border-gray-700/50 shadow-sm">
               <div className="px-6 py-4 flex items-center justify-between max-w-5xl mx-auto w-full">
                 <div className="flex items-center gap-3">
                   <div className="flex items-center justify-center w-10 h-10 bg-fuchsia-100 dark:bg-fuchsia-900/30 text-fuchsia-600 dark:text-fuchsia-400 rounded-xl">
@@ -291,8 +343,10 @@ const CBTTab = ({ isTeacher, isAdmin, isStudent, subjects }) => {
 
                 <div className="flex items-center gap-6">
                   <div className="hidden sm:flex flex-col items-end">
-                    {/* 👈 PRO UI: font-mono for metrics */}
-                    <span className="text-sm font-black font-mono text-gray-900 dark:text-white">
+                    <span
+                      className="text-sm font-black font-mono text-gray-900 dark:text-white"
+                      aria-live="polite"
+                    >
                       {String(answeredQuestions).padStart(2, "0")} /{" "}
                       {String(totalQuestions).padStart(2, "0")} Answered
                     </span>
@@ -327,7 +381,6 @@ const CBTTab = ({ isTeacher, isAdmin, isStudent, subjects }) => {
                   className="p-6 md:p-8 bg-white dark:bg-gray-800 rounded-3xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow"
                 >
                   <div className="flex gap-4 mb-6">
-                    {/* 👈 PRO UI: font-mono for Question Numbers */}
                     <span className="flex items-center justify-center shrink-0 w-10 h-10 rounded-xl bg-fuchsia-50 dark:bg-fuchsia-900/20 text-fuchsia-600 dark:text-fuchsia-400 font-black font-mono text-sm border border-fuchsia-100 dark:border-fuchsia-800">
                       {String(qIndex + 1).padStart(2, "0")}
                     </span>
@@ -336,7 +389,10 @@ const CBTTab = ({ isTeacher, isAdmin, isStudent, subjects }) => {
                     </p>
                   </div>
 
-                  <div className="space-y-3 pl-0 md:pl-14">
+                  <fieldset className="space-y-3 pl-0 md:pl-14">
+                    <legend className="sr-only">
+                      Options for Question {qIndex + 1}
+                    </legend>
                     {q.options.map((opt, oIndex) => {
                       const isSelected = studentAnswers[qIndex] === oIndex;
                       return (
@@ -346,6 +402,7 @@ const CBTTab = ({ isTeacher, isAdmin, isStudent, subjects }) => {
                         >
                           <div
                             className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isSelected ? "border-fuchsia-500" : "border-gray-300 dark:border-gray-600"}`}
+                            aria-hidden="true"
                           >
                             {isSelected && (
                               <motion.div
@@ -357,13 +414,14 @@ const CBTTab = ({ isTeacher, isAdmin, isStudent, subjects }) => {
                           <input
                             type="radio"
                             name={`student-answer-${qIndex}`}
-                            className="hidden"
+                            className="sr-only" // Hidden visually but accessible to screen readers
                             onChange={() =>
                               setStudentAnswers({
                                 ...studentAnswers,
                                 [qIndex]: oIndex,
                               })
                             }
+                            aria-checked={isSelected}
                           />
                           <span
                             className={`text-base font-medium ${isSelected ? "text-fuchsia-900 dark:text-fuchsia-100 font-bold" : "text-gray-700 dark:text-gray-300"}`}
@@ -373,7 +431,7 @@ const CBTTab = ({ isTeacher, isAdmin, isStudent, subjects }) => {
                         </label>
                       );
                     })}
-                  </div>
+                  </fieldset>
                 </motion.div>
               ))}
 
@@ -418,11 +476,16 @@ const CBTTab = ({ isTeacher, isAdmin, isStudent, subjects }) => {
 
           <div className="inline-block p-1.5 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-full mb-10 shadow-lg shadow-emerald-500/30">
             <div className="bg-white dark:bg-gray-900 rounded-full w-48 h-48 flex flex-col items-center justify-center">
-              {/* 👈 PRO UI: font-mono applied to giant score result */}
-              <span className="text-6xl font-black font-mono text-transparent bg-clip-text bg-gradient-to-br from-emerald-500 to-teal-600">
+              <span
+                className="text-6xl font-black font-mono text-transparent bg-clip-text bg-gradient-to-br from-emerald-500 to-teal-600"
+                aria-label={`Score: ${testResult.score}`}
+              >
                 {String(testResult.score).padStart(2, "0")}
               </span>
-              <span className="text-gray-400 font-bold text-xl mt-1 font-mono">
+              <span
+                className="text-gray-400 font-bold text-xl mt-1 font-mono"
+                aria-label={`Out of ${testResult.total}`}
+              >
                 / {String(testResult.total).padStart(2, "0")}
               </span>
             </div>
@@ -482,7 +545,6 @@ const CBTTab = ({ isTeacher, isAdmin, isStudent, subjects }) => {
                     <h5 className="font-bold text-lg text-gray-900 dark:text-white leading-tight">
                       {quiz.title}
                     </h5>
-                    {/* 👈 PRO UI: font-mono for dates */}
                     <p className="text-xs text-gray-500 mt-2 font-mono">
                       Published:{" "}
                       {new Date(quiz.created_at).toLocaleDateString()}

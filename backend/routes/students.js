@@ -68,7 +68,7 @@ router.post("/", authorize, async (req, res) => {
   } catch (err) {
     console.error(err.message);
     res.status(500).json({
-      error: "Server Error. (Did you use an email that already exists?)",
+      error: "Internal Server Error. (Did you use an email that already exists?)",
     });
   }
 });
@@ -130,7 +130,7 @@ router.get("/", authorize, async (req, res) => {
     });
   } catch (err) {
     console.error(err.message);
-    res.status(500).send("Server Error");
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
@@ -151,7 +151,7 @@ router.put("/:id/link-parent", authorize, async (req, res) => {
     res.json({ message: "✅ Parent successfully linked to student!" });
   } catch (err) {
     console.error(err.message);
-    res.status(500).send("Server Error");
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
@@ -177,7 +177,7 @@ router.get("/my-children", authorize, async (req, res) => {
     res.json(children.rows);
   } catch (err) {
     console.error(err.message);
-    res.status(500).send("Server Error");
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 

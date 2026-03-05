@@ -14,7 +14,7 @@ router.get("/teachers", authorize, async (req, res) => {
     res.json(teachers.rows);
   } catch (err) {
     console.error(err.message);
-    res.status(500).send("Server Error");
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
@@ -29,7 +29,7 @@ router.get("/parents", authorize, async (req, res) => {
     res.json(parents.rows);
   } catch (err) {
     console.error(err.message);
-    res.status(500).send("Server Error");
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 

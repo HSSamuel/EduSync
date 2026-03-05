@@ -21,7 +21,7 @@ router.get("/", authorize, async (req, res) => {
     });
   } catch (err) {
     console.error(err.message);
-    res.status(500).send("Server Error");
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
@@ -57,7 +57,7 @@ router.get("/stats", authorize, async (req, res) => {
     });
   } catch (err) {
     console.error(err.message);
-    res.status(500).send("Server Error");
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
