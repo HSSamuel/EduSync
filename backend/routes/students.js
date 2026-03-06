@@ -2,12 +2,28 @@ const express = require("express");
 const router = express.Router();
 const pool = require("../db");
 const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 const authorize = require("../middleware/authorize");
 const sendEmail = require("../utils/sendEmail");
+const { z } = require("zod");
+const validate = require("../middleware/validate");
 
 const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
 
-router.post("/", authorize, async (req, res) => {
+/**
+ * Admin creates a student account.
+ * Security note:
+ * - We DO NOT email plain-text passwords.
+ * - We generate a random temporary password (hashed) and email a secure "Set Password" link.
+ */
+const createStudentSchema = z.object({
+  full_name: z.string().min(2, "Full name is required"),
+  email: z.string().email("A valid email is required"),
+  class_grade: z.string().min(1, "Class/Grade is required"),
+});
+
+router.post("/", authorize, validate(createStudentSchema), async (req, res) => {
   try {
     if (req.user.role !== "Admin") {
       return res
@@ -15,12 +31,16 @@ router.post("/", authorize, async (req, res) => {
         .json({ error: "Access Denied. Only Admins can register students." });
     }
 
-    const { full_name, email, password, class_grade } = req.body;
+    const { full_name, email, class_grade } = req.body;
+
+    // Generate a strong random temporary password (never sent to the student).
+    const tempPassword = crypto.randomBytes(24).toString("base64url");
 
     const saltRounds = 10;
     const salt = await bcrypt.genSalt(saltRounds);
-    const bcryptPassword = await bcrypt.hash(password, salt);
+    const bcryptPassword = await bcrypt.hash(tempPassword, salt);
 
+    // Create user record
     const newUser = await pool.query(
       "INSERT INTO users (full_name, email, password_hash, role, school_id) VALUES ($1, $2, $3, 'Student', $4) RETURNING user_id, full_name, email",
       [full_name, email, bcryptPassword, req.user.school_id],
@@ -28,10 +48,22 @@ router.post("/", authorize, async (req, res) => {
 
     const newUserId = newUser.rows[0].user_id;
 
+    // Create student record
     const newStudent = await pool.query(
       "INSERT INTO students (user_id, class_grade) VALUES ($1, $2) RETURNING *",
       [newUserId, class_grade],
     );
+
+    // Create a password reset token compatible with /api/auth/reset-password
+    // We include a short slice of the current password hash so that tokens are invalidated if password changes.
+    const secretHashSlice = bcryptPassword.substring(0, 10);
+    const resetToken = jwt.sign(
+      { user_id: newUserId, secret: secretHashSlice },
+      process.env.ACCESS_TOKEN_SECRET || process.env.JWT_SECRET,
+      { expiresIn: "15m" },
+    );
+
+    const setPasswordLink = `${CLIENT_URL}/reset-password/${resetToken}`;
 
     const emailHTML = `
       <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden;">
@@ -42,33 +74,57 @@ router.post("/", authorize, async (req, res) => {
           <h3 style="color: #1e3a8a;">Dear ${full_name},</h3>
           <p>Welcome to your new digital learning and management portal!</p>
           <p>Through your secure dashboard, you will be able to download study materials and view your official report cards.</p>
+
           <div style="background-color: white; padding: 15px; border-radius: 5px; margin: 20px 0; border: 1px dashed #cbd5e1;">
-            <p style="margin: 0 0 10px 0;"><strong>Your Login Credentials:</strong></p>
+            <p style="margin: 0 0 10px 0;"><strong>Get Started</strong></p>
             <p style="margin: 0;"><strong>Portal Link:</strong> ${CLIENT_URL}</p>
             <p style="margin: 0;"><strong>Username:</strong> ${email}</p>
-            <p style="margin: 0;"><strong>Temporary Password:</strong> ${password}</p>
           </div>
-          <p>Please log in and update your password as soon as possible.</p>
+
+          <p style="margin: 0 0 12px 0;">
+            To secure your account, please set your password using the button below.
+            <strong>This link expires in 15 minutes.</strong>
+          </p>
+
+          <div style="text-align: center; margin: 18px 0;">
+            <a href="${setPasswordLink}" style="display: inline-block; background-color: #2563EB; color: #fff; padding: 12px 18px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+              Set Your Password
+            </a>
+          </div>
+
+          <p style="font-size: 13px; color: #64748b; margin-top: 16px;">
+            If you did not request this, please ignore this email. Your account remains secure.
+          </p>
+
           <p style="margin-top: 30px;">Warm regards,<br/><strong>The Administration Team</strong></p>
         </div>
       </div>
     `;
 
-    sendEmail({
-      to: email,
-      subject: "Welcome to the EduSync Portal - Your Academic Dashboard",
-      html: emailHTML,
-    });
+    let emailDispatched = true;
+    try {
+      await sendEmail({
+        to: email,
+        subject: "Welcome to EduSync - Set Your Password",
+        html: emailHTML,
+      });
+    } catch (emailErr) {
+      emailDispatched = false;
+      console.error("Email dispatch failed:", emailErr?.message || emailErr);
+    }
 
     res.json({
-      message: "Student registered successfully! Welcome email dispatched.",
+      message: emailDispatched
+        ? "Student registered successfully! Set-password email dispatched."
+        : "Student registered successfully, but email dispatch failed. Please resend reset link.",
       user_account: newUser.rows[0],
       academic_record: newStudent.rows[0],
     });
   } catch (err) {
     console.error(err.message);
     res.status(500).json({
-      error: "Internal Server Error. (Did you use an email that already exists?)",
+      error:
+        "Internal Server Error. (Did you use an email that already exists?)",
     });
   }
 });

@@ -1,324 +1,434 @@
-import React, { useState, useEffect } from "react";
-import PremiumEmptyState from "./PremiumEmptyState";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   BookOpen,
-  Plus,
-  Trash2,
+  PlusCircle,
   UploadCloud,
-  FolderOpen,
   FileText,
+  Trash2,
+  Loader2,
+  Search,
+  FolderOpen,
   CheckCircle2,
-  Loader2, // 👈 NEW: Imported Loader2 for the spinner
 } from "lucide-react";
+import PremiumEmptyState from "./PremiumEmptyState";
+import { apiFetch } from "../utils/api";
 
-const API_URL = import.meta.env.VITE_API_URL; 
-
-const SubjectsTab = ({ isAdmin, subjects, setSubjects }) => {
+const SubjectsTab = ({ isAdmin, isTeacher }) => {
+  const [subjects, setSubjects] = useState([]);
   const [subjectName, setSubjectName] = useState("");
-  const [teacherId, setTeacherId] = useState("");
-  const [teachers, setTeachers] = useState([]);
-  const [modules, setModules] = useState({});
-  const [uploadingIds, setUploadingIds] = useState({}); // 👈 NEW: Track uploads per subject
+  const [selectedSubjectId, setSelectedSubjectId] = useState("");
+  const [moduleTitle, setModuleTitle] = useState("");
+  const [moduleFile, setModuleFile] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const [loadingSubjects, setLoadingSubjects] = useState(true);
+  const [creatingSubject, setCreatingSubject] = useState(false);
+  const [uploadingModule, setUploadingModule] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+
+  const canManage = isAdmin || isTeacher;
+
+  const fetchSubjects = async () => {
+    try {
+      setLoadingSubjects(true);
+
+      const res = await apiFetch("/subjects", {
+        method: "GET",
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setSubjects(Array.isArray(data) ? data : []);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        console.error("Failed to load subjects:", err);
+      }
+    } catch (error) {
+      console.error("Error loading subjects:", error);
+    } finally {
+      setLoadingSubjects(false);
+    }
+  };
 
   useEffect(() => {
-    if (isAdmin) {
-      const fetchTeachers = async () => {
-        try {
-          const token = localStorage.getItem("token");
-          const response = await fetch(`${API_URL}/users/teachers`, {
-            headers: { jwt_token: token },
-          });
-          if (response.ok) setTeachers(await response.json());
-        } catch (err) {
-          console.error(err.message);
-        }
-      };
-      fetchTeachers();
-    }
-  }, [isAdmin]);
+    fetchSubjects();
+  }, []);
 
-  const onSubmitSubject = async (e) => {
+  const filteredSubjects = useMemo(() => {
+    if (!searchTerm.trim()) return subjects;
+
+    return subjects.filter((subject) => {
+      const name = subject.subject_name || "";
+      return name.toLowerCase().includes(searchTerm.toLowerCase());
+    });
+  }, [subjects, searchTerm]);
+
+  const handleCreateSubject = async (e) => {
     e.preventDefault();
+
+    if (!subjectName.trim()) {
+      alert("Please enter a subject name.");
+      return;
+    }
+
     try {
-      const token = localStorage.getItem("token");
-      const response = await fetch(`${API_URL}/subjects`, {
+      setCreatingSubject(true);
+
+      const res = await apiFetch("/subjects", {
         method: "POST",
-        headers: { "Content-Type": "application/json", jwt_token: token },
         body: JSON.stringify({
-          subject_name: subjectName,
-          teacher_id: teacherId,
+          subject_name: subjectName.trim(),
         }),
       });
-      if (response.ok) {
-        setSubjects([...subjects, await response.json()]);
-        setSubjectName("");
-        setTeacherId("");
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        alert(data.error || "Failed to create subject.");
+        return;
       }
-    } catch (err) {
-      console.error(err.message);
+
+      alert(data.message || "✅ Subject created successfully.");
+      setSubjectName("");
+      await fetchSubjects();
+    } catch (error) {
+      console.error("Create subject error:", error);
+      alert("❌ Something went wrong while creating the subject.");
+    } finally {
+      setCreatingSubject(false);
     }
   };
 
-  const deleteSubject = async (id) => {
-    if (!window.confirm("Are you sure you want to delete this subject?"))
-      return;
-    try {
-      const token = localStorage.getItem("token");
-      const response = await fetch(`${API_URL}/subjects/${id}`, {
-        method: "DELETE",
-        headers: { jwt_token: token },
-      });
-      if (response.ok) setSubjects(subjects.filter((s) => s.subject_id !== id));
-    } catch (err) {
-      console.error(err.message);
-    }
-  };
-
-  const uploadModule = async (e, subject_id) => {
+  const handleUploadModule = async (e) => {
     e.preventDefault();
-    
-    // 👈 NEW: Set the specific subject to a loading state
-    setUploadingIds((prev) => ({ ...prev, [subject_id]: true })); 
-    
+
+    if (!selectedSubjectId) {
+      alert("Please select a subject.");
+      return;
+    }
+
+    if (!moduleTitle.trim()) {
+      alert("Please enter a module title.");
+      return;
+    }
+
+    if (!moduleFile) {
+      alert("Please choose a file to upload.");
+      return;
+    }
+
     try {
-      const token = localStorage.getItem("token");
-      const formData = new FormData(e.target);
-      formData.append("subject_id", subject_id);
-      const response = await fetch(`${API_URL}/modules`, {
+      setUploadingModule(true);
+
+      const formData = new FormData();
+      formData.append("subject_id", selectedSubjectId);
+      formData.append("title", moduleTitle.trim());
+      formData.append("file", moduleFile);
+
+      const res = await apiFetch("/modules/upload", {
         method: "POST",
-        headers: { jwt_token: token },
         body: formData,
       });
-      if (response.ok) {
-        e.target.reset();
-        fetchModules(subject_id);
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        alert(data.error || "Failed to upload module.");
+        return;
       }
-    } catch (err) {
-      console.error(err.message);
+
+      alert(data.message || "✅ Module uploaded successfully.");
+      setModuleTitle("");
+      setModuleFile(null);
+
+      const fileInput = document.getElementById("module-file-input");
+      if (fileInput) fileInput.value = "";
+
+      await fetchSubjects();
+    } catch (error) {
+      console.error("Module upload error:", error);
+      alert("❌ Something went wrong while uploading the module.");
     } finally {
-      // 👈 NEW: Remove the loading state regardless of success or failure
-      setUploadingIds((prev) => ({ ...prev, [subject_id]: false })); 
+      setUploadingModule(false);
     }
   };
 
-  const fetchModules = async (subject_id) => {
+  const handleDeleteSubject = async (subjectId) => {
+    const confirmed = window.confirm(
+      "Are you sure you want to delete this subject?",
+    );
+    if (!confirmed) return;
+
     try {
-      const token = localStorage.getItem("token");
-      const response = await fetch(`${API_URL}/modules/${subject_id}`, {
-        headers: { jwt_token: token },
+      setDeletingId(subjectId);
+
+      const res = await apiFetch(`/subjects/${subjectId}`, {
+        method: "DELETE",
       });
-      if (response.ok)
-        setModules({ ...modules, [subject_id]: await response.json() });
-    } catch (err) {
-      console.error(err.message);
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        alert(data.error || "Failed to delete subject.");
+        return;
+      }
+
+      alert(data.message || "✅ Subject deleted successfully.");
+      await fetchSubjects();
+    } catch (error) {
+      console.error("Delete subject error:", error);
+      alert("❌ Something went wrong while deleting the subject.");
+    } finally {
+      setDeletingId(null);
     }
   };
 
-  const handleSecureDownload = (e, fileUrl, fileName) => {
-    e.preventDefault();
-    if (!fileUrl) return alert("File URL is missing.");
-
-    let downloadUrl = fileUrl;
-    if (fileUrl.includes("cloudinary.com")) {
-      const parts = fileUrl.split("/upload/");
-      downloadUrl = `${parts[0]}/upload/fl_attachment/${parts[1]}`;
+  const renderModules = (subject) => {
+    if (!subject.modules || subject.modules.length === 0) {
+      return (
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          No modules uploaded yet.
+        </p>
+      );
     }
 
-    window.open(downloadUrl, "_blank");
+    return (
+      <div className="space-y-3">
+        {subject.modules.map((module) => (
+          <div
+            key={module.module_id}
+            className="flex items-center justify-between gap-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-3"
+          >
+            <div className="min-w-0">
+              <p className="font-semibold text-gray-800 dark:text-gray-100 truncate">
+                {module.title}
+              </p>
+              <a
+                href={module.file_url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 hover:underline mt-1"
+              >
+                <FileText size={14} />
+                Open file
+              </a>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
   };
 
   return (
-    <div className="animate-fade-in space-y-8">
-      {/* Sleek Admin Control Bar */}
-      {isAdmin && (
-        <form
-          onSubmit={onSubmitSubject}
-          className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col md:flex-row gap-3 items-center transition-all hover:shadow-md"
-        >
-          <div className="flex-1 w-full relative">
-            <BookOpen
-              className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+    <div className="space-y-8 animate-fade-in">
+      {canManage && (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="p-2 rounded-xl bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">
+                <PlusCircle size={22} />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                  Create Subject
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Add a new subject to the academic catalog.
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleCreateSubject} className="space-y-4">
+              <div className="relative">
+                <BookOpen
+                  size={18}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                />
+                <input
+                  type="text"
+                  value={subjectName}
+                  onChange={(e) => setSubjectName(e.target.value)}
+                  placeholder="e.g. Mathematics"
+                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={creatingSubject}
+                  required
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={creatingSubject}
+                className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {creatingSubject ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={18} />
+                    Create Subject
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
+
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="p-2 rounded-xl bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400">
+                <UploadCloud size={22} />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                  Upload Module
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Attach learning material to a subject.
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleUploadModule} className="space-y-4">
+              <select
+                value={selectedSubjectId}
+                onChange={(e) => setSelectedSubjectId(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-sm outline-none focus:ring-2 focus:ring-green-500"
+                disabled={uploadingModule}
+                required
+              >
+                <option value="">Select Subject</option>
+                {subjects.map((subject) => (
+                  <option key={subject.subject_id} value={subject.subject_id}>
+                    {subject.subject_name}
+                  </option>
+                ))}
+              </select>
+
+              <input
+                type="text"
+                value={moduleTitle}
+                onChange={(e) => setModuleTitle(e.target.value)}
+                placeholder="Module title"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-sm outline-none focus:ring-2 focus:ring-green-500"
+                disabled={uploadingModule}
+                required
+              />
+
+              <input
+                id="module-file-input"
+                type="file"
+                onChange={(e) => setModuleFile(e.target.files?.[0] || null)}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-sm outline-none"
+                disabled={uploadingModule}
+                required
+              />
+
+              <button
+                type="submit"
+                disabled={uploadingModule}
+                className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-green-600 text-white font-bold hover:bg-green-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {uploadingModule ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin" />
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <UploadCloud size={18} />
+                    Upload Module
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white dark:bg-gray-800 p-5 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-5">
+          <div>
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+              Subjects & Modules
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Browse created subjects and their uploaded learning materials.
+            </p>
+          </div>
+
+          <div className="relative w-full md:w-80">
+            <Search
               size={18}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
             />
             <input
               type="text"
-              placeholder="New Subject Name"
-              className="w-full pl-10 pr-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm font-medium"
-              value={subjectName}
-              onChange={(e) => setSubjectName(e.target.value)}
-              required
+              placeholder="Search subjects..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-sm outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
+        </div>
 
-          <div className="flex-1 w-full">
-            <select
-              required
-              className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm font-medium"
-              value={teacherId}
-              onChange={(e) => setTeacherId(e.target.value)}
-            >
-              <option value="" className="text-gray-400">
-                Assign a Teacher...
-              </option>
-              {teachers.length === 0 && (
-                <option disabled>No teachers found</option>
-              )}
-              {teachers.map((t) => (
-                <option key={t.user_id} value={t.user_id}>
-                  {t.full_name}
-                </option>
-              ))}
-            </select>
+        {loadingSubjects ? (
+          <div className="py-12 flex items-center justify-center text-gray-500 dark:text-gray-400">
+            <Loader2 size={22} className="animate-spin mr-2" />
+            Loading subjects...
           </div>
-
-          <button
-            type="submit"
-            className="w-full md:w-auto px-6 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-md shadow-blue-500/30 transition-all flex items-center justify-center gap-2"
-          >
-            <Plus size={20} />
-            <span>Add Subject</span>
-          </button>
-        </form>
-      )}
-
-      {/* Empty State */}
-      {subjects.length === 0 ? (
-        <PremiumEmptyState
-          icon={BookOpen}
-          title="No Subjects Assigned"
-          description="There are no academic subjects created or assigned to your profile yet."
-        />
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {subjects.map((subject) => {
-            const isUploading = uploadingIds[subject.subject_id]; // 👈 NEW: Check status for this specific card
-            
-            return (
+        ) : filteredSubjects.length === 0 ? (
+          <PremiumEmptyState
+            icon={FolderOpen}
+            title="No subjects found"
+            description="Create a subject or adjust your search to see results here."
+          />
+        ) : (
+          <div className="space-y-4">
+            {filteredSubjects.map((subject) => (
               <div
                 key={subject.subject_id}
-                className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-lg transition-all duration-300 group flex flex-col overflow-hidden"
+                className="border border-gray-200 dark:border-gray-700 rounded-2xl p-5 bg-gray-50/60 dark:bg-gray-900/30"
               >
-                {/* Card Header */}
-                <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-start bg-gray-50/50 dark:bg-gray-800/50">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg">
-                      <BookOpen size={20} />
-                    </div>
-                    <h4 className="text-lg font-bold text-gray-900 dark:text-white tracking-tight">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+                  <div>
+                    <h4 className="text-lg font-bold text-gray-900 dark:text-white">
                       {subject.subject_name}
                     </h4>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      {subject.modules?.length || 0} module
+                      {(subject.modules?.length || 0) === 1 ? "" : "s"}
+                    </p>
                   </div>
+
                   {isAdmin && (
                     <button
-                      onClick={() => deleteSubject(subject.subject_id)}
-                      className="text-gray-400 hover:text-red-500 p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
-                      title="Delete Subject"
+                      onClick={() => handleDeleteSubject(subject.subject_id)}
+                      disabled={deletingId === subject.subject_id}
+                      className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30 font-semibold disabled:opacity-60"
                     >
-                      <Trash2 size={18} />
+                      {deletingId === subject.subject_id ? (
+                        <>
+                          <Loader2 size={16} className="animate-spin" />
+                          Deleting...
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 size={16} />
+                          Delete
+                        </>
+                      )}
                     </button>
                   )}
                 </div>
 
-                {/* Upload Section */}
-                {isAdmin && (
-                  <div className="p-5">
-                    <form
-                      onSubmit={(e) => uploadModule(e, subject.subject_id)}
-                      className="space-y-3"
-                    >
-                      <input
-                        type="text"
-                        name="title"
-                        placeholder="Material Title (e.g., Syllabus)"
-                        className="w-full px-3 py-2 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all disabled:opacity-50"
-                        required
-                        disabled={isUploading} // 👈 NEW: Disable input during upload
-                      />
-                      <div className="relative">
-                        <input
-                          type="file"
-                          name="module_file"
-                          accept=".pdf,.doc,.docx"
-                          className="w-full text-sm text-gray-500 file:cursor-pointer file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900/20 dark:file:text-blue-400 transition-all cursor-pointer disabled:opacity-50"
-                          required
-                          disabled={isUploading} // 👈 NEW: Disable input during upload
-                        />
-                      </div>
-                      <button
-                        type="submit"
-                        disabled={isUploading} // 👈 NEW: Disable button during upload
-                        className="w-full py-2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-sm font-bold rounded-lg hover:bg-gray-800 dark:hover:bg-white transition-colors flex items-center justify-center gap-2 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed"
-                      >
-                        {isUploading ? (
-                          <>
-                            <Loader2 size={16} className="animate-spin" /> Uploading...
-                          </>
-                        ) : (
-                          <>
-                            <UploadCloud size={16} /> Upload File
-                          </>
-                        )}
-                      </button>
-                    </form>
-                  </div>
-                )}
-
-                {/* Materials Section */}
-                <div
-                  className={`p-5 ${isAdmin ? "bg-gray-50 dark:bg-gray-900/50 mt-auto" : "flex-grow"}`}
-                >
-                  <button
-                    onClick={() => fetchModules(subject.subject_id)}
-                    className="w-full flex items-center justify-between text-sm font-bold text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors group/btn"
-                  >
-                    <span className="flex items-center gap-2">
-                      <FolderOpen size={16} className="text-amber-500" /> View
-                      Materials
-                    </span>
-                    <span className="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs px-2 py-0.5 rounded-full group-hover/btn:bg-blue-100 group-hover/btn:text-blue-600 transition-colors">
-                      Open
-                    </span>
-                  </button>
-
-                  {modules[subject.subject_id] && (
-                    <div className="mt-4 space-y-2 animate-fade-in">
-                      {modules[subject.subject_id].length === 0 ? (
-                        <div className="text-center py-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700">
-                          <p className="text-xs text-gray-500 italic">
-                            No files uploaded yet.
-                          </p>
-                        </div>
-                      ) : (
-                        modules[subject.subject_id].map((mod) => (
-                          <button
-                            key={mod.module_id}
-                            onClick={(e) =>
-                              handleSecureDownload(
-                                e,
-                                mod.file_url,
-                                `${mod.title}.pdf`,
-                              )
-                            }
-                            className="w-full flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 hover:border-blue-300 hover:shadow transition-all group/link text-left"
-                          >
-                            <FileText
-                              size={16}
-                              className="text-blue-500 group-hover/link:text-blue-600"
-                            />
-                            <span className="text-sm font-medium text-gray-700 dark:text-gray-200 group-hover/link:text-blue-600 truncate flex-1">
-                              {mod.title}
-                            </span>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </div>
+                {renderModules(subject)}
               </div>
-            );
-          })}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

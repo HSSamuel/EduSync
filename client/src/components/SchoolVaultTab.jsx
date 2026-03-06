@@ -1,76 +1,108 @@
 import React, { useState, useEffect } from "react";
-import { FolderLock, Loader2, UploadCloud } from "lucide-react"; // 👈 Added Loader2 and UploadCloud
+import { FolderLock, Loader2, UploadCloud } from "lucide-react";
 import PremiumEmptyState from "./PremiumEmptyState";
-
-const API_URL = import.meta.env.VITE_API_URL;
+import { apiFetch } from "../utils/api";
 
 const SchoolVaultTab = ({ isAdmin }) => {
   const [documents, setDocuments] = useState([]);
-  const [isUploading, setIsUploading] = useState(false); // 👈 NEW: Loading State
+  const [isUploading, setIsUploading] = useState(false);
+  const [isLoadingDocs, setIsLoadingDocs] = useState(false);
+
+  const fetchDocs = async () => {
+    setIsLoadingDocs(true);
+    try {
+      const response = await apiFetch("/school/documents", {
+        method: "GET",
+      });
+
+      if (response.ok) {
+        const docs = await response.json();
+        setDocuments(Array.isArray(docs) ? docs : []);
+      } else {
+        const err = await response.json().catch(() => ({}));
+        console.error("Failed to fetch documents:", err);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsLoadingDocs(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchDocs = async () => {
-      try {
-        const token = localStorage.getItem("token");
-        const response = await fetch(`${API_URL}/school/documents`, {
-          headers: { jwt_token: token },
-        });
-        if (response.ok) setDocuments(await response.json());
-      } catch (err) {
-        console.error(err.message);
-      }
-    };
     fetchDocs();
   }, []);
 
   const uploadDocument = async (e) => {
     e.preventDefault();
-    setIsUploading(true); // 👈 Start Loading
+    setIsUploading(true);
+
     try {
-      const token = localStorage.getItem("token");
       const formData = new FormData(e.target);
-      const response = await fetch(`${API_URL}/school/documents`, {
+
+      const response = await apiFetch("/school/documents", {
         method: "POST",
-        headers: { jwt_token: token },
         body: formData,
       });
+
       if (response.ok) {
+        const newDoc = await response.json().catch(() => null);
         alert("✅ Document Uploaded to Vault!");
         e.target.reset();
-        const newDoc = await response.json();
-        setDocuments([newDoc, ...documents]);
+
+        if (newDoc) {
+          setDocuments((prev) => [newDoc, ...prev]);
+        } else {
+          // If API returns no doc object, re-fetch list.
+          fetchDocs();
+        }
       } else {
-        alert("❌ Upload Failed.");
+        const err = await response.json().catch(() => ({}));
+        alert("❌ " + (err.error || "Upload Failed."));
       }
     } catch (err) {
-      console.error(err.message);
+      console.error(err);
+      alert("❌ Something went wrong during upload.");
     } finally {
-      setIsUploading(false); // 👈 Stop Loading
+      setIsUploading(false);
     }
   };
 
   const deleteDocument = async (id) => {
-    if (!window.confirm("Are you sure you want to delete this document?")) return;
+    if (!window.confirm("Are you sure you want to delete this document?"))
+      return;
+
     try {
-      const token = localStorage.getItem("token");
-      const response = await fetch(`${API_URL}/school/documents/${id}`, {
+      const response = await apiFetch(`/school/documents/${id}`, {
         method: "DELETE",
-        headers: { jwt_token: token },
       });
-      if (response.ok) setDocuments(documents.filter((d) => d.doc_id !== id));
+
+      if (response.ok) {
+        setDocuments((prev) => prev.filter((d) => d.doc_id !== id));
+      } else {
+        const err = await response.json().catch(() => ({}));
+        alert("❌ " + (err.error || "Delete failed."));
+      }
     } catch (err) {
-      console.error(err.message);
+      console.error(err);
+      alert("❌ Something went wrong while deleting.");
     }
   };
 
   const handleSecureDownload = (e, fileUrl) => {
     e.preventDefault();
     if (!fileUrl) return alert("File URL is missing.");
+
     let downloadUrl = fileUrl;
+
+    // Cloudinary secure download trick: force attachment download
     if (fileUrl.includes("cloudinary.com")) {
       const parts = fileUrl.split("/upload/");
-      downloadUrl = `${parts[0]}/upload/fl_attachment/${parts[1]}`;
+      if (parts.length === 2) {
+        downloadUrl = `${parts[0]}/upload/fl_attachment/${parts[1]}`;
+      }
     }
+
     window.open(downloadUrl, "_blank");
   };
 
@@ -81,7 +113,11 @@ const SchoolVaultTab = ({ isAdmin }) => {
           <h4 className="text-xl font-bold font-serif mb-4 text-yellow-800 dark:text-yellow-400 flex items-center gap-2">
             <FolderLock size={20} /> Upload to School Vault
           </h4>
-          <form onSubmit={uploadDocument} className="flex flex-col md:flex-row gap-4 items-center">
+
+          <form
+            onSubmit={uploadDocument}
+            className="flex flex-col md:flex-row gap-4 items-center"
+          >
             <input
               type="text"
               name="title"
@@ -90,6 +126,7 @@ const SchoolVaultTab = ({ isAdmin }) => {
               required
               disabled={isUploading}
             />
+
             <input
               type="file"
               name="document_file"
@@ -98,6 +135,7 @@ const SchoolVaultTab = ({ isAdmin }) => {
               required
               disabled={isUploading}
             />
+
             <button
               type="submit"
               disabled={isUploading}
@@ -118,7 +156,12 @@ const SchoolVaultTab = ({ isAdmin }) => {
       )}
 
       <div className="mt-4">
-        {documents.length === 0 ? (
+        {isLoadingDocs ? (
+          <div className="py-12 flex items-center justify-center text-gray-500 dark:text-gray-400">
+            <Loader2 size={22} className="animate-spin mr-2" />
+            Loading documents...
+          </div>
+        ) : documents.length === 0 ? (
           <PremiumEmptyState
             icon={FolderLock}
             title="The Vault is Empty"
@@ -132,10 +175,15 @@ const SchoolVaultTab = ({ isAdmin }) => {
                 className="p-6 border border-gray-100 dark:border-gray-700 rounded-2xl shadow-sm bg-white/80 dark:bg-gray-800/80 flex justify-between items-start group hover:-translate-y-1 transition-all"
               >
                 <div>
-                  <h4 className="text-lg font-bold text-gray-800 dark:text-gray-200">{doc.title}</h4>
+                  <h4 className="text-lg font-bold text-gray-800 dark:text-gray-200">
+                    {doc.title}
+                  </h4>
                   <p className="text-xs font-semibold text-gray-500 mt-1 uppercase tracking-wider">
-                    {new Date(doc.uploaded_at).toLocaleDateString()}
+                    {doc.uploaded_at
+                      ? new Date(doc.uploaded_at).toLocaleDateString()
+                      : ""}
                   </p>
+
                   <button
                     onClick={(e) => handleSecureDownload(e, doc.file_url)}
                     className="inline-flex items-center gap-1 mt-4 px-4 py-2 bg-blue-50 dark:bg-blue-900/20 text-sm font-bold rounded-lg text-blue-600 hover:text-blue-800 transition-colors"
@@ -143,10 +191,13 @@ const SchoolVaultTab = ({ isAdmin }) => {
                     📥 Download
                   </button>
                 </div>
+
                 {isAdmin && (
                   <button
                     onClick={() => deleteDocument(doc.doc_id)}
                     className="p-2 text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all"
+                    aria-label="Delete document"
+                    title="Delete"
                   >
                     ✕
                   </button>
