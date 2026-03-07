@@ -1,186 +1,243 @@
-import React, { useState, useEffect } from "react";
-import { Loader2 } from "lucide-react"; // 👈 NEW
+import React, { useEffect, useState } from "react";
+import {
+  CalendarDays,
+  PlusCircle,
+  Loader2,
+  Clock3,
+  MapPin,
+} from "lucide-react";
+import PremiumEmptyState from "./PremiumEmptyState";
+import { apiFetch } from "../utils/api";
 
-const API_URL = import.meta.env.VITE_API_URL;
-
-const CalendarTab = ({ isAdmin }) => {
+const CalendarTab = ({ isAdmin, isTeacher }) => {
   const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [creating, setCreating] = useState(false);
+
   const [formData, setFormData] = useState({
     title: "",
+    description: "",
     event_date: "",
-    event_type: "Event",
+    location: "",
   });
 
-  const [isAdding, setIsAdding] = useState(false); // 👈 NEW
+  const canManage = isAdmin || isTeacher;
+
+  const fetchEvents = async () => {
+    setLoading(true);
+    try {
+      const res = await apiFetch("/school/events", {
+        method: "GET",
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setEvents(Array.isArray(data) ? data : []);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        console.error("Failed to fetch calendar events:", err);
+        setEvents([]);
+      }
+    } catch (err) {
+      console.error("Calendar fetch error:", err);
+      setEvents([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     fetchEvents();
   }, []);
 
-  const fetchEvents = async () => {
-    try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${API_URL}/school/events`, {
-        headers: { jwt_token: token },
-      });
-      if (res.ok) setEvents(await res.json());
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const onSubmitEvent = async (e) => {
+  const handleCreate = async (e) => {
     e.preventDefault();
-    setIsAdding(true); // 👈 Start Loading
+
+    if (!formData.title.trim() || !formData.event_date) {
+      alert("Please provide at least title and date.");
+      return;
+    }
+
+    setCreating(true);
     try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${API_URL}/school/events`, {
+      const res = await apiFetch("/school/events", {
         method: "POST",
-        headers: { "Content-Type": "application/json", jwt_token: token },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          title: formData.title.trim(),
+          description: formData.description.trim(),
+          event_date: formData.event_date,
+          location: formData.location.trim(),
+        }),
       });
-      if (res.ok) {
-        setFormData({ title: "", event_date: "", event_type: "Event" });
-        fetchEvents();
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        alert(data.error || "Failed to create event.");
+        return;
       }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsAdding(false); // 👈 Stop Loading
-    }
-  };
 
-  const deleteEvent = async (id) => {
-    try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${API_URL}/school/events/${id}`, {
-        method: "DELETE",
-        headers: { jwt_token: token },
+      alert(data.message || "✅ Event created successfully.");
+      setFormData({
+        title: "",
+        description: "",
+        event_date: "",
+        location: "",
       });
-      if (res.ok) fetchEvents();
+      await fetchEvents();
     } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const getEventColor = (type) => {
-    switch (type) {
-      case "Exam":
-        return "bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-400";
-      case "Holiday":
-        return "bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-400";
-      default:
-        return "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400";
+      console.error("Calendar create error:", err);
+      alert("❌ Something went wrong while creating the event.");
+    } finally {
+      setCreating(false);
     }
   };
 
   return (
-    <div className="animate-fade-in space-y-6">
-      {isAdmin && (
-        <form
-          onSubmit={onSubmitEvent}
-          className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border dark:border-gray-700 flex flex-col md:flex-row gap-4 items-end"
-        >
-          <div className="flex-1 w-full">
-            <label className="block text-sm font-bold mb-1 text-gray-700 dark:text-gray-300">
-              Event Title
-            </label>
+    <div className="space-y-8 animate-fade-in">
+      {canManage && (
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2 rounded-xl bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400">
+              <PlusCircle size={22} />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                Create Event
+              </h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Add an event to the school calendar.
+              </p>
+            </div>
+          </div>
+
+          <form onSubmit={handleCreate} className="space-y-4">
             <input
               type="text"
-              className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 disabled:opacity-50"
+              placeholder="Event title"
               value={formData.title}
               onChange={(e) =>
                 setFormData({ ...formData, title: e.target.value })
               }
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+              disabled={creating}
               required
-              disabled={isAdding}
             />
-          </div>
-          <div className="w-full md:w-auto">
-            <label className="block text-sm font-bold mb-1 text-gray-700 dark:text-gray-300">
-              Date
-            </label>
-            <input
-              type="date"
-              className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 disabled:opacity-50"
-              value={formData.event_date}
+
+            <textarea
+              rows="4"
+              placeholder="Event description"
+              value={formData.description}
               onChange={(e) =>
-                setFormData({ ...formData, event_date: e.target.value })
+                setFormData({ ...formData, description: e.target.value })
               }
-              required
-              disabled={isAdding}
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-sm outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+              disabled={creating}
             />
-          </div>
-          <div className="w-full md:w-auto">
-            <label className="block text-sm font-bold mb-1 text-gray-700 dark:text-gray-300">
-              Type
-            </label>
-            <select
-              className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 disabled:opacity-50"
-              value={formData.event_type}
-              onChange={(e) =>
-                setFormData({ ...formData, event_type: e.target.value })
-              }
-              disabled={isAdding}
-            >
-              <option value="Event">General Event</option>
-              <option value="Exam">Exam / Test</option>
-              <option value="Holiday">Public Holiday</option>
-            </select>
-          </div>
-          <button
-            type="submit"
-            disabled={isAdding}
-            className="w-full md:w-auto px-6 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 shadow-md flex items-center justify-center gap-2 disabled:bg-gray-400"
-          >
-            {isAdding ? (
-              <>
-                <Loader2 size={16} className="animate-spin" /> Adding...
-              </>
-            ) : (
-              "Add Event"
-            )}
-          </button>
-        </form>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <input
+                type="datetime-local"
+                value={formData.event_date}
+                onChange={(e) =>
+                  setFormData({ ...formData, event_date: e.target.value })
+                }
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                disabled={creating}
+                required
+              />
+
+              <input
+                type="text"
+                placeholder="Location"
+                value={formData.location}
+                onChange={(e) =>
+                  setFormData({ ...formData, location: e.target.value })
+                }
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                disabled={creating}
+              />
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                disabled={creating}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {creating ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <PlusCircle size={18} />
+                    Create Event
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
       )}
 
-      <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border dark:border-gray-700">
-        <h4 className="text-xl font-bold mb-4 dark:text-white">
-          📅 Upcoming School Events
-        </h4>
-        {events.length === 0 ? (
-          <p className="text-gray-500 italic">
-            No upcoming events on the calendar.
-          </p>
+      <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="p-2 rounded-xl bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400">
+            <CalendarDays size={22} />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+              School Calendar
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Upcoming academic and school events.
+            </p>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="py-10 flex items-center justify-center text-gray-500 dark:text-gray-400">
+            <Loader2 size={20} className="animate-spin mr-2" />
+            Loading events...
+          </div>
+        ) : events.length === 0 ? (
+          <PremiumEmptyState
+            icon={CalendarDays}
+            title="No calendar events yet"
+            description="Created events will appear here."
+          />
         ) : (
-          <div className="space-y-3">
-            {events.map((event) => (
+          <div className="space-y-4">
+            {events.map((event, index) => (
               <div
-                key={event.event_id}
-                className={`flex items-center justify-between p-4 rounded-lg border ${getEventColor(event.event_type)}`}
+                key={event.event_id || index}
+                className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-5"
               >
-                <div>
-                  <h5 className="font-bold text-lg">{event.title}</h5>
-                  <p className="text-sm opacity-80">
-                    {new Date(event.event_date).toLocaleDateString(undefined, {
-                      weekday: "long",
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                    })}
+                <h4 className="font-bold text-lg text-gray-900 dark:text-white mb-2">
+                  {event.title}
+                </h4>
+
+                {event.description && (
+                  <p className="text-sm text-gray-700 dark:text-gray-300 mb-3 leading-relaxed">
+                    {event.description}
                   </p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <span className="font-black uppercase tracking-wider text-xs px-3 py-1 rounded-full bg-white/50 dark:bg-black/20">
-                    {event.event_type}
+                )}
+
+                <div className="flex flex-col md:flex-row gap-3 md:gap-6 text-sm text-gray-600 dark:text-gray-400">
+                  <span className="inline-flex items-center gap-2">
+                    <Clock3 size={15} />
+                    {event.event_date
+                      ? new Date(event.event_date).toLocaleString()
+                      : ""}
                   </span>
-                  {isAdmin && (
-                    <button
-                      onClick={() => deleteEvent(event.event_id)}
-                      className="text-lg hover:scale-110 transition-transform"
-                    >
-                      🗑️
-                    </button>
+
+                  {event.location && (
+                    <span className="inline-flex items-center gap-2">
+                      <MapPin size={15} />
+                      {event.location}
+                    </span>
                   )}
                 </div>
               </div>

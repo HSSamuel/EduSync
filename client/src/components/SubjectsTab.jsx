@@ -15,6 +15,7 @@ import { apiFetch } from "../utils/api";
 
 const SubjectsTab = ({ isAdmin, isTeacher }) => {
   const [subjects, setSubjects] = useState([]);
+  const [modulesBySubject, setModulesBySubject] = useState({});
   const [subjectName, setSubjectName] = useState("");
   const [selectedSubjectId, setSelectedSubjectId] = useState("");
   const [moduleTitle, setModuleTitle] = useState("");
@@ -25,8 +26,36 @@ const SubjectsTab = ({ isAdmin, isTeacher }) => {
   const [creatingSubject, setCreatingSubject] = useState(false);
   const [uploadingModule, setUploadingModule] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+  const [deletingModuleId, setDeletingModuleId] = useState(null);
 
   const canManage = isAdmin || isTeacher;
+
+  const fetchModulesForSubject = async (subjectId) => {
+    try {
+      const res = await apiFetch(`/modules/${subjectId}`, {
+        method: "GET",
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setModulesBySubject((prev) => ({
+          ...prev,
+          [subjectId]: Array.isArray(data) ? data : [],
+        }));
+      } else {
+        setModulesBySubject((prev) => ({
+          ...prev,
+          [subjectId]: [],
+        }));
+      }
+    } catch (error) {
+      console.error(`Error loading modules for subject ${subjectId}:`, error);
+      setModulesBySubject((prev) => ({
+        ...prev,
+        [subjectId]: [],
+      }));
+    }
+  };
 
   const fetchSubjects = async () => {
     try {
@@ -38,13 +67,22 @@ const SubjectsTab = ({ isAdmin, isTeacher }) => {
 
       if (res.ok) {
         const data = await res.json();
-        setSubjects(Array.isArray(data) ? data : []);
+        const safeSubjects = Array.isArray(data) ? data : [];
+        setSubjects(safeSubjects);
+
+        await Promise.all(
+          safeSubjects.map((subject) =>
+            fetchModulesForSubject(subject.subject_id),
+          ),
+        );
       } else {
         const err = await res.json().catch(() => ({}));
         console.error("Failed to load subjects:", err);
+        setSubjects([]);
       }
     } catch (error) {
       console.error("Error loading subjects:", error);
+      setSubjects([]);
     } finally {
       setLoadingSubjects(false);
     }
@@ -88,7 +126,7 @@ const SubjectsTab = ({ isAdmin, isTeacher }) => {
         return;
       }
 
-      alert(data.message || "✅ Subject created successfully.");
+      alert("✅ Subject created successfully.");
       setSubjectName("");
       await fetchSubjects();
     } catch (error) {
@@ -123,9 +161,9 @@ const SubjectsTab = ({ isAdmin, isTeacher }) => {
       const formData = new FormData();
       formData.append("subject_id", selectedSubjectId);
       formData.append("title", moduleTitle.trim());
-      formData.append("file", moduleFile);
+      formData.append("module_file", moduleFile);
 
-      const res = await apiFetch("/modules/upload", {
+      const res = await apiFetch("/modules", {
         method: "POST",
         body: formData,
       });
@@ -137,14 +175,14 @@ const SubjectsTab = ({ isAdmin, isTeacher }) => {
         return;
       }
 
-      alert(data.message || "✅ Module uploaded successfully.");
+      alert("✅ Module uploaded successfully.");
       setModuleTitle("");
       setModuleFile(null);
 
       const fileInput = document.getElementById("module-file-input");
       if (fileInput) fileInput.value = "";
 
-      await fetchSubjects();
+      await fetchModulesForSubject(selectedSubjectId);
     } catch (error) {
       console.error("Module upload error:", error);
       alert("❌ Something went wrong while uploading the module.");
@@ -183,8 +221,40 @@ const SubjectsTab = ({ isAdmin, isTeacher }) => {
     }
   };
 
+  const handleDeleteModule = async (moduleId, subjectId) => {
+    const confirmed = window.confirm(
+      "Are you sure you want to delete this module?",
+    );
+    if (!confirmed) return;
+
+    try {
+      setDeletingModuleId(moduleId);
+
+      const res = await apiFetch(`/modules/${moduleId}`, {
+        method: "DELETE",
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        alert(data.error || "Failed to delete module.");
+        return;
+      }
+
+      alert(data.message || "✅ Module deleted successfully.");
+      await fetchModulesForSubject(subjectId);
+    } catch (error) {
+      console.error("Delete module error:", error);
+      alert("❌ Something went wrong while deleting the module.");
+    } finally {
+      setDeletingModuleId(null);
+    }
+  };
+
   const renderModules = (subject) => {
-    if (!subject.modules || subject.modules.length === 0) {
+    const subjectModules = modulesBySubject[subject.subject_id] || [];
+
+    if (subjectModules.length === 0) {
       return (
         <p className="text-sm text-gray-500 dark:text-gray-400">
           No modules uploaded yet.
@@ -194,7 +264,7 @@ const SubjectsTab = ({ isAdmin, isTeacher }) => {
 
     return (
       <div className="space-y-3">
-        {subject.modules.map((module) => (
+        {subjectModules.map((module) => (
           <div
             key={module.module_id}
             className="flex items-center justify-between gap-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-3"
@@ -213,6 +283,28 @@ const SubjectsTab = ({ isAdmin, isTeacher }) => {
                 Open file
               </a>
             </div>
+
+            {canManage && (
+              <button
+                onClick={() =>
+                  handleDeleteModule(module.module_id, subject.subject_id)
+                }
+                disabled={deletingModuleId === module.module_id}
+                className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30 font-semibold disabled:opacity-60"
+              >
+                {deletingModuleId === module.module_id ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 size={16} />
+                    Delete
+                  </>
+                )}
+              </button>
+            )}
           </div>
         ))}
       </div>
@@ -386,46 +478,50 @@ const SubjectsTab = ({ isAdmin, isTeacher }) => {
           />
         ) : (
           <div className="space-y-4">
-            {filteredSubjects.map((subject) => (
-              <div
-                key={subject.subject_id}
-                className="border border-gray-200 dark:border-gray-700 rounded-2xl p-5 bg-gray-50/60 dark:bg-gray-900/30"
-              >
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
-                  <div>
-                    <h4 className="text-lg font-bold text-gray-900 dark:text-white">
-                      {subject.subject_name}
-                    </h4>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      {subject.modules?.length || 0} module
-                      {(subject.modules?.length || 0) === 1 ? "" : "s"}
-                    </p>
+            {filteredSubjects.map((subject) => {
+              const subjectModules = modulesBySubject[subject.subject_id] || [];
+
+              return (
+                <div
+                  key={subject.subject_id}
+                  className="border border-gray-200 dark:border-gray-700 rounded-2xl p-5 bg-gray-50/60 dark:bg-gray-900/30"
+                >
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+                    <div>
+                      <h4 className="text-lg font-bold text-gray-900 dark:text-white">
+                        {subject.subject_name}
+                      </h4>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        {subjectModules.length} module
+                        {subjectModules.length === 1 ? "" : "s"}
+                      </p>
+                    </div>
+
+                    {isAdmin && (
+                      <button
+                        onClick={() => handleDeleteSubject(subject.subject_id)}
+                        disabled={deletingId === subject.subject_id}
+                        className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30 font-semibold disabled:opacity-60"
+                      >
+                        {deletingId === subject.subject_id ? (
+                          <>
+                            <Loader2 size={16} className="animate-spin" />
+                            Deleting...
+                          </>
+                        ) : (
+                          <>
+                            <Trash2 size={16} />
+                            Delete
+                          </>
+                        )}
+                      </button>
+                    )}
                   </div>
 
-                  {isAdmin && (
-                    <button
-                      onClick={() => handleDeleteSubject(subject.subject_id)}
-                      disabled={deletingId === subject.subject_id}
-                      className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30 font-semibold disabled:opacity-60"
-                    >
-                      {deletingId === subject.subject_id ? (
-                        <>
-                          <Loader2 size={16} className="animate-spin" />
-                          Deleting...
-                        </>
-                      ) : (
-                        <>
-                          <Trash2 size={16} />
-                          Delete
-                        </>
-                      )}
-                    </button>
-                  )}
+                  {renderModules(subject)}
                 </div>
-
-                {renderModules(subject)}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

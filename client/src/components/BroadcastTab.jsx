@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { Megaphone, Send, Loader2, Users } from "lucide-react";
 import PremiumEmptyState from "./PremiumEmptyState";
 import { apiFetch } from "../utils/api";
@@ -7,38 +7,10 @@ const BroadcastTab = ({ isAdmin, isTeacher }) => {
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [audience, setAudience] = useState("All");
-  const [broadcasts, setBroadcasts] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [lastSent, setLastSent] = useState(null);
 
   const canBroadcast = isAdmin || isTeacher;
-
-  const fetchBroadcasts = async () => {
-    setLoading(true);
-    try {
-      const res = await apiFetch("/broadcasts", {
-        method: "GET",
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        setBroadcasts(Array.isArray(data) ? data : []);
-      } else {
-        const err = await res.json().catch(() => ({}));
-        console.error("Failed to fetch broadcasts:", err);
-        setBroadcasts([]);
-      }
-    } catch (err) {
-      console.error("Broadcast fetch error:", err);
-      setBroadcasts([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchBroadcasts();
-  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -50,7 +22,7 @@ const BroadcastTab = ({ isAdmin, isTeacher }) => {
 
     setSending(true);
     try {
-      const res = await apiFetch("/broadcasts", {
+      const res = await apiFetch("/school/broadcast", {
         method: "POST",
         body: JSON.stringify({
           title: title.trim(),
@@ -67,10 +39,17 @@ const BroadcastTab = ({ isAdmin, isTeacher }) => {
       }
 
       alert(data.message || "✅ Broadcast sent successfully.");
+
+      setLastSent({
+        title: title.trim(),
+        message: message.trim(),
+        audience,
+        created_at: new Date().toISOString(),
+      });
+
       setTitle("");
       setMessage("");
       setAudience("All");
-      await fetchBroadcasts();
     } catch (err) {
       console.error("Broadcast send error:", err);
       alert("❌ Something went wrong while sending the broadcast.");
@@ -165,49 +144,37 @@ const BroadcastTab = ({ isAdmin, isTeacher }) => {
       </div>
 
       <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
-        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
-          Broadcast History
-        </h3>
+        {lastSent ? (
+          <div className="space-y-3">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+              Last Sent Broadcast
+            </h3>
 
-        {loading ? (
-          <div className="py-10 flex items-center justify-center text-gray-500 dark:text-gray-400">
-            <Loader2 size={20} className="animate-spin mr-2" />
-            Loading broadcasts...
+            <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-5">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-2">
+                <h4 className="font-bold text-gray-900 dark:text-white">
+                  {lastSent.title}
+                </h4>
+                <span className="text-xs font-semibold uppercase tracking-wider text-fuchsia-600 dark:text-fuchsia-400">
+                  {lastSent.audience}
+                </span>
+              </div>
+
+              <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                {lastSent.message}
+              </p>
+
+              <div className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                {new Date(lastSent.created_at).toLocaleString()}
+              </div>
+            </div>
           </div>
-        ) : broadcasts.length === 0 ? (
+        ) : (
           <PremiumEmptyState
             icon={Megaphone}
-            title="No broadcasts yet"
-            description="Sent broadcasts will appear here."
+            title="No local broadcast preview yet"
+            description="Your backend currently supports sending broadcasts, but not fetching broadcast history. After you send one, the most recent sent message will appear here for this session."
           />
-        ) : (
-          <div className="space-y-4">
-            {broadcasts.map((item, index) => (
-              <div
-                key={item.broadcast_id || index}
-                className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-5"
-              >
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-2">
-                  <h4 className="font-bold text-gray-900 dark:text-white">
-                    {item.title}
-                  </h4>
-                  <span className="text-xs font-semibold uppercase tracking-wider text-fuchsia-600 dark:text-fuchsia-400">
-                    {item.audience || "All"}
-                  </span>
-                </div>
-
-                <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
-                  {item.message}
-                </p>
-
-                <div className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-                  {item.created_at
-                    ? new Date(item.created_at).toLocaleString()
-                    : ""}
-                </div>
-              </div>
-            ))}
-          </div>
         )}
       </div>
     </div>
