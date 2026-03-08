@@ -78,7 +78,7 @@ const registerSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters"),
   role: z.enum(["Admin", "Teacher", "Student", "Parent"]),
   school_name: z.string().optional(),
-  school_id: z.string().optional(),
+  invite_code: z.string().trim().min(1, "School Invite Code is required").optional(),
 });
 
 const loginSchema = z.object({
@@ -100,7 +100,7 @@ router.post(
         password,
         role,
         school_name,
-        school_id: invite_code,
+        invite_code,
       } = req.body;
 
       await client.query("BEGIN");
@@ -373,7 +373,7 @@ router.post("/google", async (req, res) => {
   const client = await pool.connect();
 
   try {
-    const { token, type, role, school_name, school_id } = req.body;
+    const { token, type, role, school_name, invite_code, school_id } = req.body;
 
     const ticket = await googleClient.verifyIdToken({
       idToken: token,
@@ -413,7 +413,7 @@ router.post("/google", async (req, res) => {
           .json({ error: "Email is already registered. Please log in." });
       }
 
-      final_school_id = school_id;
+      final_school_id = invite_code || school_id;
       if (role === "Admin") {
         if (!school_name) {
           await client.query("ROLLBACK");

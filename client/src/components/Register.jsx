@@ -11,9 +11,12 @@ import {
 import { GoogleLogin } from "@react-oauth/google";
 import { apiFetchOrThrow, setAccessToken } from "../utils/api";
 
+const GOOGLE_AUTH_ENABLED = Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID);
+
 const Register = () => {
   const [searchParams] = useSearchParams();
-  const defaultSchoolId = searchParams.get("school_id") || "";
+  const defaultInviteCode =
+    searchParams.get("invite_code") || searchParams.get("school_id") || "";
   const defaultRole = searchParams.get("role") || "Admin";
 
   const [formData, setFormData] = useState({
@@ -22,7 +25,7 @@ const Register = () => {
     password: "",
     role: defaultRole,
     school_name: "",
-    school_id: defaultSchoolId,
+    invite_code: defaultInviteCode,
   });
 
   const [statusMessage, setStatusMessage] = useState("");
@@ -34,8 +37,8 @@ const Register = () => {
 
   const handleAuthSuccess = (token) => {
     setAccessToken(token);
-    setStatusMessage("✅ Account Created! Redirecting...");
-    setTimeout(() => navigate("/dashboard", { replace: true }), 1500);
+    setStatusMessage("✅ Account created successfully.");
+    navigate("/dashboard", { replace: true });
   };
 
   const onSubmitForm = async (e) => {
@@ -70,8 +73,8 @@ const Register = () => {
       return;
     }
 
-    if (formData.role !== "Admin" && !formData.school_id) {
-      setStatusMessage("❌ Please enter a School ID before using Google Sign-up.");
+    if (formData.role !== "Admin" && !formData.invite_code) {
+      setStatusMessage("❌ Please enter a School Invite Code before using Google Sign-up.");
       return;
     }
 
@@ -88,7 +91,7 @@ const Register = () => {
             type: "register",
             role: formData.role,
             school_name: formData.school_name,
-            school_id: formData.school_id,
+            invite_code: formData.invite_code,
           }),
         },
         "Google registration failed.",
@@ -173,11 +176,11 @@ const Register = () => {
               </div>
               <input
                 type="text"
-                aria-label="School ID"
-                name="school_id"
-                placeholder="School ID (Ask your Admin)"
+                aria-label="School Invite Code"
+                name="invite_code"
+                placeholder="School Invite Code (Ask your Admin)"
                 className="w-full pl-11 pr-4 py-3.5 bg-white/50 dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/50 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white dark:focus:bg-gray-800 transition-all font-medium"
-                value={formData.school_id}
+                value={formData.invite_code}
                 onChange={onChange}
                 required
                 disabled={isLoading}
@@ -190,16 +193,22 @@ const Register = () => {
               FAST REGISTRATION (Recommended)
             </p>
             <div className="flex justify-center">
-              <GoogleLogin
-                onSuccess={onGoogleSuccess}
-                onError={() => {
-                  setIsLoading(false);
-                  setStatusMessage("❌ Google popup closed or failed");
-                }}
-                text="signup_with"
-                theme="outline"
-                shape="rectangular"
-              />
+              {GOOGLE_AUTH_ENABLED ? (
+                <GoogleLogin
+                  onSuccess={onGoogleSuccess}
+                  onError={() => {
+                    setIsLoading(false);
+                    setStatusMessage("❌ Google popup closed or failed");
+                  }}
+                  text="signup_with"
+                  theme="outline"
+                  shape="rectangular"
+                />
+              ) : (
+                <p className="text-xs text-center text-amber-700 dark:text-amber-300">
+                  Google sign-up is unavailable because <code>VITE_GOOGLE_CLIENT_ID</code> is not configured.
+                </p>
+              )}
             </div>
           </div>
 
@@ -258,7 +267,6 @@ const Register = () => {
               value={formData.password}
               onChange={onChange}
               required
-              minLength={6}
               disabled={isLoading}
             />
           </div>
@@ -266,9 +274,9 @@ const Register = () => {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full py-4 mt-4 font-bold text-white bg-gray-900 dark:bg-gray-700 rounded-xl shadow-lg transform hover:-translate-y-0.5 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+            className="w-full mt-2 px-4 py-4 font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl hover:from-blue-700 hover:to-indigo-700 shadow-lg shadow-blue-500/25 transform hover:-translate-y-0.5 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
           >
-            {isLoading ? "Processing..." : "Create Account Manually"}
+            {isLoading ? "Creating Account..." : "Create Account"}
           </button>
         </form>
 
@@ -281,17 +289,12 @@ const Register = () => {
           </div>
         )}
 
-        <div className="mt-8 text-center border-t border-gray-200/60 dark:border-gray-700/50 pt-6">
-          <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-            Already have an account?{" "}
-            <Link
-              to="/login"
-              className="font-bold text-blue-600 dark:text-blue-400 hover:text-blue-800 transition-colors"
-            >
-              Log in here.
-            </Link>
-          </p>
-        </div>
+        <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-6">
+          Already have an account?{" "}
+          <Link to="/login" className="font-bold text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
+            Sign In
+          </Link>
+        </p>
       </div>
     </div>
   );

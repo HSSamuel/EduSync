@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const pool = require("../db");
 const authorize = require("../middleware/authorize");
-const cloudinary = require("../utils/cloudinary");
+const { cloudinary } = require("../utils/cloudinary");
 const { z } = require("zod");
 const validate = require("../middleware/validate");
 const multer = require("multer");
@@ -31,7 +31,11 @@ const upload = multer({
   },
   fileFilter: (req, file, cb) => {
     if (!ALLOWED_MODULE_MIME_TYPES.has(file.mimetype)) {
-      return cb(new Error("Unsupported file type. Upload a PDF, Office document, text file, CSV, or image."));
+      return cb(
+        new Error(
+          "Unsupported file type. Upload a PDF, Office document, text file, CSV, or image.",
+        ),
+      );
     }
 
     cb(null, true);
@@ -40,7 +44,11 @@ const upload = multer({
 
 const createModuleSchema = z.object({
   subject_id: z.coerce.number().int().positive("A valid subject is required"),
-  title: z.string().trim().min(2, "Module title is required").max(255, "Module title is too long"),
+  title: z
+    .string()
+    .trim()
+    .min(2, "Module title is required")
+    .max(255, "Module title is too long"),
 });
 
 router.post(
@@ -48,7 +56,7 @@ router.post(
   authorize,
   upload.single("file"),
   validate(createModuleSchema),
-  async (req, res) => {
+  async (req, res, next) => {
     try {
       if (req.user.role !== "Admin" && req.user.role !== "Teacher") {
         return res.status(403).json({ error: "Access Denied." });
@@ -70,14 +78,18 @@ router.post(
       );
 
       if (subjectQuery.rows.length === 0) {
-        return res.status(404).json({ error: "Subject not found in your school." });
+        return res
+          .status(404)
+          .json({ error: "Subject not found in your school." });
       }
 
       if (
         req.user.role === "Teacher" &&
         subjectQuery.rows[0].teacher_id !== req.user.user_id
       ) {
-        return res.status(403).json({ error: "You can only upload modules for subjects assigned to you." });
+        return res.status(403).json({
+          error: "You can only upload modules for subjects assigned to you.",
+        });
       }
 
       const streamUpload = () =>
@@ -103,17 +115,30 @@ router.post(
 
       const newModule = await pool.query(
         `
-          INSERT INTO modules (subject_id, title, file_url, school_id)
-          VALUES ($1, $2, $3, $4)
+          INSERT INTO modules (
+            subject_id,
+            title,
+            file_url,
+            file_public_id,
+            file_resource_type,
+            school_id
+          )
+          VALUES ($1, $2, $3, $4, $5, $6)
           RETURNING *
         `,
-        [subject_id, title, uploadResult.secure_url, req.user.school_id],
+        [
+          subject_id,
+          title,
+          uploadResult.secure_url,
+          uploadResult.public_id,
+          uploadResult.resource_type || req.file.mimetype?.split("/")[0] || "raw",
+          req.user.school_id,
+        ],
       );
 
-      res.json(newModule.rows[0]);
+      return res.json(newModule.rows[0]);
     } catch (err) {
-      console.error(err.message);
-      res.status(500).json({ error: err.message || "Internal Server Error" });
+      return next(err);
     }
   },
 );
@@ -137,10 +162,10 @@ router.get("/", authorize, async (req, res) => {
 
     const modules = await pool.query(query, params);
 
-    res.json(modules.rows);
+    return res.json(modules.rows);
   } catch (err) {
     console.error(err.message);
-    res.status(500).json({ error: "Internal Server Error" });
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 });
 

@@ -3,6 +3,7 @@ const router = express.Router();
 const pool = require("../db");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const { ACCESS_TOKEN_SECRET } = require("../utils/tokenConfig");
 const crypto = require("crypto");
 const authorize = require("../middleware/authorize");
 const sendEmail = require("../utils/sendEmail");
@@ -77,7 +78,7 @@ router.post("/", authorize, validate(createStudentSchema), async (req, res) => {
     const secretHashSlice = bcryptPassword.substring(0, 10);
     const resetToken = jwt.sign(
       { user_id: newUserId, secret: secretHashSlice },
-      process.env.ACCESS_TOKEN_SECRET || process.env.JWT_SECRET,
+      ACCESS_TOKEN_SECRET,
       { expiresIn: "15m" },
     );
 

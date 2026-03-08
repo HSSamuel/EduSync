@@ -41,5 +41,5 @@ test('rejects unsupported weekday keys', () => {
   });
 
   assert.equal(result.success, false);
-  assert.match(result.error.issues[0].message, /Only these days are allowed/i);
+  assert.match(result.error.issues[0].message, /Unrecognized key/i);
 });

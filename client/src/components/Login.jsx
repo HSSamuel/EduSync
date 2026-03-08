@@ -4,6 +4,8 @@ import { Mail, Lock, LogIn } from "lucide-react";
 import { GoogleLogin } from "@react-oauth/google";
 import { apiFetchOrThrow, setAccessToken } from "../utils/api";
 
+const GOOGLE_AUTH_ENABLED = Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID);
+
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -14,10 +16,10 @@ const Login = () => {
 
   const redirectPath = location.state?.from?.pathname || "/dashboard";
 
-  const handleAuthSuccess = (token, message = "✅ Login Successful! Redirecting...") => {
+  const handleAuthSuccess = (token, message = "✅ Login successful.") => {
     setAccessToken(token);
     setStatusMessage(message);
-    setTimeout(() => navigate(redirectPath, { replace: true }), 1000);
+    navigate(redirectPath, { replace: true });
   };
 
   const onSubmitForm = async (e) => {
@@ -96,6 +98,36 @@ const Login = () => {
           </p>
         </div>
 
+        {GOOGLE_AUTH_ENABLED ? (
+          <>
+            <div className="flex justify-center mb-6">
+              <GoogleLogin
+                onSuccess={onGoogleSuccess}
+                onError={() => {
+                  setIsLoading(false);
+                  setStatusMessage("❌ Google popup closed or failed");
+                }}
+                theme="outline"
+                size="large"
+                shape="rectangular"
+                width="100%"
+              />
+            </div>
+
+            <div className="my-6 flex items-center">
+              <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
+              <span className="mx-4 text-xs font-bold text-gray-400 uppercase tracking-widest">
+                Or
+              </span>
+              <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
+            </div>
+          </>
+        ) : (
+          <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
+            Google sign-in is unavailable because <code>VITE_GOOGLE_CLIENT_ID</code> is not configured.
+          </div>
+        )}
+
         <form onSubmit={onSubmitForm} className="space-y-5">
           <div className="relative">
             <label htmlFor="email" className="block mb-1.5 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
@@ -157,28 +189,6 @@ const Login = () => {
             {isLoading ? "Authenticating..." : "Sign In"}
           </button>
         </form>
-
-        <div className="my-6 flex items-center">
-          <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
-          <span className="mx-4 text-xs font-bold text-gray-400 uppercase tracking-widest">
-            Or
-          </span>
-          <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
-        </div>
-
-        <div className="flex justify-center">
-          <GoogleLogin
-            onSuccess={onGoogleSuccess}
-            onError={() => {
-              setIsLoading(false);
-              setStatusMessage("❌ Google popup closed or failed");
-            }}
-            theme="outline"
-            size="large"
-            shape="rectangular"
-            width="100%"
-          />
-        </div>
 
         {statusMessage && (
           <div

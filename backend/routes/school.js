@@ -43,8 +43,15 @@ router.post('/documents', authorize, upload.single('document_file'), async (req,
     const { title } = parsed.data;
 
     const newDoc = await pool.query(
-      'INSERT INTO school_documents (title, file_url, uploaded_by, school_id) VALUES ($1, $2, $3, $4) RETURNING *',
-      [title, file_url, req.user.user_id, req.user.school_id],
+      'INSERT INTO school_documents (title, file_url, file_public_id, file_resource_type, uploaded_by, school_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+      [
+        title,
+        file_url,
+        req.file.filename || null,
+        req.file.resource_type || req.file.mimetype?.split('/')?.[0] || 'raw',
+        req.user.user_id,
+        req.user.school_id,
+      ],
     );
 
     await logAudit({
@@ -55,6 +62,8 @@ router.post('/documents', authorize, upload.single('document_file'), async (req,
       newValue: {
         title: newDoc.rows[0].title,
         file_url: newDoc.rows[0].file_url,
+        file_public_id: newDoc.rows[0].file_public_id,
+        file_resource_type: newDoc.rows[0].file_resource_type,
       },
     });
 
@@ -81,20 +90,20 @@ router.delete('/documents/:id', authorize, async (req, res, next) => {
     if (req.user.role !== 'Admin') return res.status(403).json({ error: 'Access Denied.' });
 
     const docQuery = await pool.query(
-      'SELECT doc_id, title, file_url FROM school_documents WHERE doc_id = $1 AND school_id = $2',
+      'SELECT doc_id, title, file_url, file_public_id, file_resource_type FROM school_documents WHERE doc_id = $1 AND school_id = $2',
       [req.params.id, req.user.school_id],
     );
 
     if (docQuery.rows.length === 0) return res.status(404).json({ error: 'Document not found' });
 
     const doc = docQuery.rows[0];
-    const fileUrl = doc.file_url;
 
-    const urlParts = fileUrl.split('/');
-    const fileWithExt = urlParts[urlParts.length - 1];
-    const publicId = `edusync_vault/${fileWithExt.split('.')[0]}`;
-
-    await cloudinary.uploader.destroy(publicId);
+    if (doc.file_public_id) {
+      await cloudinary.uploader.destroy(doc.file_public_id, {
+        resource_type: doc.file_resource_type || 'raw',
+        invalidate: true,
+      });
+    }
 
     await pool.query('DELETE FROM school_documents WHERE doc_id = $1 AND school_id = $2', [req.params.id, req.user.school_id]);
 
@@ -106,6 +115,8 @@ router.delete('/documents/:id', authorize, async (req, res, next) => {
       oldValue: {
         title: doc.title,
         file_url: doc.file_url,
+        file_public_id: doc.file_public_id,
+        file_resource_type: doc.file_resource_type,
       },
     });
 

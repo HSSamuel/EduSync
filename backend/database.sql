@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS modules (
     subject_id INT REFERENCES subjects(subject_id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
     file_url TEXT NOT NULL,
+    file_public_id TEXT,
+    file_resource_type VARCHAR(50),
     school_id INT REFERENCES schools(school_id) ON DELETE CASCADE,
     uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -125,6 +127,8 @@ CREATE TABLE IF NOT EXISTS school_documents (
     doc_id SERIAL PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
     file_url TEXT NOT NULL,
+    file_public_id TEXT,
+    file_resource_type VARCHAR(50),
     school_id INT REFERENCES schools(school_id) ON DELETE CASCADE,
     uploaded_by INT REFERENCES users(user_id) ON DELETE SET NULL,
     uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -168,6 +172,14 @@ CREATE TABLE IF NOT EXISTS student_activities (
 
 ALTER TABLE messages
     ADD COLUMN IF NOT EXISTS sender_user_id INT REFERENCES users(user_id) ON DELETE SET NULL;
+
+ALTER TABLE modules
+    ADD COLUMN IF NOT EXISTS file_public_id TEXT,
+    ADD COLUMN IF NOT EXISTS file_resource_type VARCHAR(50);
+
+ALTER TABLE school_documents
+    ADD COLUMN IF NOT EXISTS file_public_id TEXT,
+    ADD COLUMN IF NOT EXISTS file_resource_type VARCHAR(50);
 
 CREATE OR REPLACE FUNCTION update_modified_column()
 RETURNS TRIGGER AS $$

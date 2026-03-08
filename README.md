@@ -84,12 +84,36 @@ DB_HOST=localhost
 DB_PORT=5432
 DB_DATABASE=EduSync
 
-# Security
-JWT_SECRET=your_super_secret_jwt_key
+# Server
+NODE_ENV=development
+CLIENT_URL=http://localhost:5173
 
-# Nodemailer Configuration (Gmail)
+# JWT / Session Security
+ACCESS_TOKEN_SECRET=replace_with_a_long_random_secret
+REFRESH_TOKEN_SECRET=replace_with_a_different_long_random_secret
+
+# Google OAuth
+GOOGLE_CLIENT_ID=your_google_client_id
+
+# Stripe
+STRIPE_SECRET_KEY=your_stripe_secret_key
+STRIPE_WEBHOOK_SECRET=your_stripe_webhook_secret
+
+# Redis / BullMQ
+REDIS_URL=redis://127.0.0.1:6379
+
+# Cloudinary
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
+
+# SMTP / Nodemailer
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=465
+EMAIL_SECURE=true
 EMAIL_USER=your_school_email@gmail.com
-EMAIL_PASS=your_gmail_app_password
+EMAIL_PASS=your_email_app_password
+EMAIL_FROM=EduSync <your_school_email@gmail.com>
 \`\`\`
 
 Start the backend server:
@@ -115,7 +139,7 @@ npm run dev
 
 1. Open your browser and navigate to `http://localhost:5173`.
 2. Click **Get Started / Register** to create your first account. Make sure to select **"School Admin"** as your role.
-3. Log in with your new Admin credentials.
+3. Log in with your new Admin credentials and save the generated school invite code for staff, students, and parents joining the school.
 4. Explore the dashboard! Start by adding Subjects, enrolling Teachers/Students, and linking Parents.
 
 ---
