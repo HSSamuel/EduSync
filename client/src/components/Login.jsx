@@ -37,11 +37,12 @@ const Login = () => {
         "Unable to sign you in.",
       );
 
-      if (!data?.token) {
+      const accessToken = data?.data?.token || data?.token;
+      if (!accessToken) {
         throw new Error("Login succeeded but no access token was returned.");
       }
 
-      handleAuthSuccess(data.token);
+      handleAuthSuccess(accessToken);
     } catch (err) {
       setStatusMessage(`❌ ${err.message}`);
       setIsLoading(false);
@@ -65,11 +66,12 @@ const Login = () => {
         "Google authentication failed.",
       );
 
-      if (!data?.token) {
+      const accessToken = data?.data?.token || data?.token;
+      if (!accessToken) {
         throw new Error("Google login succeeded but no access token was returned.");
       }
 
-      handleAuthSuccess(data.token);
+      handleAuthSuccess(accessToken);
     } catch (err) {
       setStatusMessage(`❌ ${err.message}`);
       setIsLoading(false);
@@ -78,7 +80,10 @@ const Login = () => {
 
   return (
     <div className="relative min-h-[calc(100vh-80px)] w-full flex items-center justify-center overflow-hidden pt-10">
-      <div className="absolute top-[10%] left-[20%] w-96 h-96 bg-blue-400/30 dark:bg-blue-600/20 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-[100px] opacity-70 animate-pulse" aria-hidden="true"></div>
+      <div
+        className="absolute top-[10%] left-[20%] w-96 h-96 bg-blue-400/30 dark:bg-blue-600/20 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-[100px] opacity-70 animate-pulse"
+        aria-hidden="true"
+      ></div>
       <div
         className="absolute bottom-[10%] right-[20%] w-96 h-96 bg-purple-400/30 dark:bg-purple-600/20 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-[100px] opacity-70 animate-pulse"
         style={{ animationDelay: "2s" }}
@@ -100,18 +105,20 @@ const Login = () => {
 
         {GOOGLE_AUTH_ENABLED ? (
           <>
-            <div className="flex justify-center mb-6">
-              <GoogleLogin
-                onSuccess={onGoogleSuccess}
-                onError={() => {
-                  setIsLoading(false);
-                  setStatusMessage("❌ Google popup closed or failed");
-                }}
-                theme="outline"
-                size="large"
-                shape="rectangular"
-                width="100%"
-              />
+            <div className="flex justify-center mb-6 w-full">
+              <div className="w-full max-w-md">
+                <GoogleLogin
+                  onSuccess={onGoogleSuccess}
+                  onError={() => {
+                    setIsLoading(false);
+                    setStatusMessage("❌ Google popup closed or failed");
+                  }}
+                  theme="outline"
+                  size="large"
+                  shape="rectangular"
+                  width="380"
+                />
+              </div>
             </div>
 
             <div className="my-6 flex items-center">
@@ -124,13 +131,17 @@ const Login = () => {
           </>
         ) : (
           <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
-            Google sign-in is unavailable because <code>VITE_GOOGLE_CLIENT_ID</code> is not configured.
+            Google sign-in is unavailable because{" "}
+            <code>VITE_GOOGLE_CLIENT_ID</code> is not configured.
           </div>
         )}
 
         <form onSubmit={onSubmitForm} className="space-y-5">
           <div className="relative">
-            <label htmlFor="email" className="block mb-1.5 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+            <label
+              htmlFor="email"
+              className="block mb-1.5 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider"
+            >
               Email Address
             </label>
             <div className="relative">
@@ -153,7 +164,10 @@ const Login = () => {
 
           <div className="relative">
             <div className="flex justify-between items-end mb-1.5">
-              <label htmlFor="password" className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+              <label
+                htmlFor="password"
+                className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider"
+              >
                 Password
               </label>
               <Link

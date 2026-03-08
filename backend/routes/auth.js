@@ -1,27 +1,37 @@
-const express = require("express");
+const express = require('express');
 const router = express.Router();
-const pool = require("../db");
-const bcrypt = require("bcrypt");
-const jwt = require("jsonwebtoken");
-const crypto = require("crypto");
-const sendEmail = require("../utils/sendEmail");
-const { escapeHtml } = require("../utils/html");
-const { z } = require("zod");
-const validate = require("../middleware/validate");
-const rateLimit = require("express-rate-limit");
-const { OAuth2Client } = require("google-auth-library");
-const { ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET } = require("../utils/tokenConfig");
-require("dotenv").config();
+const pool = require('../db');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
+const sendEmail = require('../utils/sendEmail');
+const { escapeHtml } = require('../utils/html');
+const { z } = require('zod');
+const validate = require('../middleware/validate');
+const rateLimit = require('express-rate-limit');
+const { OAuth2Client } = require('google-auth-library');
+const { ACCESS_TOKEN_SECRET } = require('../utils/tokenConfig');
+const {
+  REFRESH_COOKIE_NAME,
+  createSession,
+  rotateSession,
+  revokeSessionByToken,
+  revokeAllUserSessions,
+  setRefreshCookie,
+  clearRefreshCookie,
+} = require('../utils/sessionManager');
+const { sendError, sendSuccess } = require('../utils/response');
+require('dotenv').config();
 
-const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
+const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   message: {
-    error:
-      "Too many login attempts from this IP, please try again after 15 minutes.",
+    success: false,
+    error: 'Too many login attempts from this IP, please try again after 15 minutes.',
   },
   standardHeaders: true,
   legacyHeaders: false,
@@ -31,7 +41,8 @@ const registerLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 15,
   message: {
-    error: "Registration limit reached from this IP. Please try again later.",
+    success: false,
+    error: 'Registration limit reached from this IP. Please try again later.',
   },
   standardHeaders: true,
   legacyHeaders: false,
@@ -41,385 +52,325 @@ const forgotPasswordLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
   message: {
-    error:
-      "Too many password reset requests. Please check your inbox or try again later.",
+    success: false,
+    error: 'Too many password reset requests. Please check your inbox or try again later.',
   },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
 const registerSchema = z.object({
-  full_name: z.string().min(3, "Name must be at least 3 characters"),
-  email: z.string().email("Invalid email format"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-  role: z.enum(["Admin", "Teacher", "Student", "Parent"]),
+  full_name: z.string().min(3, 'Name must be at least 3 characters'),
+  email: z.string().email('Invalid email format'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+  role: z.enum(['Admin', 'Teacher', 'Student', 'Parent']),
   school_name: z.string().optional(),
-  invite_code: z.string().trim().min(1, "School Invite Code is required").optional(),
+  invite_code: z.string().trim().min(1, 'School Invite Code is required').optional(),
 });
 
 const loginSchema = z.object({
-  email: z.string().email("Invalid email format"),
-  password: z.string().min(1, "Password is required"),
+  email: z.string().email('Invalid email format'),
+  password: z.string().min(1, 'Password is required'),
 });
 
 const forgotPasswordSchema = z.object({
-  email: z.string().email("Invalid email format"),
+  email: z.string().email('Invalid email format'),
 });
 
 const resetPasswordSchema = z.object({
-  token: z.string().trim().min(1, "Reset token is required"),
-  newPassword: z.string().min(6, "Password must be at least 6 characters"),
+  token: z.string().trim().min(1, 'Reset token is required'),
+  newPassword: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
 const googleAuthSchema = z
   .object({
-    token: z.string().trim().min(1, "Google token is required"),
-    type: z.enum(["login", "register"]),
-    role: z.enum(["Admin", "Teacher", "Student", "Parent"]).optional(),
+    token: z.string().trim().min(1, 'Google token is required'),
+    type: z.enum(['login', 'register']),
+    role: z.enum(['Admin', 'Teacher', 'Student', 'Parent']).optional(),
     school_name: z.string().trim().min(2).optional(),
     invite_code: z.string().trim().min(1).optional(),
     school_id: z.coerce.number().int().positive().optional(),
   })
   .superRefine((data, ctx) => {
-    if (data.type === "register") {
+    if (data.type === 'register') {
       if (!data.role) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ["role"],
-          message: "Role is required for Google registration",
+          path: ['role'],
+          message: 'Role is required for Google registration',
         });
       }
 
-      if (data.role === "Admin" && !data.school_name) {
+      if (data.role === 'Admin' && !data.school_name) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ["school_name"],
-          message: "School name is required for Admin registration",
+          path: ['school_name'],
+          message: 'School name is required for Admin registration',
         });
       }
 
-      if (data.role && data.role !== "Admin" && !data.invite_code && !data.school_id) {
+      if (data.role && data.role !== 'Admin' && !data.invite_code && !data.school_id) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ["invite_code"],
-          message: "Invite code or school ID is required to join an existing school",
+          path: ['invite_code'],
+          message: 'Invite code or school ID is required to join an existing school',
         });
       }
     }
   });
 
-const issueSessionTokens = ({ user_id, role, school_id }) => {
-  const accessToken = jwt.sign(
-    { user_id, role, school_id },
-    ACCESS_TOKEN_SECRET,
-    { expiresIn: "15m" },
-  );
+async function respondWithSession(res, req, user, message, extraData = {}) {
+  const { accessToken, refreshToken, sessionId } = await createSession({ pool, user, req });
+  setRefreshCookie(res, refreshToken);
 
-  const refreshToken = jwt.sign(
-    { user_id, school_id },
-    REFRESH_TOKEN_SECRET,
-    { expiresIn: "7d" },
-  );
-
-  return { accessToken, refreshToken };
-};
-
-const setRefreshCookie = (res, refreshToken) => {
-  res.cookie("refresh_token", refreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 7 * 24 * 60 * 60 * 1000,
+  return sendSuccess(res, {
+    message,
+    data: {
+      token: accessToken,
+      user,
+      session_id: sessionId,
+      ...extraData,
+    },
   });
-};
+}
 
-router.post(
-  "/register",
-  registerLimiter,
-  validate(registerSchema),
-  async (req, res, next) => {
-    const client = await pool.connect();
+router.post('/register', registerLimiter, validate(registerSchema), async (req, res, next) => {
+  const client = await pool.connect();
 
-    try {
-      const {
-        full_name,
-        email,
-        password,
-        role,
-        school_name,
-        invite_code,
-      } = req.body;
-
-      await client.query("BEGIN");
-
-      const userExists = await client.query(
-        "SELECT 1 FROM users WHERE email = $1",
-        [email],
-      );
-      if (userExists.rows.length > 0) {
-        await client.query("ROLLBACK");
-        return res.status(400).json({ error: "User already exists" });
-      }
-
-      let finalSchoolId;
-
-      if (role === "Admin") {
-        if (!school_name) {
-          await client.query("ROLLBACK");
-          return res.status(400).json({
-            error: "School name is required to register an Admin account.",
-          });
-        }
-
-        const newInviteCode = crypto
-          .randomBytes(4)
-          .toString("hex")
-          .toUpperCase();
-
-        const newSchool = await client.query(
-          `
-            INSERT INTO schools (school_name, contact_email, invite_code)
-            VALUES ($1, $2, $3)
-            RETURNING school_id
-          `,
-          [school_name, email, newInviteCode],
-        );
-        finalSchoolId = newSchool.rows[0].school_id;
-      } else {
-        if (!invite_code) {
-          await client.query("ROLLBACK");
-          return res.status(400).json({
-            error: "School Invite Code is required to join an existing school.",
-          });
-        }
-
-        const schoolExists = await client.query(
-          "SELECT school_id FROM schools WHERE invite_code = $1",
-          [invite_code],
-        );
-        if (schoolExists.rows.length === 0) {
-          await client.query("ROLLBACK");
-          return res
-            .status(404)
-            .json({ error: "Invalid Invite Code provided." });
-        }
-
-        finalSchoolId = schoolExists.rows[0].school_id;
-      }
-
-      const salt = await bcrypt.genSalt(10);
-      const bcryptPassword = await bcrypt.hash(password, salt);
-
-      const newUser = await client.query(
-        `
-          INSERT INTO users (full_name, email, password_hash, role, school_id, auth_provider)
-          VALUES ($1, $2, $3, $4, $5, 'local')
-          RETURNING user_id, full_name, email, role, school_id
-        `,
-        [full_name, email, bcryptPassword, role, finalSchoolId],
-      );
-
-      await client.query("COMMIT");
-
-      const userPayload = newUser.rows[0];
-      const { accessToken, refreshToken } = issueSessionTokens(userPayload);
-      setRefreshCookie(res, refreshToken);
-
-      res.json({
-        token: accessToken,
-        user: userPayload,
-        message: "Registration successful!",
-      });
-    } catch (err) {
-      await client.query("ROLLBACK");
-      next(err);
-    } finally {
-      client.release();
-    }
-  },
-);
-
-router.post(
-  "/login",
-  authLimiter,
-  validate(loginSchema),
-  async (req, res, next) => {
-    try {
-      const { email, password } = req.body;
-      const user = await pool.query("SELECT * FROM users WHERE email = $1", [
-        email,
-      ]);
-
-      if (user.rows.length === 0) {
-        return res.status(401).json({ error: "Invalid Credentials" });
-      }
-
-      if (user.rows[0].auth_provider === "google") {
-        return res.status(400).json({
-          error:
-            "This account was created via Google. Please log in using the Google button.",
-        });
-      }
-
-      const validPassword = await bcrypt.compare(
-        password,
-        user.rows[0].password_hash,
-      );
-      if (!validPassword) {
-        return res.status(401).json({ error: "Invalid Credentials" });
-      }
-
-      const userPayload = {
-        user_id: user.rows[0].user_id,
-        role: user.rows[0].role,
-        school_id: user.rows[0].school_id,
-      };
-
-      const { accessToken, refreshToken } = issueSessionTokens(userPayload);
-
-      setRefreshCookie(res, refreshToken);
-
-      res.json({ token: accessToken, message: "Login successful!" });
-    } catch (err) {
-      next(err);
-    }
-  },
-);
-
-router.post("/refresh", async (req, res) => {
   try {
-    const refreshToken = req.cookies.refresh_token;
-    if (!refreshToken) {
-      return res
-        .status(401)
-        .json({ error: "Session expired. Please log in again." });
+    const { full_name, email, password, role, school_name, invite_code } = req.body;
+
+    await client.query('BEGIN');
+
+    const userExists = await client.query('SELECT 1 FROM users WHERE email = $1', [email]);
+    if (userExists.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return sendError(res, { status: 409, message: 'User already exists' });
     }
 
-    const payload = jwt.verify(refreshToken, REFRESH_TOKEN_SECRET);
+    let finalSchoolId;
 
-    const user = await pool.query(
-      "SELECT role, school_id FROM users WHERE user_id = $1",
-      [payload.user_id],
-    );
-    if (user.rows.length === 0) {
-      return res.status(401).json({ error: "User no longer exists." });
+    if (role === 'Admin') {
+      if (!school_name) {
+        await client.query('ROLLBACK');
+        return sendError(res, {
+          status: 400,
+          message: 'School name is required to register an Admin account.',
+        });
+      }
+
+      const newInviteCode = crypto.randomBytes(4).toString('hex').toUpperCase();
+      const newSchool = await client.query(
+        `
+          INSERT INTO schools (school_name, contact_email, invite_code)
+          VALUES ($1, $2, $3)
+          RETURNING school_id
+        `,
+        [school_name, email, newInviteCode],
+      );
+      finalSchoolId = newSchool.rows[0].school_id;
+    } else {
+      if (!invite_code) {
+        await client.query('ROLLBACK');
+        return sendError(res, {
+          status: 400,
+          message: 'School Invite Code is required to join an existing school.',
+        });
+      }
+
+      const schoolExists = await client.query('SELECT school_id FROM schools WHERE invite_code = $1', [
+        invite_code,
+      ]);
+      if (schoolExists.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return sendError(res, { status: 404, message: 'Invalid Invite Code provided.' });
+      }
+
+      finalSchoolId = schoolExists.rows[0].school_id;
     }
 
-    const newAccessToken = jwt.sign(
-      {
-        user_id: payload.user_id,
-        role: user.rows[0].role,
-        school_id: user.rows[0].school_id,
-      },
-      ACCESS_TOKEN_SECRET,
-      { expiresIn: "15m" },
+    const salt = await bcrypt.genSalt(10);
+    const bcryptPassword = await bcrypt.hash(password, salt);
+
+    const newUser = await client.query(
+      `
+        INSERT INTO users (full_name, email, password_hash, role, school_id, auth_provider)
+        VALUES ($1, $2, $3, $4, $5, 'local')
+        RETURNING user_id, full_name, email, role, school_id
+      `,
+      [full_name, email, bcryptPassword, role, finalSchoolId],
     );
 
-    res.json({ token: newAccessToken });
+    await client.query('COMMIT');
+
+    return respondWithSession(res, req, newUser.rows[0], 'Registration successful!');
   } catch (err) {
-    res.status(401).json({ error: "Invalid refresh token." });
+    await client.query('ROLLBACK');
+    next(err);
+  } finally {
+    client.release();
   }
 });
 
-router.post("/logout", (req, res) => {
-  res.clearCookie("refresh_token");
-  res.json({ message: "Logged out successfully" });
+router.post('/login', authLimiter, validate(loginSchema), async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+    const user = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+
+    if (user.rows.length === 0) {
+      return sendError(res, { status: 401, message: 'Invalid Credentials' });
+    }
+
+    if (user.rows[0].auth_provider === 'google') {
+      return sendError(res, {
+        status: 400,
+        message: 'This account was created via Google. Please log in using the Google button.',
+      });
+    }
+
+    const validPassword = await bcrypt.compare(password, user.rows[0].password_hash);
+    if (!validPassword) {
+      return sendError(res, { status: 401, message: 'Invalid Credentials' });
+    }
+
+    return respondWithSession(
+      res,
+      req,
+      {
+        user_id: user.rows[0].user_id,
+        full_name: user.rows[0].full_name,
+        email: user.rows[0].email,
+        role: user.rows[0].role,
+        school_id: user.rows[0].school_id,
+      },
+      'Login successful!',
+    );
+  } catch (err) {
+    next(err);
+  }
 });
 
-router.post(
-  "/forgot-password",
-  forgotPasswordLimiter,
-  validate(forgotPasswordSchema),
-  async (req, res, next) => {
-    try {
-      const { email } = req.body;
-      const user = await pool.query("SELECT * FROM users WHERE email = $1", [
-        email,
-      ]);
+router.post('/refresh', async (req, res) => {
+  try {
+    const refreshToken = req.cookies[REFRESH_COOKIE_NAME];
+    if (!refreshToken) {
+      return sendError(res, { status: 401, message: 'Session expired. Please log in again.' });
+    }
 
-      if (user.rows.length === 0) {
-        return res
-          .status(404)
-          .json({ error: "If that email exists, a reset link has been sent." });
-      }
+    const { accessToken, refreshToken: rotatedRefreshToken, user } = await rotateSession({
+      pool,
+      refreshToken,
+      req,
+    });
 
+    setRefreshCookie(res, rotatedRefreshToken);
+
+    return sendSuccess(res, {
+      message: 'Session refreshed successfully.',
+      data: { token: accessToken, user },
+    });
+  } catch (err) {
+    clearRefreshCookie(res);
+    return sendError(res, { status: err.status || 401, message: err.message || 'Invalid refresh token.' });
+  }
+});
+
+router.post('/logout', async (req, res) => {
+  await revokeSessionByToken({ pool, refreshToken: req.cookies[REFRESH_COOKIE_NAME] });
+  clearRefreshCookie(res);
+  return sendSuccess(res, { message: 'Logged out successfully' });
+});
+
+router.post('/forgot-password', forgotPasswordLimiter, validate(forgotPasswordSchema), async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    const user = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+
+    if (user.rows.length > 0) {
       const secretHashSlice = user.rows[0].password_hash.substring(0, 10);
       const resetToken = jwt.sign(
         { user_id: user.rows[0].user_id, secret: secretHashSlice },
         ACCESS_TOKEN_SECRET,
-        { expiresIn: "15m" },
+        { expiresIn: '15m' },
       );
 
       const resetLink = `${CLIENT_URL}/reset-password/${resetToken}`;
       const safeName = escapeHtml(user.rows[0].full_name);
       const safeLink = escapeHtml(resetLink);
       const emailHTML = `
-      <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden;">
-        <div style="background-color: #2563EB; padding: 20px; text-align: center;">
-          <h2 style="color: white; margin: 0;">Password Reset Request</h2>
-        </div>
-        <div style="padding: 30px; background-color: #f9fafb;">
-          <h3 style="color: #333;">Hello ${safeName},</h3>
-          <p>We received a request to reset your EduSync password.</p>
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="${safeLink}" style="background-color: #2563EB; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">Reset Password</a>
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden;">
+          <div style="background-color: #2563EB; padding: 20px; text-align: center;">
+            <h2 style="color: white; margin: 0;">Password Reset Request</h2>
           </div>
-          <p style="color: #666; font-size: 14px;">This link will expire in 15 minutes. If you did not request this, please ignore this email.</p>
+          <div style="padding: 30px; background-color: #f9fafb;">
+            <h3 style="color: #333;">Hello ${safeName},</h3>
+            <p>We received a request to reset your EduSync password.</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${safeLink}" style="background-color: #2563EB; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">Reset Password</a>
+            </div>
+            <p style="color: #666; font-size: 14px;">This link will expire in 15 minutes. If you did not request this, please ignore this email.</p>
+          </div>
         </div>
-      </div>
-    `;
+      `;
 
-      await sendEmail({
-        to: email,
-        subject: "EduSync Password Reset",
-        html: emailHTML,
-      });
-
-      res.json({ message: "Password reset link sent to your email!" });
-    } catch (err) {
-      next(err);
+      try {
+        await sendEmail({
+          to: email,
+          subject: 'EduSync Password Reset',
+          html: emailHTML,
+        });
+      } catch (emailErr) {
+        console.error('Password reset email failed:', emailErr?.message || emailErr);
+      }
     }
-  },
-);
 
-router.put("/reset-password", validate(resetPasswordSchema), async (req, res) => {
+    return sendSuccess(res, {
+      message: 'If that email exists, a reset link has been sent.',
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put('/reset-password', validate(resetPasswordSchema), async (req, res) => {
   try {
     const { token, newPassword } = req.body;
     const payload = jwt.verify(token, ACCESS_TOKEN_SECRET);
 
-    const user = await pool.query(
-      "SELECT password_hash FROM users WHERE user_id = $1",
-      [payload.user_id],
-    );
+    const user = await pool.query('SELECT password_hash FROM users WHERE user_id = $1', [payload.user_id]);
     if (user.rows.length === 0) {
-      return res.status(404).json({ error: "User not found." });
+      return sendError(res, { status: 404, message: 'User not found.' });
     }
 
     const currentHashSlice = user.rows[0].password_hash.substring(0, 10);
     if (payload.secret !== currentHashSlice) {
-      return res.status(401).json({
-        error: "This reset link has already been used or is invalid.",
+      return sendError(res, {
+        status: 401,
+        message: 'This reset link has already been used or is invalid.',
       });
     }
 
     const salt = await bcrypt.genSalt(10);
     const bcryptPassword = await bcrypt.hash(newPassword, salt);
 
-    await pool.query("UPDATE users SET password_hash = $1 WHERE user_id = $2", [
+    await pool.query('UPDATE users SET password_hash = $1 WHERE user_id = $2', [
       bcryptPassword,
       payload.user_id,
     ]);
-    res.json({
-      message: "✅ Password successfully reset! You can now log in.",
+    await revokeAllUserSessions({ pool, userId: payload.user_id });
+
+    return sendSuccess(res, {
+      message: 'Password successfully reset! You can now log in.',
     });
   } catch (err) {
-    res
-      .status(401)
-      .json({ error: "This reset link is invalid or has expired." });
+    return sendError(res, {
+      status: 401,
+      message: 'This reset link is invalid or has expired.',
+    });
   }
 });
 
-router.post("/google", validate(googleAuthSchema), async (req, res, next) => {
+router.post('/google', validate(googleAuthSchema), async (req, res, next) => {
   const client = await pool.connect();
 
   try {
@@ -434,37 +385,30 @@ router.post("/google", validate(googleAuthSchema), async (req, res, next) => {
     const email = payload.email;
     const full_name = payload.name;
 
-    await client.query("BEGIN");
+    await client.query('BEGIN');
 
-    const userExists = await client.query(
-      "SELECT * FROM users WHERE email = $1",
-      [email],
-    );
+    const userExists = await client.query('SELECT * FROM users WHERE email = $1', [email]);
 
     let user_id;
     let final_role;
     let final_school_id;
 
-    if (type === "login") {
+    if (type === 'login') {
       if (userExists.rows.length === 0) {
-        await client.query("ROLLBACK");
-        return res
-          .status(404)
-          .json({ error: "Account not found. Please register first." });
+        await client.query('ROLLBACK');
+        return sendError(res, { status: 404, message: 'Account not found. Please register first.' });
       }
       user_id = userExists.rows[0].user_id;
       final_role = userExists.rows[0].role;
       final_school_id = userExists.rows[0].school_id;
-    } else if (type === "register") {
+    } else if (type === 'register') {
       if (userExists.rows.length > 0) {
-        await client.query("ROLLBACK");
-        return res
-          .status(400)
-          .json({ error: "Email is already registered. Please log in." });
+        await client.query('ROLLBACK');
+        return sendError(res, { status: 409, message: 'Email is already registered. Please log in.' });
       }
 
-      if (role === "Admin") {
-        const newInviteCode = crypto.randomBytes(4).toString("hex").toUpperCase();
+      if (role === 'Admin') {
+        const newInviteCode = crypto.randomBytes(4).toString('hex').toUpperCase();
         const newSchool = await client.query(
           `
             INSERT INTO schools (school_name, contact_email, invite_code)
@@ -475,14 +419,13 @@ router.post("/google", validate(googleAuthSchema), async (req, res, next) => {
         );
         final_school_id = newSchool.rows[0].school_id;
       } else if (invite_code) {
-        const schoolLookup = await client.query(
-          "SELECT school_id FROM schools WHERE invite_code = $1",
-          [invite_code],
-        );
+        const schoolLookup = await client.query('SELECT school_id FROM schools WHERE invite_code = $1', [
+          invite_code,
+        ]);
 
         if (schoolLookup.rows.length === 0) {
-          await client.query("ROLLBACK");
-          return res.status(404).json({ error: "Invalid invite code." });
+          await client.query('ROLLBACK');
+          return sendError(res, { status: 404, message: 'Invalid invite code.' });
         }
 
         final_school_id = schoolLookup.rows[0].school_id;
@@ -498,26 +441,24 @@ router.post("/google", validate(googleAuthSchema), async (req, res, next) => {
           VALUES ($1, $2, $3, $4, $5, 'google')
           RETURNING user_id
         `,
-        [full_name, email, crypto.randomBytes(32).toString("hex"), final_role, final_school_id],
+        [full_name, email, crypto.randomBytes(32).toString('hex'), final_role, final_school_id],
       );
       user_id = newUser.rows[0].user_id;
     } else {
-      await client.query("ROLLBACK");
-      return res.status(400).json({ error: "Invalid authentication type." });
+      await client.query('ROLLBACK');
+      return sendError(res, { status: 400, message: 'Invalid authentication type.' });
     }
 
-    await client.query("COMMIT");
+    await client.query('COMMIT');
 
-    const { accessToken, refreshToken } = issueSessionTokens({
-      user_id,
-      role: final_role,
-      school_id: final_school_id,
-    });
-
-    setRefreshCookie(res, refreshToken);
-    return res.json({ token: accessToken, message: "Google authentication successful!" });
+    return respondWithSession(
+      res,
+      req,
+      { user_id, full_name, email, role: final_role, school_id: final_school_id },
+      'Google authentication successful!',
+    );
   } catch (err) {
-    await client.query("ROLLBACK");
+    await client.query('ROLLBACK');
     next(err);
   } finally {
     client.release();

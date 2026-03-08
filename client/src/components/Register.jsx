@@ -56,11 +56,12 @@ const Register = () => {
         "Registration failed.",
       );
 
-      if (!data?.token) {
+      const accessToken = data?.data?.token || data?.token;
+      if (!accessToken) {
         throw new Error("Registration succeeded but no access token was returned.");
       }
 
-      handleAuthSuccess(data.token);
+      handleAuthSuccess(accessToken);
     } catch (err) {
       setStatusMessage(`❌ ${err.message}`);
       setIsLoading(false);
@@ -97,13 +98,14 @@ const Register = () => {
         "Google registration failed.",
       );
 
-      if (!data?.token) {
+      const accessToken = data?.data?.token || data?.token;
+      if (!accessToken) {
         throw new Error(
           "Google registration succeeded but no access token was returned.",
         );
       }
 
-      handleAuthSuccess(data.token);
+      handleAuthSuccess(accessToken);
     } catch (err) {
       setStatusMessage(`❌ ${err.message}`);
       setIsLoading(false);

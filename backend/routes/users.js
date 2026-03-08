@@ -1,35 +1,45 @@
-const express = require("express");
+const express = require('express');
 const router = express.Router();
-const pool = require("../db");
-const authorize = require("../middleware/authorize");
+const pool = require('../db');
+const authorize = require('../middleware/authorize');
+const { permit } = require('../middleware/permissions');
+const { sendError, sendSuccess } = require('../utils/response');
 
-// 1. GET ALL TEACHERS (For the Admin dropdown)
-router.get("/teachers", authorize, async (req, res) => {
+router.get('/teachers', authorize, permit('Admin'), async (req, res) => {
   try {
-    // 👈 NEW: Only fetch teachers belonging to this school
     const teachers = await pool.query(
-      "SELECT user_id, full_name, email FROM users WHERE role = 'Teacher' AND school_id = $1",
+      `
+        SELECT user_id, full_name, email
+        FROM users
+        WHERE role = 'Teacher' AND school_id = $1
+        ORDER BY full_name ASC
+      `,
       [req.user.school_id],
     );
-    res.json(teachers.rows);
+
+    return sendSuccess(res, { data: teachers.rows });
   } catch (err) {
     console.error(err.message);
-    res.status(500).json({ error: "Internal Server Error" });
+    return sendError(res, { status: 500, message: 'Internal Server Error' });
   }
 });
 
-// 2. GET ALL PARENTS (For the Admin dropdown)
-router.get("/parents", authorize, async (req, res) => {
+router.get('/parents', authorize, permit('Admin'), async (req, res) => {
   try {
-    // 👈 NEW: Only fetch parents belonging to this school
     const parents = await pool.query(
-      "SELECT user_id, full_name, email FROM users WHERE role = 'Parent' AND school_id = $1",
+      `
+        SELECT user_id, full_name, email
+        FROM users
+        WHERE role = 'Parent' AND school_id = $1
+        ORDER BY full_name ASC
+      `,
       [req.user.school_id],
     );
-    res.json(parents.rows);
+
+    return sendSuccess(res, { data: parents.rows });
   } catch (err) {
     console.error(err.message);
-    res.status(500).json({ error: "Internal Server Error" });
+    return sendError(res, { status: 500, message: 'Internal Server Error' });
   }
 });
 

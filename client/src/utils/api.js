@@ -4,24 +4,34 @@ import {
   getRefreshPromise,
   setAccessToken,
   setRefreshPromise,
-} from "./auth";
+} from './auth';
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 function joinUrl(base, endpoint) {
   if (!endpoint) return base;
-  const b = base.endsWith("/") ? base.slice(0, -1) : base;
-  const e = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+  const b = base.endsWith('/') ? base.slice(0, -1) : base;
+  const e = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
   return `${b}${e}`;
 }
 
-export function extractErrorMessage(payload, fallback = "Request failed.") {
+export function extractErrorMessage(payload, fallback = 'Request failed.') {
   if (!payload) return fallback;
-  if (typeof payload === "string") return payload;
-  if (typeof payload.error === "string") return payload.error;
-  if (typeof payload.message === "string") return payload.message;
+  if (typeof payload === 'string') return payload;
+  if (typeof payload.error === 'string') return payload.error;
+  if (typeof payload.message === 'string') return payload.message;
   return fallback;
+}
+
+export function extractResponseData(payload, fallback = null) {
+  if (!payload || typeof payload !== 'object') return fallback;
+  if (Object.prototype.hasOwnProperty.call(payload, 'data')) return payload.data;
+  return payload;
+}
+
+export function extractResponseMeta(payload, fallback = null) {
+  if (!payload || typeof payload !== 'object') return fallback;
+  return payload.meta ?? fallback;
 }
 
 export async function safeJson(response) {
@@ -43,8 +53,8 @@ export async function apiFetch(endpoint, options = {}, retry = true) {
   };
 
   const isFormData = options.body instanceof FormData;
-  if (!isFormData && !headers["Content-Type"]) {
-    headers["Content-Type"] = "application/json";
+  if (!isFormData && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
   }
 
   if (token) {
@@ -54,7 +64,7 @@ export async function apiFetch(endpoint, options = {}, retry = true) {
   const res = await fetch(joinUrl(API_BASE_URL, endpoint), {
     ...options,
     headers,
-    credentials: "include",
+    credentials: 'include',
   });
 
   if (res.status === 401 && retry) {
@@ -81,9 +91,7 @@ export async function apiFetchOrThrow(endpoint, options = {}, fallbackMessage) {
   const { ok, data, response } = await apiJsonFetch(endpoint, options);
 
   if (!ok) {
-    const error = new Error(
-      extractErrorMessage(data, fallbackMessage || "Request failed."),
-    );
+    const error = new Error(extractErrorMessage(data, fallbackMessage || 'Request failed.'));
     error.status = response.status;
     error.payload = data;
     throw error;
@@ -100,9 +108,9 @@ export async function refreshAccessToken() {
 
   const refreshTask = (async () => {
     try {
-      const res = await fetch(joinUrl(API_BASE_URL, "/auth/refresh"), {
-        method: "POST",
-        credentials: "include",
+      const res = await fetch(joinUrl(API_BASE_URL, '/auth/refresh'), {
+        method: 'POST',
+        credentials: 'include',
       });
 
       if (!res.ok) {
@@ -111,15 +119,16 @@ export async function refreshAccessToken() {
       }
 
       const data = await safeJson(res);
-      if (data?.token) {
-        setAccessToken(data.token);
+      const token = data?.data?.token ?? data?.token;
+      if (token) {
+        setAccessToken(token);
         return true;
       }
 
       clearAccessToken();
       return false;
     } catch (err) {
-      console.error("Refresh token failed:", err);
+      console.error('Refresh token failed:', err);
       clearAccessToken();
       return false;
     } finally {

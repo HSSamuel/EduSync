@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 
 export function getDashboardRoleFlags(userData) {
-  const role = userData?.your_role || userData?.role;
+  const role = userData?.role || userData?.your_role;
 
   return {
     role,

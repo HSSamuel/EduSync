@@ -67,7 +67,7 @@ const StudentBento = ({ userData }) => {
         />
 
         <h2 className="text-3xl font-black font-serif tracking-tight mb-2 z-10">
-          {userData?.message || "Welcome back!"}
+          {userData?.welcome_message || "Welcome back!"}
         </h2>
         <p className="text-blue-100 font-medium z-10">
           You have 2 upcoming classes and 1 new module to review today.

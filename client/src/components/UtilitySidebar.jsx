@@ -2,8 +2,8 @@ import React from "react";
 import { Bell, Clock, CheckCircle2, FileText, CreditCard, ChevronRight, X } from "lucide-react";
 
 const UtilitySidebar = ({ userData, isOpen, setIsOpen }) => {
-  const isAdmin = userData?.your_role === "Admin";
-  const isStudent = userData?.your_role === "Student";
+  const isAdmin = userData?.role === "Admin";
+  const isStudent = userData?.role === "Student";
 
   const adminActivities = [
     { id: 1, type: "payment", text: "John Doe paid Tuition Invoice", time: "10 mins ago", icon: CreditCard, color: "text-emerald-500", bg: "bg-emerald-50 dark:bg-emerald-900/20" },

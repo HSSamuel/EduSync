@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowUp } from "lucide-react";
 import { useAppContext } from "../context/AppContext";
@@ -17,7 +17,16 @@ import {
 } from "../utils/dashboardConfig";
 
 const Dashboard = () => {
-  const { userData, subjects, setSubjects, students, loading, logout } = useAppContext();
+  const {
+    userData,
+    subjects,
+    setSubjects,
+    students,
+    loading,
+    logout,
+    loadSubjects,
+    loadStudents,
+  } = useAppContext();
 
   const [activeTab, setActiveTab] = useState("overview");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -37,6 +46,7 @@ const Dashboard = () => {
 
   const toggleTheme = () => {
     const root = document.documentElement;
+
     if (isDark) {
       root.classList.remove("dark");
       localStorage.setItem("theme", "light");
@@ -66,6 +76,29 @@ const Dashboard = () => {
   const scrollToTop = () => {
     mainContentRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   };
+
+  useEffect(() => {
+    if (!userData) return;
+
+    const needsSubjects = ["subjects", "cbt", "timetable", "grades"].includes(
+      activeTab,
+    );
+    const needsStudents = ["attendance", "finance", "grades"].includes(
+      activeTab,
+    );
+
+    if (needsSubjects) {
+      loadSubjects().catch((err) =>
+        console.error("Lazy subjects load failed:", err),
+      );
+    }
+
+    if (needsStudents) {
+      loadStudents().catch((err) =>
+        console.error("Lazy students load failed:", err),
+      );
+    }
+  }, [activeTab, userData, loadSubjects, loadStudents]);
 
   if (loading) return <DashboardSkeleton />;
   if (!userData) return null;
@@ -110,7 +143,11 @@ const Dashboard = () => {
           )}
         </AnimatePresence>
 
-        <CommandPalette toggleTheme={toggleTheme} isDark={isDark} logout={logout} />
+        <CommandPalette
+          toggleTheme={toggleTheme}
+          isDark={isDark}
+          logout={logout}
+        />
 
         <DashboardHeader
           currentTab={currentTab}

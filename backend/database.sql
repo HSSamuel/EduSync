@@ -27,6 +27,21 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+
+CREATE TABLE IF NOT EXISTS user_sessions (
+    session_id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    school_id INT REFERENCES schools(school_id) ON DELETE CASCADE,
+    refresh_token_hash TEXT NOT NULL,
+    token_version INT NOT NULL DEFAULT 1,
+    user_agent TEXT,
+    ip_address TEXT,
+    last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NOT NULL,
+    revoked_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS students (
     student_id SERIAL PRIMARY KEY,
     user_id INT UNIQUE REFERENCES users(user_id) ON DELETE CASCADE,
@@ -204,3 +219,6 @@ CREATE INDEX IF NOT EXISTS idx_attendance_student_id ON attendance(student_id);
 CREATE INDEX IF NOT EXISTS idx_invoices_student_id ON invoices(student_id);
 CREATE INDEX IF NOT EXISTS idx_modules_subject_id ON modules(subject_id);
 CREATE INDEX IF NOT EXISTS idx_messages_room_school ON messages(room, school_id);
+
+CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_session_id ON user_sessions(session_id);

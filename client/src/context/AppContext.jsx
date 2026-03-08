@@ -4,12 +4,14 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useRef,
 } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   apiFetchOrThrow,
   apiJsonFetch,
   clearAccessToken,
+  extractResponseData,
   getAccessToken,
   refreshAccessToken,
 } from "../utils/api";
@@ -28,56 +30,148 @@ export const AppProvider = ({ children }) => {
   const [subjects, setSubjects] = useState([]);
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [subjectsLoaded, setSubjectsLoaded] = useState(false);
+  const [studentsLoaded, setStudentsLoaded] = useState(false);
 
   const navigate = useNavigate();
+
+  const subjectsLoadingRef = useRef(false);
+  const studentsLoadingRef = useRef(false);
 
   const resetAppState = useCallback(() => {
     setUserData(null);
     setSubjects([]);
     setStudents([]);
+    setSubjectsLoaded(false);
+    setStudentsLoaded(false);
+    subjectsLoadingRef.current = false;
+    studentsLoadingRef.current = false;
   }, []);
+
+  const ensureSession = useCallback(async () => {
+    let hasToken = Boolean(getAccessToken());
+
+    if (!hasToken) {
+      hasToken = await refreshAccessToken();
+    }
+
+    return hasToken;
+  }, []);
+
+  const fetchProfile = useCallback(async () => {
+    const profilePayload = await apiFetchOrThrow(
+      "/dashboard",
+      { method: "GET" },
+      "Unable to load your dashboard profile.",
+    );
+
+    const profile = extractResponseData(profilePayload, null);
+    setUserData(profile);
+    return profile;
+  }, []);
+
+  const loadSubjects = useCallback(
+    async ({ force = false } = {}) => {
+      if (
+        !userData ||
+        userData.role === "Parent" ||
+        userData.role === "Student"
+      ) {
+        if (!subjectsLoaded || subjects.length !== 0) {
+          setSubjects([]);
+          setSubjectsLoaded(true);
+        }
+        return [];
+      }
+
+      if (subjectsLoadingRef.current && !force) {
+        return subjects;
+      }
+
+      if (subjectsLoaded && !force) {
+        return subjects;
+      }
+
+      subjectsLoadingRef.current = true;
+
+      try {
+        const result = await apiJsonFetch("/subjects", { method: "GET" });
+        const nextSubjects = result.ok
+          ? extractResponseData(result.data, []) || []
+          : [];
+
+        const normalizedSubjects = Array.isArray(nextSubjects)
+          ? nextSubjects
+          : [];
+
+        setSubjects(normalizedSubjects);
+        setSubjectsLoaded(true);
+
+        return normalizedSubjects;
+      } finally {
+        subjectsLoadingRef.current = false;
+      }
+    },
+    [userData, subjectsLoaded, subjects],
+  );
+
+  const loadStudents = useCallback(
+    async ({ force = false } = {}) => {
+      if (!userData || userData.role === "Student") {
+        if (!studentsLoaded || students.length !== 0) {
+          setStudents([]);
+          setStudentsLoaded(true);
+        }
+        return [];
+      }
+
+      if (studentsLoadingRef.current && !force) {
+        return students;
+      }
+
+      if (studentsLoaded && !force) {
+        return students;
+      }
+
+      studentsLoadingRef.current = true;
+
+      try {
+        const result = await apiJsonFetch("/students?limit=1000", {
+          method: "GET",
+        });
+
+        const nextStudents = result.ok
+          ? extractResponseData(result.data, []) || []
+          : [];
+
+        const normalizedStudents = Array.isArray(nextStudents)
+          ? nextStudents
+          : [];
+
+        setStudents(normalizedStudents);
+        setStudentsLoaded(true);
+
+        return normalizedStudents;
+      } finally {
+        studentsLoadingRef.current = false;
+      }
+    },
+    [userData, studentsLoaded, students],
+  );
 
   const fetchGlobalData = useCallback(async () => {
     setLoading(true);
 
     try {
-      let hasToken = Boolean(getAccessToken());
-
-      if (!hasToken) {
-        hasToken = await refreshAccessToken();
-      }
+      const hasToken = await ensureSession();
 
       if (!hasToken) {
         resetAppState();
+        setLoading(false);
         return;
       }
 
-      const profileData = await apiFetchOrThrow(
-        "/dashboard",
-        { method: "GET" },
-        "Unable to load your dashboard profile.",
-      );
-      setUserData(profileData);
-
-      const [subjectsResult, studentsResult] = await Promise.all([
-        apiJsonFetch("/subjects", { method: "GET" }),
-        apiJsonFetch("/students?limit=1000", { method: "GET" }),
-      ]);
-
-      if (subjectsResult.ok) {
-        setSubjects(Array.isArray(subjectsResult.data) ? subjectsResult.data : []);
-      } else {
-        setSubjects([]);
-      }
-
-      if (studentsResult.ok) {
-        const nextStudents = Array.isArray(studentsResult.data)
-          ? studentsResult.data
-          : studentsResult.data?.data || [];
-        setStudents(nextStudents);
-      } else {
-        setStudents([]);
-      }
+      await fetchProfile();
     } catch (err) {
       console.error("Context Fetch Error:", err);
       clearAccessToken();
@@ -86,7 +180,7 @@ export const AppProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, [navigate, resetAppState]);
+  }, [ensureSession, fetchProfile, navigate, resetAppState]);
 
   useEffect(() => {
     fetchGlobalData();
@@ -121,6 +215,10 @@ export const AppProvider = ({ children }) => {
           setSubjects,
           students,
           setStudents,
+          loadSubjects,
+          loadStudents,
+          subjectsLoaded,
+          studentsLoaded,
         }}
       >
         {children}
