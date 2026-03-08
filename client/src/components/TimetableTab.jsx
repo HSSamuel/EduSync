@@ -1,291 +1,539 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
-  Clock,
+  Clock3,
   BookOpen,
   Plus,
   Save,
   Trash2,
-  LayoutGrid,
+  Grip,
+  ChevronRight,
 } from "lucide-react";
+import { apiFetch } from "../utils/api";
 
-const API_URL = import.meta.env.VITE_API_URL;
+const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+const CLASS_GRADES = ["JSS 1", "JSS 2", "JSS 3", "SS 1", "SS 2", "SS 3"];
 
-const TimetableTab = ({ isAdmin, isStudent, userData, subjects }) => {
+const EMPTY_SCHEDULE = {
+  Monday: [],
+  Tuesday: [],
+  Wednesday: [],
+  Thursday: [],
+  Friday: [],
+};
+
+const TimetableTab = ({ isAdmin, subjects = [] }) => {
   const [selectedClass, setSelectedClass] = useState("JSS 1");
   const [activeDay, setActiveDay] = useState("Monday");
-  const [schedule, setSchedule] = useState({
-    Monday: [],
-    Tuesday: [],
-    Wednesday: [],
-    Thursday: [],
-    Friday: [],
-  });
-
+  const [schedule, setSchedule] = useState(EMPTY_SCHEDULE);
   const [newSlot, setNewSlot] = useState({
     start_time: "08:00",
     end_time: "09:00",
     subject: "",
   });
-  const [isSaving, setIsSaving] = useState(false);
 
-  const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-  const classGrades = ["JSS 1", "JSS 2", "JSS 3", "SS 1", "SS 2", "SS 3"];
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [feedback, setFeedback] = useState({ type: "", message: "" });
 
   useEffect(() => {
     fetchTimetable();
   }, [selectedClass]);
 
+  const subjectOptions = useMemo(() => {
+    const mapped = subjects.map((s) => ({
+      label: s.subject_name,
+      value: s.subject_name,
+    }));
+
+    return [
+      { label: "Assembly", value: "Assembly" },
+      { label: "Break / Lunch", value: "Break / Lunch" },
+      ...mapped,
+    ];
+  }, [subjects]);
+
+  const daySchedule = schedule[activeDay] || [];
+
+  const clearFeedback = () => {
+    setFeedback({ type: "", message: "" });
+  };
+
+  const normalizeSchedule = (incoming) => {
+    const normalized = { ...EMPTY_SCHEDULE };
+
+    if (!incoming || typeof incoming !== "object") return normalized;
+
+    for (const day of DAYS) {
+      const slots = Array.isArray(incoming[day]) ? incoming[day] : [];
+      normalized[day] = [...slots].sort((a, b) =>
+        String(a.start_time).localeCompare(String(b.start_time)),
+      );
+    }
+
+    return normalized;
+  };
+
   const fetchTimetable = async () => {
+    setIsLoading(true);
+    clearFeedback();
+
     try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${API_URL}/timetable/${selectedClass}`, {
-        headers: { jwt_token: token },
+      const res = await apiFetch(
+        `/timetable/${encodeURIComponent(selectedClass)}`,
+      );
+
+      if (!res.ok) {
+        throw new Error("Failed to load timetable.");
+      }
+
+      const data = await res.json();
+      setSchedule(normalizeSchedule(data));
+    } catch (error) {
+      console.error(error);
+      setSchedule(EMPTY_SCHEDULE);
+      setFeedback({
+        type: "error",
+        message: "Unable to load timetable right now.",
       });
-      if (res.ok) setSchedule(await res.json());
-    } catch (err) {
-      console.error(err);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleAddSlot = () => {
-    if (!newSlot.subject) return alert("Please select a subject!");
-    const updatedSchedule = { ...schedule };
-    updatedSchedule[activeDay] = [...updatedSchedule[activeDay], newSlot].sort(
-      (a, b) => a.start_time.localeCompare(b.start_time),
-    );
-    setSchedule(updatedSchedule);
-    setNewSlot({ start_time: newSlot.end_time, end_time: "", subject: "" });
+  const hasTimeConflict = (slotToCheck, list, ignoreIndex = -1) => {
+    const startA = slotToCheck.start_time;
+    const endA = slotToCheck.end_time;
+
+    return list.some((slot, index) => {
+      if (index === ignoreIndex) return false;
+
+      const startB = slot.start_time;
+      const endB = slot.end_time;
+
+      return startA < endB && endA > startB;
+    });
   };
 
-  const handleRemoveSlot = (index) => {
-    const updatedSchedule = { ...schedule };
-    updatedSchedule[activeDay].splice(index, 1);
+  const validateSlot = () => {
+    if (!newSlot.subject) {
+      setFeedback({ type: "error", message: "Select a subject first." });
+      return false;
+    }
+
+    if (!newSlot.start_time || !newSlot.end_time) {
+      setFeedback({
+        type: "error",
+        message: "Choose both start and end time.",
+      });
+      return false;
+    }
+
+    if (newSlot.start_time >= newSlot.end_time) {
+      setFeedback({
+        type: "error",
+        message: "End time must be later than start time.",
+      });
+      return false;
+    }
+
+    if (hasTimeConflict(newSlot, daySchedule)) {
+      setFeedback({
+        type: "error",
+        message: "This time overlaps with another class.",
+      });
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleAddSlot = () => {
+    clearFeedback();
+
+    if (!validateSlot()) return;
+
+    const updatedSchedule = {
+      ...schedule,
+      [activeDay]: [...daySchedule, newSlot].sort((a, b) =>
+        a.start_time.localeCompare(b.start_time),
+      ),
+    };
+
     setSchedule(updatedSchedule);
+    setNewSlot({
+      start_time: newSlot.end_time,
+      end_time: newSlot.end_time,
+      subject: "",
+    });
+
+    setFeedback({
+      type: "success",
+      message: `${activeDay} updated.`,
+    });
+  };
+
+  const handleRemoveSlot = (indexToRemove) => {
+    clearFeedback();
+
+    const updatedSchedule = {
+      ...schedule,
+      [activeDay]: daySchedule.filter((_, index) => index !== indexToRemove),
+    };
+
+    setSchedule(updatedSchedule);
+    setFeedback({
+      type: "success",
+      message: "Class removed.",
+    });
   };
 
   const saveTimetable = async () => {
     setIsSaving(true);
+    clearFeedback();
+
     try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${API_URL}/timetable`, {
+      const res = await apiFetch("/timetable", {
         method: "POST",
-        headers: { "Content-Type": "application/json", jwt_token: token },
-        body: JSON.stringify({ class_grade: selectedClass, schedule }),
+        body: JSON.stringify({
+          class_grade: selectedClass,
+          schedule,
+        }),
       });
-      if (res.ok)
-        alert(`✅ Timetable for ${selectedClass} saved successfully!`);
-    } catch (err) {
-      console.error(err);
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(
+          data?.error ||
+            data?.message ||
+            data?.details?.[0]?.message ||
+            "Failed to save timetable.",
+        );
+      }
+
+      setFeedback({
+        type: "success",
+        message: data?.message || `Saved for ${selectedClass}.`,
+      });
+    } catch (error) {
+      console.error("Save timetable error:", error);
+      setFeedback({
+        type: "error",
+        message: error.message || "Failed to save timetable.",
+      });
     } finally {
       setIsSaving(false);
     }
   };
+  const formatTime12Hour = (time) => {
+    if (!time || typeof time !== "string" || !time.includes(":")) return time;
+
+    const [hourStr, minute] = time.split(":");
+    const hour = Number(hourStr);
+
+    if (Number.isNaN(hour)) return time;
+
+    const suffix = hour >= 12 ? "PM" : "AM";
+    const normalizedHour = hour % 12 || 12;
+
+    return `${normalizedHour}:${minute} ${suffix}`;
+  };
+  const getBadgeTone = (subject) => {
+    const label = String(subject || "").toLowerCase();
+
+    if (label.includes("break") || label.includes("lunch")) {
+      return "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-800";
+    }
+
+    if (label.includes("assembly")) {
+      return "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-900/20 dark:text-sky-300 dark:border-sky-800";
+    }
+
+    return "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-900/20 dark:text-indigo-300 dark:border-indigo-800";
+  };
 
   return (
-    <div className="animate-fade-in space-y-6">
-      {/* Header & Class Selector */}
-      <div className="bg-white dark:bg-gray-800 p-6 md:p-8 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 transition-all">
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl">
-            <CalendarDays size={28} />
-          </div>
-          <div>
-            <h4 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">
-              Class Timetable
-            </h4>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              Manage and view weekly schedules.
-            </p>
-          </div>
-        </div>
+    <div className="animate-fade-in space-y-5">
+      <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="rounded-xl bg-indigo-100 p-3 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
+              <CalendarDays size={24} />
+            </div>
 
-        <div className="flex items-center gap-3 bg-gray-50 dark:bg-gray-900 px-5 py-3 rounded-xl border border-gray-200 dark:border-gray-700 shadow-inner w-full md:w-auto">
-          <label className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest">
-            Viewing:
-          </label>
-          <select
-            className="bg-transparent text-gray-900 dark:text-white font-black text-lg outline-none cursor-pointer flex-1 md:flex-none"
-            value={selectedClass}
-            onChange={(e) => setSelectedClass(e.target.value)}
-          >
-            {classGrades.map((grade) => (
-              <option key={grade} value={grade}>
-                {grade}
-              </option>
-            ))}
-          </select>
+            <div>
+              <h3 className="text-2xl font-black tracking-tight text-gray-900 dark:text-white">
+                Timetable
+              </h3>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Weekly class schedule
+              </p>
+            </div>
+          </div>
+
+          <div className="w-full lg:w-auto">
+            <label className="mb-2 block text-xs font-extrabold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+              Class
+            </label>
+            <select
+              value={selectedClass}
+              onChange={(e) => setSelectedClass(e.target.value)}
+              className="w-full min-w-[150px] rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-900 dark:text-white"
+            >
+              {CLASS_GRADES.map((grade) => (
+                <option key={grade} value={grade}>
+                  {grade}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
-      {/* Segmented Control for Days */}
-      <div className="flex overflow-x-auto p-1.5 bg-gray-100 dark:bg-gray-800/80 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-inner [&::-webkit-scrollbar]:hidden">
-        {daysOfWeek.map((day) => (
-          <button
-            key={day}
-            onClick={() => setActiveDay(day)}
-            className={`flex-1 py-3 px-6 rounded-xl font-bold text-sm transition-all whitespace-nowrap ${activeDay === day ? "bg-white dark:bg-gray-700 text-indigo-600 dark:text-indigo-400 shadow-sm border border-gray-200/50 dark:border-gray-600" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}
-          >
-            {day}
-          </button>
-        ))}
+      <div className="rounded-2xl border border-gray-200 bg-white p-2 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        <div className="flex gap-2 overflow-x-auto [&::-webkit-scrollbar]:hidden">
+          {DAYS.map((day) => (
+            <button
+              key={day}
+              onClick={() => setActiveDay(day)}
+              className={`min-w-fit rounded-xl px-5 py-3 text-sm font-bold transition ${
+                activeDay === day
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "bg-transparent text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white"
+              }`}
+            >
+              {day.slice(0, 3)}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        {/* Admin Builder Panel */}
+      {feedback.message ? (
+        <div
+          className={`rounded-xl border px-4 py-3 text-sm font-semibold ${
+            feedback.type === "success"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300"
+              : "border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300"
+          }`}
+        >
+          {feedback.message}
+        </div>
+      ) : null}
+
+      <div
+        className={`grid gap-5 ${isAdmin ? "xl:grid-cols-[340px_minmax(0,1fr)]" : "grid-cols-1"}`}
+      >
         {isAdmin && (
-          <div className="xl:col-span-1 bg-white dark:bg-gray-800 p-6 md:p-8 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm h-fit">
-            <h5 className="text-lg font-black text-gray-900 dark:text-white flex items-center gap-2 mb-6">
-              <Plus size={20} className="text-indigo-500" /> Add to {activeDay}
-            </h5>
+          <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <div className="mb-5 flex items-center justify-between">
+              <div>
+                <h4 className="text-lg font-black text-gray-900 dark:text-white">
+                  Add Class
+                </h4>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {activeDay}
+                </p>
+              </div>
+
+              <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-300">
+                <Plus size={18} />
+              </div>
+            </div>
+
             <div className="space-y-4">
-              <div className="flex gap-3">
-                <div className="flex-1 relative">
-                  <Clock
-                    className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-                    size={16}
-                  />
-                  {/* 👈 PRO UI: font-mono for times */}
-                  <input
-                    type="time"
-                    className="w-full pl-9 pr-3 py-3 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-mono font-bold"
-                    value={newSlot.start_time}
-                    onChange={(e) =>
-                      setNewSlot({ ...newSlot, start_time: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="flex flex-col justify-center text-gray-400 font-bold text-sm">
-                  -
-                </div>
-                <div className="flex-1 relative">
-                  <Clock
-                    className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-                    size={16}
-                  />
-                  {/* 👈 PRO UI: font-mono for times */}
-                  <input
-                    type="time"
-                    className="w-full pl-9 pr-3 py-3 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-mono font-bold"
-                    value={newSlot.end_time}
-                    onChange={(e) =>
-                      setNewSlot({ ...newSlot, end_time: e.target.value })
-                    }
-                  />
+              <div>
+                <label className="mb-2 block text-xs font-extrabold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+                  Time
+                </label>
+
+                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                  <div className="relative">
+                    <Clock3
+                      size={16}
+                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                    />
+                    <input
+                      type="time"
+                      value={newSlot.start_time}
+                      onChange={(e) =>
+                        setNewSlot((prev) => ({
+                          ...prev,
+                          start_time: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-xl border border-gray-300 bg-gray-50 py-3 pl-10 pr-3 text-sm font-bold text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-900 dark:text-white"
+                    />
+                  </div>
+
+                  <span className="text-sm font-bold text-gray-400">to</span>
+
+                  <div className="relative">
+                    <Clock3
+                      size={16}
+                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                    />
+                    <input
+                      type="time"
+                      value={newSlot.end_time}
+                      onChange={(e) =>
+                        setNewSlot((prev) => ({
+                          ...prev,
+                          end_time: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-xl border border-gray-300 bg-gray-50 py-3 pl-10 pr-3 text-sm font-bold text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-900 dark:text-white"
+                    />
+                  </div>
                 </div>
               </div>
-              <div className="relative">
-                <BookOpen
-                  className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-                  size={16}
-                />
-                <select
-                  className="w-full pl-9 pr-4 py-3 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold cursor-pointer text-gray-700 dark:text-gray-200"
-                  value={newSlot.subject}
-                  onChange={(e) =>
-                    setNewSlot({ ...newSlot, subject: e.target.value })
-                  }
-                >
-                  <option value="" className="text-gray-400">
-                    -- Select Subject --
-                  </option>
-                  <option value="Break / Lunch">🥪 Break / Lunch</option>
-                  <option value="Assembly">📢 Assembly</option>
-                  {subjects.map((s) => (
-                    <option key={s.subject_id} value={s.subject_name}>
-                      {s.subject_name}
-                    </option>
-                  ))}
-                </select>
+
+              <div>
+                <label className="mb-2 block text-xs font-extrabold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+                  Subject
+                </label>
+
+                <div className="relative">
+                  <BookOpen
+                    size={16}
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                  />
+                  <select
+                    value={newSlot.subject}
+                    onChange={(e) =>
+                      setNewSlot((prev) => ({
+                        ...prev,
+                        subject: e.target.value,
+                      }))
+                    }
+                    className="w-full rounded-xl border border-gray-300 bg-gray-50 py-3 pl-10 pr-4 text-sm font-bold text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-gray-600 dark:bg-gray-900 dark:text-white"
+                  >
+                    <option value="">Choose subject</option>
+                    {subjectOptions.map((item) => (
+                      <option key={item.value} value={item.value}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
+
               <button
                 onClick={handleAddSlot}
-                className="w-full py-3 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 font-black uppercase tracking-widest text-xs rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors border border-indigo-100 dark:border-indigo-800"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-black text-white transition hover:bg-indigo-700"
               >
-                Add Block
+                <Plus size={16} />
+                Add Class
               </button>
             </div>
 
-            <hr className="my-6 border-gray-100 dark:border-gray-700" />
+            <div className="my-5 border-t border-gray-200 dark:border-gray-700" />
 
             <button
               onClick={saveTimetable}
               disabled={isSaving}
-              className="w-full py-3.5 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 font-black rounded-xl shadow-md hover:bg-gray-800 dark:hover:bg-white transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-3 text-sm font-black text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100"
             >
-              <Save size={18} /> {isSaving ? "Saving..." : "Save Timetable"}
+              <Save size={16} />
+              {isSaving ? "Saving..." : "Save Changes"}
             </button>
           </div>
         )}
 
-        {/* Timetable View Panel */}
-        <div
-          className={`bg-white dark:bg-gray-800 p-6 md:p-8 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 ${isAdmin ? "xl:col-span-2" : "xl:col-span-3"}`}
-        >
-          <div className="flex items-center justify-between mb-8 pb-4 border-b border-gray-100 dark:border-gray-700">
-            <h5 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">
-              {activeDay}'s Schedule
-            </h5>
-            <span className="text-sm font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/20 px-4 py-1.5 rounded-full border border-indigo-100 dark:border-indigo-800">
-              {schedule[activeDay]?.length || 0} Classes
-            </span>
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+          <div className="mb-5 flex flex-col gap-3 border-b border-gray-200 pb-4 dark:border-gray-700 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h4 className="text-2xl font-black tracking-tight text-gray-900 dark:text-white">
+                {activeDay}
+              </h4>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {selectedClass}
+              </p>
+            </div>
+
+            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-bold text-indigo-700 dark:border-indigo-800 dark:bg-indigo-900/20 dark:text-indigo-300">
+              <Grip size={15} />
+              {daySchedule.length}{" "}
+              {daySchedule.length === 1 ? "class" : "classes"}
+            </div>
           </div>
 
-          {!schedule[activeDay] || schedule[activeDay].length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-2xl bg-gray-50/50 dark:bg-gray-900/20">
-              <LayoutGrid
-                size={48}
-                className="text-gray-300 dark:text-gray-600 mb-4"
-              />
-              <p className="text-gray-500 font-bold text-lg">Free day!</p>
-              <p className="text-gray-400 text-sm mt-1">
-                No classes scheduled.
+          {isLoading ? (
+            <div className="grid gap-3">
+              {[1, 2, 3].map((item) => (
+                <div
+                  key={item}
+                  className="h-24 animate-pulse rounded-2xl border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40"
+                />
+              ))}
+            </div>
+          ) : daySchedule.length === 0 ? (
+            <div className="flex min-h-[320px] flex-col items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-6 text-center dark:border-gray-700 dark:bg-gray-900/20">
+              <div className="mb-4 rounded-2xl bg-indigo-50 p-4 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-300">
+                <CalendarDays size={28} />
+              </div>
+
+              <h5 className="text-lg font-black text-gray-900 dark:text-white">
+                No classes yet
+              </h5>
+
+              <p className="mt-2 max-w-sm text-sm text-gray-500 dark:text-gray-400">
+                {isAdmin
+                  ? "Use the form on the left to add the first class for this day."
+                  : "No classes have been scheduled for this day yet."}
               </p>
             </div>
           ) : (
-            <div className="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-200 dark:before:via-gray-700 before:to-transparent">
-              {schedule[activeDay].map((slot, index) => {
-                const isBreak =
-                  slot.subject.includes("Break") ||
-                  slot.subject.includes("Lunch");
-                return (
-                  <div
-                    key={index}
-                    className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active"
-                  >
-                    <div className="flex items-center justify-center w-10 h-10 rounded-full border-4 border-white dark:border-gray-800 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow-sm z-10">
-                      {isBreak ? (
-                        <Clock size={16} className="text-amber-500" />
-                      ) : (
-                        <BookOpen size={16} />
-                      )}
-                    </div>
+            <div className="grid gap-4">
+              {daySchedule.map((slot, index) => (
+                <div
+                  key={`${slot.subject}-${slot.start_time}-${slot.end_time}-${index}`}
+                  className="group rounded-lg border border-gray-200 bg-gray-50 p-2.5 transition hover:shadow-sm dark:border-gray-700 dark:bg-gray-900/30"
+                >
+                  <div className="flex items-start gap-2.5">
                     <div
-                      className={`w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-5 md:p-6 rounded-2xl shadow-[0_2px_10px_rgb(0,0,0,0.02)] border transition-all hover:shadow-md ${isBreak ? "bg-amber-50/50 border-amber-100 dark:bg-amber-900/10 dark:border-amber-900/30" : "bg-white border-gray-100 dark:bg-gray-800 dark:border-gray-700"}`}
+                      className={`shrink-0 rounded-lg border p-1.5 ${getBadgeTone(slot.subject)}`}
                     >
-                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-1">
-                        <h6
-                          className={`font-black text-lg ${isBreak ? "text-amber-700 dark:text-amber-500" : "text-gray-900 dark:text-white"}`}
-                        >
-                          {slot.subject}
-                        </h6>
-                        {/* 👈 PRO UI: font-mono applied to display time for professional alignment */}
-                        <span className="text-xs font-bold text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-900 px-3 py-1.5 rounded-lg w-fit border border-gray-200 dark:border-gray-700 font-mono tracking-wide">
-                          {slot.start_time} - {slot.end_time}
-                        </span>
+                      <BookOpen size={14} />
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <h5 className="truncate text-sm font-extrabold text-gray-900 dark:text-white">
+                            {slot.subject}
+                          </h5>
+
+                          <div className="mt-1.5 flex flex-col items-start gap-1.5">
+                            <span className="inline-flex max-w-full items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-bold text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                              <Clock3 size={12} className="shrink-0" />
+                              <span className="whitespace-nowrap">
+                                {formatTime12Hour(slot.start_time)} -{" "}
+                                {formatTime12Hour(slot.end_time)}
+                              </span>
+                            </span>
+
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-gray-400 dark:text-gray-500">
+                              <ChevronRight size={11} />
+                              {activeDay}
+                            </span>
+                          </div>
+                        </div>
+
+                        {isAdmin ? (
+                          <button
+                            onClick={() => handleRemoveSlot(index)}
+                            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-bold text-red-600 transition hover:bg-red-100 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300 dark:hover:bg-red-900/30"
+                          >
+                            <Trash2 size={11} />
+                            Remove
+                          </button>
+                        ) : null}
                       </div>
-                      {isAdmin && (
-                        <button
-                          onClick={() => handleRemoveSlot(index)}
-                          className="mt-4 px-3 py-1.5 bg-red-50 dark:bg-red-900/20 text-xs font-bold text-red-600 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/40 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all"
-                        >
-                          <Trash2 size={14} /> Remove Slot
-                        </button>
-                      )}
                     </div>
                   </div>
-                );
-              })}
+                </div>
+              ))}
             </div>
           )}
         </div>

@@ -1,6 +1,12 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+} from "react";
 import { useNavigate } from "react-router-dom";
-import { apiFetch } from "../utils/api";
+import { apiFetchOrThrow, apiJsonFetch } from "../utils/api";
 
 const AuthContext = createContext();
 const SchoolContext = createContext();
@@ -19,69 +25,72 @@ export const AppProvider = ({ children }) => {
 
   const navigate = useNavigate();
 
-  const fetchGlobalData = async () => {
+  const resetAppState = useCallback(() => {
+    setUserData(null);
+    setSubjects([]);
+    setStudents([]);
+  }, []);
+
+  const fetchGlobalData = useCallback(async () => {
+    setLoading(true);
+
     try {
       const token = localStorage.getItem("token");
       if (!token) {
-        setLoading(false);
+        resetAppState();
         return;
       }
 
-      // Fetch Profile
-      const profileRes = await apiFetch("/dashboard", { method: "GET" });
-
-      if (!profileRes.ok) {
-        localStorage.removeItem("token");
-        setUserData(null);
-        setSubjects([]);
-        setStudents([]);
-        navigate("/login");
-        return;
-      }
-
-      const profileData = await profileRes.json();
+      const profileData = await apiFetchOrThrow(
+        "/dashboard",
+        { method: "GET" },
+        "Unable to load your dashboard profile.",
+      );
       setUserData(profileData);
 
-      // Fetch Subjects and Students in parallel
-      const [subRes, stdRes] = await Promise.all([
-        apiFetch("/subjects", { method: "GET" }),
-        apiFetch("/students?limit=1000", { method: "GET" }),
+      const [subjectsResult, studentsResult] = await Promise.all([
+        apiJsonFetch("/subjects", { method: "GET" }),
+        apiJsonFetch("/students?limit=1000", { method: "GET" }),
       ]);
 
-      if (subRes.ok) {
-        const subData = await subRes.json();
-        setSubjects(subData);
+      if (subjectsResult.ok) {
+        setSubjects(Array.isArray(subjectsResult.data) ? subjectsResult.data : []);
+      } else {
+        setSubjects([]);
       }
 
-      if (stdRes.ok) {
-        const stdData = await stdRes.json();
-        setStudents(stdData?.data || stdData);
+      if (studentsResult.ok) {
+        const nextStudents = Array.isArray(studentsResult.data)
+          ? studentsResult.data
+          : studentsResult.data?.data || [];
+        setStudents(nextStudents);
+      } else {
+        setStudents([]);
       }
     } catch (err) {
       console.error("Context Fetch Error:", err);
+      localStorage.removeItem("token");
+      resetAppState();
+      navigate("/login", { replace: true });
     } finally {
       setLoading(false);
     }
-  };
+  }, [navigate, resetAppState]);
 
   useEffect(() => {
     fetchGlobalData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchGlobalData]);
 
   const logout = async () => {
     try {
-      // Clear refresh cookie on server
-      await apiFetch("/auth/logout", { method: "POST" });
+      await apiJsonFetch("/auth/logout", { method: "POST" });
     } catch (err) {
-      // Even if server fails, we still log out locally
       console.error("Logout error:", err);
     } finally {
       localStorage.removeItem("token");
-      setUserData(null);
-      setSubjects([]);
-      setStudents([]);
-      navigate("/login");
+      resetAppState();
+      setLoading(false);
+      navigate("/login", { replace: true });
     }
   };
 

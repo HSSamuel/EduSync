@@ -2,77 +2,91 @@ const express = require("express");
 const router = express.Router();
 const pool = require("../db");
 const authorize = require("../middleware/authorize");
-const { z } = require("zod");
 const validate = require("../middleware/validate");
+const {
+  timetableSchema,
+  allowedWeekdays,
+} = require("../utils/schoolValidation");
+const { logAudit } = require("../utils/auditLogger");
 
-const timetableSchema = z.object({
-  class_grade: z.string().min(1, "Class Grade is required"),
-  schedule: z.record(
-    z.array(
-      z.object({
-        start_time: z.string(),
-        end_time: z.string(),
-        subject: z.string(),
-      }),
-    ),
-  ),
-});
+function normalizeSchedule(schedule = {}) {
+  const normalized = {};
 
-// 1. GET TIMETABLE FOR A SPECIFIC CLASS
+  for (const day of allowedWeekdays) {
+    const daySlots = Array.isArray(schedule[day]) ? schedule[day] : [];
+
+    normalized[day] = [...daySlots].sort((a, b) =>
+      String(a.start_time).localeCompare(String(b.start_time)),
+    );
+  }
+
+  return normalized;
+}
+
 router.get("/:class_grade", authorize, async (req, res) => {
   try {
     const { class_grade } = req.params;
+
     const timetable = await pool.query(
       "SELECT schedule FROM timetables WHERE class_grade = $1 AND school_id = $2",
       [class_grade, req.user.school_id],
     );
 
     if (timetable.rows.length === 0) {
-      return res.json({
-        Monday: [],
-        Tuesday: [],
-        Wednesday: [],
-        Thursday: [],
-        Friday: [],
-      });
+      return res.json(normalizeSchedule());
     }
 
-    res.json(timetable.rows[0].schedule);
+    return res.json(normalizeSchedule(timetable.rows[0].schedule));
   } catch (err) {
-    console.error(err.message);
-    res.status(500).json({ error: "Internal Server Error" });
+    console.error("Error fetching timetable:", err.message);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
-// 2. SAVE OR UPDATE A TIMETABLE (Admin Only)
 router.post("/", authorize, validate(timetableSchema), async (req, res) => {
   try {
-    if (req.user.role !== "Admin")
+    if (req.user.role !== "Admin") {
       return res.status(403).json({ error: "Access Denied." });
+    }
 
     const { class_grade, schedule } = req.body;
+    const normalizedSchedule = normalizeSchedule(schedule);
 
-    const newTimetable = await pool.query(
-      `INSERT INTO timetables (class_grade, schedule, updated_by, school_id) 
-       VALUES ($1, $2, $3, $4) 
-       ON CONFLICT (class_grade, school_id) 
-       DO UPDATE SET schedule = EXCLUDED.schedule, updated_by = EXCLUDED.updated_by
-       RETURNING *`,
-      [
-        class_grade,
-        JSON.stringify(schedule),
-        req.user.user_id,
-        req.user.school_id,
-      ],
+    const existing = await pool.query(
+      "SELECT timetable_id, schedule FROM timetables WHERE class_grade = $1 AND school_id = $2",
+      [class_grade, req.user.school_id],
     );
 
-    res.json({
-      message: "Timetable successfully updated!",
-      schedule: newTimetable.rows[0].schedule,
+    const result = await pool.query(
+      `INSERT INTO timetables (class_grade, schedule, updated_by, school_id)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (class_grade, school_id)
+       DO UPDATE SET
+         schedule = EXCLUDED.schedule,
+         updated_by = EXCLUDED.updated_by
+       RETURNING *`,
+      [class_grade, normalizedSchedule, req.user.user_id, req.user.school_id],
+    );
+
+    const saved = result.rows[0];
+
+    await logAudit({
+      userId: req.user.user_id,
+      action:
+        existing.rows.length > 0 ? "UPDATE_TIMETABLE" : "CREATE_TIMETABLE",
+      targetTable: "timetables",
+      recordId: saved.timetable_id,
+      oldValue: existing.rows[0]?.schedule || null,
+      newValue: saved.schedule,
+    });
+
+    return res.json({
+      message: "Timetable saved successfully.",
+      schedule: normalizeSchedule(saved.schedule),
     });
   } catch (err) {
-    console.error(err.message);
-    res.status(500).json({ error: "Internal Server Error" });
+    console.error("Error saving timetable:", err.message);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 });
 

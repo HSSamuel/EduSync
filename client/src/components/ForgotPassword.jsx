@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
-
-const API_URL = import.meta.env.VITE_API_URL;
+import { apiFetchOrThrow } from "../utils/api";
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState("");
@@ -14,21 +13,19 @@ const ForgotPassword = () => {
     setStatus("Sending...");
 
     try {
-      const response = await fetch(`${API_URL}/auth/forgot-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
-      const parseRes = await response.json();
+      const data = await apiFetchOrThrow(
+        "/auth/forgot-password",
+        {
+          method: "POST",
+          body: JSON.stringify({ email }),
+        },
+        "Unable to send reset email.",
+      );
 
-      if (response.ok) {
-        setStatus("✅ " + parseRes.message);
-        setEmail("");
-      } else {
-        setStatus("❌ " + parseRes.error);
-      }
+      setStatus(`✅ ${data?.message || "Password reset link sent."}`);
+      setEmail("");
     } catch (err) {
-      setStatus("❌ Server error.");
+      setStatus(`❌ ${err.message}`);
     } finally {
       setIsLoading(false);
     }
@@ -54,6 +51,7 @@ const ForgotPassword = () => {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            disabled={isLoading}
           />
         </div>
 

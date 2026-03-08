@@ -9,8 +9,7 @@ import {
   Hash,
 } from "lucide-react";
 import { GoogleLogin } from "@react-oauth/google";
-
-const API_URL = import.meta.env.VITE_API_URL;
+import { apiFetchOrThrow } from "../utils/api";
 
 const Register = () => {
   const [searchParams] = useSearchParams();
@@ -31,72 +30,80 @@ const Register = () => {
   const navigate = useNavigate();
 
   const onChange = (e) =>
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
 
   const handleAuthSuccess = (token) => {
     localStorage.setItem("token", token);
     setStatusMessage("✅ Account Created! Redirecting...");
-    setTimeout(() => navigate("/dashboard"), 1500);
+    setTimeout(() => navigate("/dashboard", { replace: true }), 1500);
   };
 
   const onSubmitForm = async (e) => {
     e.preventDefault();
     setIsLoading(true);
     setStatusMessage("Creating account...");
+
     try {
-      const response = await fetch(`${API_URL}/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      });
-      const parseRes = await response.json();
-      if (response.ok) {
-        handleAuthSuccess(parseRes.token || parseRes);
-      } else {
-        setStatusMessage("❌ " + (parseRes.error || "Registration failed."));
-        setIsLoading(false);
+      const data = await apiFetchOrThrow(
+        "/auth/register",
+        {
+          method: "POST",
+          body: JSON.stringify(formData),
+        },
+        "Registration failed.",
+      );
+
+      if (!data?.token) {
+        throw new Error("Registration succeeded but no access token was returned.");
       }
+
+      handleAuthSuccess(data.token);
     } catch (err) {
-      setStatusMessage("❌ Server error. Check your connection.");
+      setStatusMessage(`❌ ${err.message}`);
       setIsLoading(false);
     }
   };
 
   const onGoogleSuccess = async (credentialResponse) => {
     if (formData.role === "Admin" && !formData.school_name) {
-      return setStatusMessage(
-        "❌ Please enter a School Name before using Google Sign-up.",
-      );
+      setStatusMessage("❌ Please enter a School Name before using Google Sign-up.");
+      return;
     }
+
     if (formData.role !== "Admin" && !formData.school_id) {
-      return setStatusMessage(
-        "❌ Please enter a School ID before using Google Sign-up.",
-      );
+      setStatusMessage("❌ Please enter a School ID before using Google Sign-up.");
+      return;
     }
 
+    setIsLoading(true);
     setStatusMessage("Registering via Google...");
-    try {
-      const response = await fetch(`${API_URL}/auth/google`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          token: credentialResponse.credential,
-          type: "register",
-          role: formData.role,
-          school_name: formData.school_name,
-          school_id: formData.school_id,
-        }),
-      });
-      const parseRes = await response.json();
 
-      if (response.ok && parseRes.token) {
-        handleAuthSuccess(parseRes.token);
-      } else {
-        setStatusMessage("❌ " + parseRes.error);
+    try {
+      const data = await apiFetchOrThrow(
+        "/auth/google",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            token: credentialResponse.credential,
+            type: "register",
+            role: formData.role,
+            school_name: formData.school_name,
+            school_id: formData.school_id,
+          }),
+        },
+        "Google registration failed.",
+      );
+
+      if (!data?.token) {
+        throw new Error(
+          "Google registration succeeded but no access token was returned.",
+        );
       }
+
+      handleAuthSuccess(data.token);
     } catch (err) {
-      setStatusMessage("❌ Google Registration failed.");
+      setStatusMessage(`❌ ${err.message}`);
+      setIsLoading(false);
     }
   };
 
@@ -112,7 +119,6 @@ const Register = () => {
         aria-hidden="true"
       ></div>
 
-      {/* 👈 FIX: Optimized background blur for performance */}
       <div className="relative z-10 w-full max-w-md p-10 bg-white/95 md:bg-white/60 dark:bg-gray-900/95 md:dark:bg-gray-900/60 md:backdrop-blur-2xl border border-white/50 dark:border-gray-700/50 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.08)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.3)] transition-all duration-300">
         <div className="text-center mb-8">
           <h2 className="text-3xl font-black font-serif tracking-tight text-gray-900 dark:text-white">
@@ -126,11 +132,7 @@ const Register = () => {
         <form onSubmit={onSubmitForm} className="space-y-4">
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-              <ShieldCheck
-                className="text-gray-400"
-                size={18}
-                aria-hidden="true"
-              />
+              <ShieldCheck className="text-gray-400" size={18} aria-hidden="true" />
             </div>
             <select
               aria-label="Select Role"
@@ -138,6 +140,7 @@ const Register = () => {
               className="w-full pl-11 pr-4 py-3.5 bg-white/50 dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/50 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white dark:focus:bg-gray-800 transition-all font-medium cursor-pointer"
               value={formData.role}
               onChange={onChange}
+              disabled={isLoading}
             >
               <option value="Admin">School Admin</option>
               <option value="Teacher">Teacher</option>
@@ -149,11 +152,7 @@ const Register = () => {
           {formData.role === "Admin" ? (
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <Building
-                  className="text-gray-400"
-                  size={18}
-                  aria-hidden="true"
-                />
+                <Building className="text-gray-400" size={18} aria-hidden="true" />
               </div>
               <input
                 type="text"
@@ -164,6 +163,7 @@ const Register = () => {
                 value={formData.school_name}
                 onChange={onChange}
                 required
+                disabled={isLoading}
               />
             </div>
           ) : (
@@ -180,6 +180,7 @@ const Register = () => {
                 value={formData.school_id}
                 onChange={onChange}
                 required
+                disabled={isLoading}
               />
             </div>
           )}
@@ -191,9 +192,10 @@ const Register = () => {
             <div className="flex justify-center">
               <GoogleLogin
                 onSuccess={onGoogleSuccess}
-                onError={() =>
-                  setStatusMessage("❌ Google popup closed or failed")
-                }
+                onError={() => {
+                  setIsLoading(false);
+                  setStatusMessage("❌ Google popup closed or failed");
+                }}
                 text="signup_with"
                 theme="outline"
                 shape="rectangular"
@@ -211,11 +213,7 @@ const Register = () => {
 
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-              <UserPlus
-                className="text-gray-400"
-                size={18}
-                aria-hidden="true"
-              />
+              <UserPlus className="text-gray-400" size={18} aria-hidden="true" />
             </div>
             <input
               type="text"
@@ -225,6 +223,8 @@ const Register = () => {
               className="w-full pl-11 pr-4 py-3.5 bg-white/50 dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/50 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white dark:focus:bg-gray-800 transition-all font-medium"
               value={formData.full_name}
               onChange={onChange}
+              required
+              disabled={isLoading}
             />
           </div>
 
@@ -240,6 +240,8 @@ const Register = () => {
               className="w-full pl-11 pr-4 py-3.5 bg-white/50 dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/50 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white dark:focus:bg-gray-800 transition-all font-medium"
               value={formData.email}
               onChange={onChange}
+              required
+              disabled={isLoading}
             />
           </div>
 
@@ -255,6 +257,9 @@ const Register = () => {
               className="w-full pl-11 pr-4 py-3.5 bg-white/50 dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/50 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white dark:focus:bg-gray-800 transition-all font-medium"
               value={formData.password}
               onChange={onChange}
+              required
+              minLength={6}
+              disabled={isLoading}
             />
           </div>
 

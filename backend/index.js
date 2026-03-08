@@ -16,6 +16,13 @@ const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
 
 const server = http.createServer(app);
 
+const ROOM_NAME_REGEX = /^[a-zA-Z0-9_-]{1,64}$/;
+const MAX_CHAT_MESSAGE_LENGTH = 2000;
+
+const isValidRoomName = (room) => typeof room === "string" && ROOM_NAME_REGEX.test(room);
+const isValidMessage = (message) =>
+  typeof message === "string" && message.trim().length > 0 && message.trim().length <= MAX_CHAT_MESSAGE_LENGTH;
+
 const io = new Server(server, {
   cors: {
     origin: CLIENT_URL,
@@ -60,7 +67,6 @@ app.use("/api/attendance", require("./routes/attendance"));
 app.use("/api/finance", require("./routes/finance"));
 app.use("/api/cbt", require("./routes/cbt"));
 app.use("/api/timetable", require("./routes/timetable"));
-// NEW: Chat history route
 app.use("/api/chat", require("./routes/chat"));
 
 // ==========================================
@@ -117,40 +123,61 @@ io.on("connection", (socket) => {
   console.log(`🟢 User Connected: ${socket.user.name} (${socket.id})`);
 
   socket.on("join_room", (room) => {
+    if (!isValidRoomName(room)) {
+      socket.emit("chat_error", { error: "Invalid room name." });
+      return;
+    }
+
     const secureRoom = `${socket.user.school_id}_${room}`;
     socket.join(secureRoom);
     console.log(`User ${socket.user.name} joined room: ${secureRoom}`);
   });
 
-  socket.on("send_message", async (data) => {
-    const secureRoom = `${socket.user.school_id}_${data.room}`;
+  socket.on("send_message", async (data = {}) => {
+    const room = data.room;
+    const rawMessage = data.message;
+
+    if (!isValidRoomName(room)) {
+      socket.emit("chat_error", { error: "Invalid room name." });
+      return;
+    }
+
+    if (!isValidMessage(rawMessage)) {
+      socket.emit("chat_error", {
+        error: `Message must be between 1 and ${MAX_CHAT_MESSAGE_LENGTH} characters.`,
+      });
+      return;
+    }
+
+    const normalizedMessage = rawMessage.trim();
+    const secureRoom = `${socket.user.school_id}_${room}`;
 
     try {
-      // NEW: Persistent Storage - Save message to PostgreSQL
       await pool.query(
-        "INSERT INTO messages (room, message, sender_name, sender_role, school_id) VALUES ($1, $2, $3, $4, $5)",
+        "INSERT INTO messages (room, message, sender_name, sender_role, school_id) VALUES ($1, $2, $3, $4, $5) RETURNING message_id, sent_at",
         [
-          data.room,
-          data.message,
+          room,
+          normalizedMessage,
           socket.user.name,
           socket.user.role,
           socket.user.school_id,
         ],
-      );
+      ).then((result) => {
+        const persistedMessage = result.rows[0];
+        const secureMessage = {
+          id: persistedMessage.message_id,
+          room,
+          message: normalizedMessage,
+          time: persistedMessage.sent_at,
+          sender: socket.user.name,
+          role: socket.user.role,
+        };
 
-      const secureMessage = {
-        id: data.id || Math.random().toString(36).substring(7),
-        room: data.room,
-        message: data.message,
-        time: data.time,
-        sender: socket.user.name,
-        role: socket.user.role,
-      };
-
-      // Broadcast to everyone in the room
-      io.to(secureRoom).emit("receive_message", secureMessage);
+        io.to(secureRoom).emit("receive_message", secureMessage);
+      });
     } catch (err) {
       console.error("❌ Chat persistence error:", err.message);
+      socket.emit("chat_error", { error: "Unable to send message right now." });
     }
   });
 

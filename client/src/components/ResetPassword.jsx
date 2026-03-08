@@ -1,38 +1,41 @@
 import React, { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-
-const API_URL = import.meta.env.VITE_API_URL;
+import { apiFetchOrThrow } from "../utils/api";
 
 const ResetPassword = () => {
-  const { token } = useParams(); 
+  const { token } = useParams();
   const navigate = useNavigate();
 
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [status, setStatus] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const onSubmit = async (e) => {
     e.preventDefault();
     if (newPassword !== confirmPassword) {
-      return setStatus("❌ Passwords do not match.");
+      setStatus("❌ Passwords do not match.");
+      return;
     }
 
-    try {
-      const response = await fetch(`${API_URL}/auth/reset-password`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, newPassword }),
-      });
-      const parseRes = await response.json();
+    setIsSubmitting(true);
 
-      if (response.ok) {
-        setStatus(parseRes.message);
-        setTimeout(() => navigate("/login"), 3000); 
-      } else {
-        setStatus("❌ " + parseRes.error);
-      }
+    try {
+      const data = await apiFetchOrThrow(
+        "/auth/reset-password",
+        {
+          method: "PUT",
+          body: JSON.stringify({ token, newPassword }),
+        },
+        "Unable to reset password.",
+      );
+
+      setStatus(data?.message || "✅ Password successfully reset!");
+      setTimeout(() => navigate("/login", { replace: true }), 3000);
     } catch (err) {
-      setStatus("❌ Server error.");
+      setStatus(`❌ ${err.message}`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -51,6 +54,7 @@ const ResetPassword = () => {
             onChange={(e) => setNewPassword(e.target.value)}
             required
             minLength="6"
+            disabled={isSubmitting}
           />
         </div>
         <div>
@@ -64,14 +68,16 @@ const ResetPassword = () => {
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             required
+            disabled={isSubmitting}
           />
         </div>
 
         <button
           type="submit"
-          className="w-full py-3 mt-4 font-bold text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors"
+          disabled={isSubmitting}
+          className="w-full py-3 mt-4 font-bold text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          Update Password
+          {isSubmitting ? "Updating..." : "Update Password"}
         </button>
       </form>
 

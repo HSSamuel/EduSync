@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   UserPlus,
   Mail,
@@ -13,9 +13,34 @@ import {
   Loader2,
   LayoutList,
   List,
+  Square,
+  CheckSquare,
+  Trash2,
+  Folder,
+  FolderOpen,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import PremiumEmptyState from "./PremiumEmptyState";
 import { apiFetch } from "../utils/api";
+
+const DEFAULT_CLASS_ORDER = ["JSS 1", "JSS 2", "JSS 3", "SS 1", "SS 2", "SS 3"];
+
+const normalizeClassGrade = (value = "") => value.replace(/\s+/g, " ").trim();
+
+const sortClassGrades = (a, b) => {
+  const normalizedA = normalizeClassGrade(a);
+  const normalizedB = normalizeClassGrade(b);
+
+  const indexA = DEFAULT_CLASS_ORDER.indexOf(normalizedA);
+  const indexB = DEFAULT_CLASS_ORDER.indexOf(normalizedB);
+
+  if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+  if (indexA !== -1) return -1;
+  if (indexB !== -1) return 1;
+
+  return normalizedA.localeCompare(normalizedB);
+};
 
 const StudentsTab = ({ isAdmin }) => {
   const [studentName, setStudentName] = useState("");
@@ -23,10 +48,12 @@ const StudentsTab = ({ isAdmin }) => {
   const [studentGrade, setStudentGrade] = useState("");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [students, setStudents] = useState([]);
   const [parents, setParents] = useState([]);
   const [selectedParents, setSelectedParents] = useState({});
+  const [selectedStudentIds, setSelectedStudentIds] = useState([]);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [filterClass, setFilterClass] = useState("");
@@ -35,34 +62,49 @@ const StudentsTab = ({ isAdmin }) => {
   const [totalStudents, setTotalStudents] = useState(0);
 
   const [isCompactView, setIsCompactView] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState({});
+
+  const pageSize = 15;
 
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, filterClass]);
 
-  useEffect(() => {
-    const delayDebounceFn = setTimeout(async () => {
-      try {
-        const queryParams = new URLSearchParams({
-          search: searchTerm,
-          class_grade: filterClass,
-          page: currentPage,
-          limit: 15,
-        });
+  const fetchStudents = async () => {
+    try {
+      const queryParams = new URLSearchParams({
+        search: searchTerm,
+        class_grade: filterClass,
+        page: currentPage,
+        limit: pageSize,
+      });
 
-        const response = await apiFetch(`/students?${queryParams.toString()}`, {
-          method: "GET",
-        });
+      const response = await apiFetch(`/students?${queryParams.toString()}`, {
+        method: "GET",
+      });
 
-        if (response.ok) {
-          const parsed = await response.json();
-          setStudents(parsed.data || []);
-          setTotalPages(parsed.pagination?.totalPages || 1);
-          setTotalStudents(parsed.pagination?.total || 0);
-        }
-      } catch (err) {
-        console.error(err);
+      if (response.ok) {
+        const parsed = await response.json();
+        const nextStudents = parsed.data || [];
+
+        setStudents(nextStudents);
+        setTotalPages(parsed.pagination?.totalPages || 1);
+        setTotalStudents(parsed.pagination?.total || 0);
+
+        setSelectedStudentIds((prev) =>
+          prev.filter((id) =>
+            nextStudents.some((student) => student.student_id === id),
+          ),
+        );
       }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      fetchStudents();
     }, 300);
 
     return () => clearTimeout(delayDebounceFn);
@@ -88,28 +130,39 @@ const StudentsTab = ({ isAdmin }) => {
     }
   }, [isAdmin]);
 
+  const groupedStudents = useMemo(() => {
+    const groups = {};
+
+    students.forEach((student) => {
+      const classKey = normalizeClassGrade(student.class_grade || "Unassigned");
+      if (!groups[classKey]) groups[classKey] = [];
+      groups[classKey].push(student);
+    });
+
+    return Object.entries(groups)
+      .sort(([classA], [classB]) => sortClassGrades(classA, classB))
+      .map(([classGrade, classStudents]) => ({
+        classGrade,
+        students: classStudents,
+      }));
+  }, [students]);
+
+  useEffect(() => {
+    setExpandedGroups((prev) => {
+      const next = { ...prev };
+
+      groupedStudents.forEach((group) => {
+        if (typeof next[group.classGrade] === "undefined") {
+          next[group.classGrade] = true;
+        }
+      });
+
+      return next;
+    });
+  }, [groupedStudents]);
+
   const refreshStudents = async () => {
-    try {
-      const queryParams = new URLSearchParams({
-        search: searchTerm,
-        class_grade: filterClass,
-        page: currentPage,
-        limit: 15,
-      });
-
-      const response = await apiFetch(`/students?${queryParams.toString()}`, {
-        method: "GET",
-      });
-
-      if (response.ok) {
-        const parsed = await response.json();
-        setStudents(parsed.data || []);
-        setTotalPages(parsed.pagination?.totalPages || 1);
-        setTotalStudents(parsed.pagination?.total || 0);
-      }
-    } catch (err) {
-      console.error(err);
-    }
+    await fetchStudents();
   };
 
   const onSubmitStudent = async (e) => {
@@ -171,6 +224,134 @@ const StudentsTab = ({ isAdmin }) => {
     } catch (err) {
       console.error(err);
       alert("❌ Something went wrong while linking parent.");
+    }
+  };
+
+  const toggleStudentSelection = (studentId) => {
+    setSelectedStudentIds((prev) =>
+      prev.includes(studentId)
+        ? prev.filter((id) => id !== studentId)
+        : [...prev, studentId],
+    );
+  };
+
+  const allVisibleSelected =
+    students.length > 0 &&
+    students.every((student) =>
+      selectedStudentIds.includes(student.student_id),
+    );
+
+  const toggleSelectAllVisible = () => {
+    if (allVisibleSelected) {
+      setSelectedStudentIds((prev) =>
+        prev.filter(
+          (id) => !students.some((student) => student.student_id === id),
+        ),
+      );
+      return;
+    }
+
+    const visibleIds = students.map((student) => student.student_id);
+    setSelectedStudentIds((prev) =>
+      Array.from(new Set([...prev, ...visibleIds])),
+    );
+  };
+
+  const areAllGroupSelected = (groupStudents) =>
+    groupStudents.length > 0 &&
+    groupStudents.every((student) =>
+      selectedStudentIds.includes(student.student_id),
+    );
+
+  const toggleGroupSelection = (groupStudents) => {
+    const groupIds = groupStudents.map((student) => student.student_id);
+    const allSelected = areAllGroupSelected(groupStudents);
+
+    if (allSelected) {
+      setSelectedStudentIds((prev) =>
+        prev.filter((id) => !groupIds.includes(id)),
+      );
+      return;
+    }
+
+    setSelectedStudentIds((prev) =>
+      Array.from(new Set([...prev, ...groupIds])),
+    );
+  };
+
+  const toggleGroupExpanded = (classGrade) => {
+    setExpandedGroups((prev) => ({
+      ...prev,
+      [classGrade]: !prev[classGrade],
+    }));
+  };
+
+  const deleteSingleStudent = async (student) => {
+    const confirmed = window.confirm(
+      `Delete ${student.full_name}? This action cannot be undone.`,
+    );
+
+    if (!confirmed) return;
+
+    setIsDeleting(true);
+
+    try {
+      const response = await apiFetch(`/students/${student.student_id}`, {
+        method: "DELETE",
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (response.ok) {
+        setSelectedStudentIds((prev) =>
+          prev.filter((id) => id !== student.student_id),
+        );
+        alert(data.message || "✅ Student deleted successfully.");
+        await refreshStudents();
+      } else {
+        alert(data.error || "❌ Failed to delete student.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("❌ Something went wrong while deleting the student.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const deleteSelectedStudents = async () => {
+    if (selectedStudentIds.length === 0) {
+      return alert("Please select at least one student.");
+    }
+
+    const confirmed = window.confirm(
+      `Delete ${selectedStudentIds.length} selected student(s)? This action cannot be undone.`,
+    );
+
+    if (!confirmed) return;
+
+    setIsDeleting(true);
+
+    try {
+      const response = await apiFetch("/students/bulk-delete", {
+        method: "DELETE",
+        body: JSON.stringify({ student_ids: selectedStudentIds }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (response.ok) {
+        setSelectedStudentIds([]);
+        alert(data.message || "✅ Selected students deleted successfully.");
+        await refreshStudents();
+      } else {
+        alert(data.error || "❌ Failed to delete selected students.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("❌ Something went wrong while deleting selected students.");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -267,22 +448,62 @@ const StudentsTab = ({ isAdmin }) => {
 
       <hr className="border-gray-200 dark:border-gray-700" />
 
-      <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-        <div className="flex items-center gap-2">
-          <h4 className="text-xl font-bold text-gray-900 dark:text-white">
-            Student Roster
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex min-w-0 max-w-full items-center gap-1.5 overflow-hidden">
+          <h4 className="shrink truncate text-base font-extrabold tracking-tight text-gray-900 dark:text-white">
+            Students
           </h4>
-          <span className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300 py-1 px-3 rounded-full text-xs font-black">
-            {totalStudents} Total
+
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-black whitespace-nowrap text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+            <span>Total</span>
+            <span>{totalStudents}</span>
           </span>
+
+          <button
+            onClick={toggleSelectAllVisible}
+            aria-label={
+              allVisibleSelected
+                ? "Deselect all visible students"
+                : "Select all visible students"
+            }
+            title={
+              allVisibleSelected
+                ? "Deselect all visible students"
+                : "Select all visible students"
+            }
+            className="shrink-0 rounded-xl border border-gray-200 bg-white p-2 text-gray-500 shadow-sm transition-colors hover:text-blue-600 dark:border-gray-700 dark:bg-gray-800 dark:hover:text-blue-400"
+            type="button"
+          >
+            {allVisibleSelected ? (
+              <CheckSquare size={16} />
+            ) : (
+              <Square size={16} />
+            )}
+          </button>
+
+          <button
+            onClick={deleteSelectedStudents}
+            type="button"
+            disabled={isDeleting || selectedStudentIds.length === 0}
+            aria-label="Delete selected students"
+            title="Delete selected students"
+            className="shrink-0 rounded-xl border border-red-200 bg-red-50 p-2 text-red-600 shadow-sm transition-colors hover:bg-red-100 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isDeleting ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <Trash2 size={16} />
+            )}
+          </button>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto items-center">
+        <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center xl:w-auto xl:flex-nowrap">
           <button
             onClick={() => setIsCompactView(!isCompactView)}
             aria-label="Toggle table density"
             title="Toggle Compact View"
             className="p-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 shadow-sm transition-colors hidden sm:block"
+            type="button"
           >
             {isCompactView ? <LayoutList size={18} /> : <List size={18} />}
           </button>
@@ -330,145 +551,312 @@ const StudentsTab = ({ isAdmin }) => {
           description="Adjust your search filters or enroll a new student to see them here."
         />
       ) : (
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden flex flex-col">
-          <div className="overflow-auto max-h-[65vh] w-full relative">
-            <table className="w-full text-left border-collapse min-w-[800px]">
-              <thead className="sticky top-0 z-10 bg-gray-50/95 dark:bg-gray-900/95 backdrop-blur-sm shadow-sm">
-                <tr className="text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">
-                  <th
-                    className={`${isCompactView ? "p-2.5" : "p-4"} font-bold border-b border-gray-200 dark:border-gray-700 w-12 text-center transition-all`}
-                  >
-                    #
-                  </th>
-                  <th
-                    className={`${isCompactView ? "p-2.5" : "p-4"} font-bold border-b border-gray-200 dark:border-gray-700 transition-all`}
-                  >
-                    Student Info
-                  </th>
-                  <th
-                    className={`${isCompactView ? "p-2.5" : "p-4"} font-bold border-b border-gray-200 dark:border-gray-700 w-32 text-center transition-all`}
-                  >
-                    Class
-                  </th>
-                  <th
-                    className={`${isCompactView ? "p-2.5" : "p-4"} font-bold border-b border-gray-200 dark:border-gray-700 transition-all`}
-                  >
-                    Parent Linkage
-                  </th>
-                </tr>
-              </thead>
+        <div className="space-y-4">
+          {groupedStudents.map((group) => {
+            const groupExpanded = expandedGroups[group.classGrade] ?? true;
+            const groupAllSelected = areAllGroupSelected(group.students);
 
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
-                {students.map((student, index) => (
-                  <tr
-                    key={student.student_id}
-                    className="hover:bg-blue-50/30 dark:hover:bg-gray-800/50 transition-colors group"
-                  >
-                    <td
-                      className={`${isCompactView ? "p-2.5 text-[11px]" : "p-4 text-xs"} text-center font-mono text-gray-400 transition-all`}
+            return (
+              <div
+                key={group.classGrade}
+                className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden"
+              >
+                <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/30">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => toggleGroupExpanded(group.classGrade)}
+                      className="inline-flex shrink-0 items-center justify-center rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-white transition-colors"
+                      aria-label={`Toggle ${group.classGrade}`}
+                      title={`Toggle ${group.classGrade}`}
                     >
-                      {(currentPage - 1) * 15 + index + 1}
-                    </td>
+                      {groupExpanded ? (
+                        <ChevronUp size={16} />
+                      ) : (
+                        <ChevronDown size={16} />
+                      )}
+                    </button>
 
-                    <td
-                      className={`${isCompactView ? "p-2.5" : "p-4"} transition-all`}
+                    <div className="inline-flex shrink-0 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 p-2">
+                      {groupExpanded ? (
+                        <FolderOpen size={18} />
+                      ) : (
+                        <Folder size={18} />
+                      )}
+                    </div>
+
+                    <div className="min-w-0">
+                      <h5 className="truncate text-sm sm:text-base font-black text-gray-900 dark:text-white">
+                        {group.classGrade}
+                      </h5>
+                      <p className="text-[11px] sm:text-xs text-gray-500 dark:text-gray-400 font-medium">
+                        {group.students.length}{" "}
+                        {group.students.length === 1 ? "student" : "students"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => toggleGroupSelection(group.students)}
+                      className="inline-flex items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-2 text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                      aria-label={
+                        groupAllSelected
+                          ? `Deselect ${group.classGrade}`
+                          : `Select ${group.classGrade}`
+                      }
+                      title={
+                        groupAllSelected
+                          ? `Deselect ${group.classGrade}`
+                          : `Select ${group.classGrade}`
+                      }
                     >
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={`flex items-center justify-center bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full font-black ${
-                            isCompactView
-                              ? "w-7 h-7 text-xs"
-                              : "w-9 h-9 text-sm"
-                          } transition-all`}
-                        >
-                          {student.full_name?.charAt(0) || "S"}
-                        </div>
+                      {groupAllSelected ? (
+                        <CheckSquare size={16} />
+                      ) : (
+                        <Square size={16} />
+                      )}
+                    </button>
+                  </div>
+                </div>
 
-                        <div>
-                          <p
-                            className={`font-bold text-gray-900 dark:text-white leading-none mb-1 ${
-                              isCompactView ? "text-sm" : "text-base"
-                            }`}
+                {groupExpanded && (
+                  <div className="overflow-auto w-full">
+                    <table className="w-full min-w-[980px] text-left border-collapse">
+                      <thead className="bg-gray-50/70 dark:bg-gray-900/20">
+                        <tr className="text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">
+                          <th
+                            className={`${isCompactView ? "p-2.5" : "p-4"} font-bold border-b border-gray-200 dark:border-gray-700 w-14 text-center`}
                           >
-                            {student.full_name}
-                          </p>
-                          <p
-                            className={`text-gray-500 dark:text-gray-400 flex items-center gap-1 ${
-                              isCompactView ? "text-[10px]" : "text-xs"
-                            }`}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                toggleGroupSelection(group.students)
+                              }
+                              className="inline-flex items-center justify-center text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                              aria-label={`Select ${group.classGrade}`}
+                              title={`Select ${group.classGrade}`}
+                            >
+                              {groupAllSelected ? (
+                                <CheckSquare size={16} />
+                              ) : (
+                                <Square size={16} />
+                              )}
+                            </button>
+                          </th>
+
+                          <th
+                            className={`${isCompactView ? "p-2.5" : "p-4"} font-bold border-b border-gray-200 dark:border-gray-700`}
                           >
-                            <Mail size={isCompactView ? 10 : 12} />{" "}
-                            {student.email}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
+                            Student Info
+                          </th>
 
-                    <td
-                      className={`${isCompactView ? "p-2.5" : "p-4"} text-center transition-all`}
-                    >
-                      <span
-                        className={`inline-flex items-center px-2.5 py-1 rounded-md font-black uppercase tracking-wider bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 ${
-                          isCompactView ? "text-[10px]" : "text-xs"
-                        }`}
-                      >
-                        {student.class_grade}
-                      </span>
-                    </td>
-
-                    <td
-                      className={`${isCompactView ? "p-2.5" : "p-4"} transition-all`}
-                    >
-                      <div className="flex items-center gap-2 max-w-sm">
-                        <div className="relative flex-1">
-                          <Link2
-                            className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-gray-400"
-                            size={isCompactView ? 12 : 14}
-                          />
-                          <select
-                            className={`w-full pl-8 pr-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all cursor-pointer text-gray-700 dark:text-gray-200 ${
-                              isCompactView ? "py-1.5 text-xs" : "py-2 text-sm"
-                            }`}
-                            value={selectedParents[student.student_id] || ""}
-                            onChange={(e) =>
-                              setSelectedParents({
-                                ...selectedParents,
-                                [student.student_id]: e.target.value,
-                              })
-                            }
-                            aria-label={`Select parent for ${student.full_name}`}
+                          <th
+                            className={`${isCompactView ? "p-2.5" : "p-4"} font-bold border-b border-gray-200 dark:border-gray-700 w-32 text-center`}
                           >
-                            <option value="" className="text-gray-400">
-                              Select Parent...
-                            </option>
-                            {parents.map((p) => (
-                              <option key={p.user_id} value={p.user_id}>
-                                {p.full_name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                            Class
+                          </th>
 
-                        <button
-                          onClick={() => linkParent(student.student_id)}
-                          className={`bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors shrink-0 ${
-                            isCompactView
-                              ? "px-2 py-1.5 text-xs"
-                              : "px-3 py-2 text-sm"
-                          }`}
-                        >
-                          Link
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                          <th
+                            className={`${isCompactView ? "p-2.5" : "p-4"} font-bold border-b border-gray-200 dark:border-gray-700`}
+                          >
+                            Parent Linkage
+                          </th>
+
+                          <th
+                            className={`${isCompactView ? "p-2.5" : "p-4"} font-bold border-b border-gray-200 dark:border-gray-700 w-20 text-center`}
+                          >
+                            Action
+                          </th>
+                        </tr>
+                      </thead>
+
+                      <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
+                        {group.students.map((student) => {
+                          const isSelected = selectedStudentIds.includes(
+                            student.student_id,
+                          );
+
+                          return (
+                            <tr
+                              key={student.student_id}
+                              className={`transition-colors group ${
+                                isSelected
+                                  ? "bg-blue-50/50 dark:bg-blue-900/10"
+                                  : "hover:bg-blue-50/30 dark:hover:bg-gray-800/50"
+                              }`}
+                            >
+                              <td
+                                className={`${isCompactView ? "p-2.5" : "p-4"} text-center`}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    toggleStudentSelection(student.student_id)
+                                  }
+                                  aria-label={
+                                    isSelected
+                                      ? `Deselect ${student.full_name}`
+                                      : `Select ${student.full_name}`
+                                  }
+                                  title={
+                                    isSelected
+                                      ? `Deselect ${student.full_name}`
+                                      : `Select ${student.full_name}`
+                                  }
+                                  className="inline-flex items-center justify-center text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                                >
+                                  {isSelected ? (
+                                    <CheckSquare
+                                      size={16}
+                                      className="text-blue-600 dark:text-blue-400"
+                                    />
+                                  ) : (
+                                    <Square size={16} />
+                                  )}
+                                </button>
+                              </td>
+
+                              <td
+                                className={`${isCompactView ? "p-2.5" : "p-4"}`}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div
+                                    className={`flex items-center justify-center bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full font-black ${
+                                      isCompactView
+                                        ? "w-7 h-7 text-xs"
+                                        : "w-9 h-9 text-sm"
+                                    }`}
+                                  >
+                                    {student.full_name?.charAt(0) || "S"}
+                                  </div>
+
+                                  <div className="min-w-0">
+                                    <p
+                                      className={`font-bold text-gray-900 dark:text-white leading-none mb-1 truncate ${
+                                        isCompactView ? "text-sm" : "text-base"
+                                      }`}
+                                    >
+                                      {student.full_name}
+                                    </p>
+                                    <p
+                                      className={`text-gray-500 dark:text-gray-400 flex items-center gap-1 truncate ${
+                                        isCompactView
+                                          ? "text-[10px]"
+                                          : "text-xs"
+                                      }`}
+                                    >
+                                      <Mail size={isCompactView ? 10 : 12} />
+                                      <span className="truncate">
+                                        {student.email}
+                                      </span>
+                                    </p>
+                                  </div>
+                                </div>
+                              </td>
+
+                              <td
+                                className={`${isCompactView ? "p-2.5" : "p-4"} text-center`}
+                              >
+                                <span
+                                  className={`inline-flex items-center px-2.5 py-1 rounded-md font-black uppercase tracking-wider bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 ${
+                                    isCompactView ? "text-[10px]" : "text-xs"
+                                  }`}
+                                >
+                                  {student.class_grade}
+                                </span>
+                              </td>
+
+                              <td
+                                className={`${isCompactView ? "p-2.5" : "p-4"}`}
+                              >
+                                <div className="flex items-center gap-2 max-w-sm">
+                                  <div className="relative flex-1">
+                                    <Link2
+                                      className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-gray-400"
+                                      size={isCompactView ? 12 : 14}
+                                    />
+                                    <select
+                                      className={`w-full pl-8 pr-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all cursor-pointer text-gray-700 dark:text-gray-200 ${
+                                        isCompactView
+                                          ? "py-1.5 text-xs"
+                                          : "py-2 text-sm"
+                                      }`}
+                                      value={
+                                        selectedParents[student.student_id] ||
+                                        ""
+                                      }
+                                      onChange={(e) =>
+                                        setSelectedParents({
+                                          ...selectedParents,
+                                          [student.student_id]: e.target.value,
+                                        })
+                                      }
+                                      aria-label={`Select parent for ${student.full_name}`}
+                                    >
+                                      <option
+                                        value=""
+                                        className="text-gray-400"
+                                      >
+                                        Select Parent...
+                                      </option>
+                                      {parents.map((p) => (
+                                        <option
+                                          key={p.user_id}
+                                          value={p.user_id}
+                                        >
+                                          {p.full_name}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+
+                                  <button
+                                    onClick={() =>
+                                      linkParent(student.student_id)
+                                    }
+                                    className={`bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors shrink-0 ${
+                                      isCompactView
+                                        ? "px-2 py-1.5 text-xs"
+                                        : "px-3 py-2 text-sm"
+                                    }`}
+                                    type="button"
+                                  >
+                                    Link
+                                  </button>
+                                </div>
+                              </td>
+
+                              <td
+                                className={`${isCompactView ? "p-2.5" : "p-4"} text-center`}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => deleteSingleStudent(student)}
+                                  disabled={isDeleting}
+                                  aria-label={`Delete ${student.full_name}`}
+                                  title={`Delete ${student.full_name}`}
+                                  className={`inline-flex items-center justify-center rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                                    isCompactView ? "p-1.5" : "p-2"
+                                  }`}
+                                >
+                                  <Trash2 size={isCompactView ? 14 : 15} />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })}
 
           {totalPages > 1 && (
-            <div className="p-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20 flex items-center justify-between">
+            <div className="p-4 border border-gray-100 dark:border-gray-700 rounded-2xl bg-white dark:bg-gray-800 flex items-center justify-between shadow-sm">
               <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">
                 Showing Page {currentPage} of {totalPages}
               </span>
@@ -481,6 +869,7 @@ const StudentsTab = ({ isAdmin }) => {
                   disabled={currentPage === 1}
                   className="p-1.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
                   aria-label="Previous Page"
+                  type="button"
                 >
                   <ChevronLeft
                     size={16}
@@ -495,6 +884,7 @@ const StudentsTab = ({ isAdmin }) => {
                   disabled={currentPage === totalPages}
                   className="p-1.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
                   aria-label="Next Page"
+                  type="button"
                 >
                   <ChevronRight
                     size={16}

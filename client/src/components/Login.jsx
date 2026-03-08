@@ -1,9 +1,8 @@
 import React, { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useLocation } from "react-router-dom";
 import { Mail, Lock, LogIn } from "lucide-react";
 import { GoogleLogin } from "@react-oauth/google";
-
-const API_URL = import.meta.env.VITE_API_URL;
+import { apiFetchOrThrow } from "../utils/api";
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -11,11 +10,14 @@ const Login = () => {
   const [statusMessage, setStatusMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const handleAuthSuccess = (token) => {
+  const redirectPath = location.state?.from?.pathname || "/dashboard";
+
+  const handleAuthSuccess = (token, message = "✅ Login Successful! Redirecting...") => {
     localStorage.setItem("token", token);
-    setStatusMessage("✅ Login Successful! Redirecting...");
-    setTimeout(() => navigate("/dashboard"), 1000);
+    setStatusMessage(message);
+    setTimeout(() => navigate(redirectPath, { replace: true }), 1000);
   };
 
   const onSubmitForm = async (e) => {
@@ -24,48 +26,51 @@ const Login = () => {
     setStatusMessage("Authenticating...");
 
     try {
-      const response = await fetch(`${API_URL}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ email, password }),
-      });
+      const data = await apiFetchOrThrow(
+        "/auth/login",
+        {
+          method: "POST",
+          body: JSON.stringify({ email, password }),
+        },
+        "Unable to sign you in.",
+      );
 
-      const parseRes = await response.json();
-
-      if (response.ok && parseRes.token) {
-        handleAuthSuccess(parseRes.token);
-      } else {
-        setStatusMessage("❌ " + parseRes.error);
-        setIsLoading(false);
+      if (!data?.token) {
+        throw new Error("Login succeeded but no access token was returned.");
       }
+
+      handleAuthSuccess(data.token);
     } catch (err) {
-      setStatusMessage("❌ Server error. Check your connection.");
+      setStatusMessage(`❌ ${err.message}`);
       setIsLoading(false);
     }
   };
 
   const onGoogleSuccess = async (credentialResponse) => {
+    setIsLoading(true);
     setStatusMessage("Verifying Google account...");
-    try {
-      const response = await fetch(`${API_URL}/auth/google`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          token: credentialResponse.credential,
-          type: "login",
-        }),
-      });
-      const parseRes = await response.json();
 
-      if (response.ok && parseRes.token) {
-        handleAuthSuccess(parseRes.token);
-      } else {
-        setStatusMessage("❌ " + parseRes.error);
+    try {
+      const data = await apiFetchOrThrow(
+        "/auth/google",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            token: credentialResponse.credential,
+            type: "login",
+          }),
+        },
+        "Google authentication failed.",
+      );
+
+      if (!data?.token) {
+        throw new Error("Google login succeeded but no access token was returned.");
       }
+
+      handleAuthSuccess(data.token);
     } catch (err) {
-      setStatusMessage("❌ Google Authentication failed.");
+      setStatusMessage(`❌ ${err.message}`);
+      setIsLoading(false);
     }
   };
 
@@ -78,7 +83,6 @@ const Login = () => {
         aria-hidden="true"
       ></div>
 
-      {/* 👈 FIX: Optimized background blur for performance */}
       <div className="relative z-10 w-full max-w-md p-10 bg-white/95 md:bg-white/60 dark:bg-gray-900/95 md:dark:bg-gray-900/60 md:backdrop-blur-2xl border border-white/50 dark:border-gray-700/50 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.08)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.3)] transition-all duration-300">
         <div className="text-center mb-10">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30 mb-4">
@@ -165,7 +169,10 @@ const Login = () => {
         <div className="flex justify-center">
           <GoogleLogin
             onSuccess={onGoogleSuccess}
-            onError={() => setStatusMessage("❌ Google popup closed or failed")}
+            onError={() => {
+              setIsLoading(false);
+              setStatusMessage("❌ Google popup closed or failed");
+            }}
             theme="outline"
             size="large"
             shape="rectangular"

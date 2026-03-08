@@ -30,7 +30,7 @@ CREATE TABLE users (
     full_name VARCHAR(255) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
-    role VARCHAR(50) NOT NULL,
+    role VARCHAR(50) NOT NULL CHECK (role IN ('Admin', 'Teacher', 'Student', 'Parent')),
     auth_provider VARCHAR(50) DEFAULT 'local',
     school_id INT REFERENCES schools(school_id) ON DELETE CASCADE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -41,7 +41,7 @@ CREATE TABLE users (
 -- ==========================================
 CREATE TABLE students (
     student_id SERIAL PRIMARY KEY,
-    user_id INT REFERENCES users(user_id) ON DELETE CASCADE,
+    user_id INT UNIQUE REFERENCES users(user_id) ON DELETE CASCADE,
     parent_id INT REFERENCES users(user_id) ON DELETE SET NULL,
     class_grade VARCHAR(50) NOT NULL,
     enrollment_date DATE DEFAULT CURRENT_DATE
@@ -71,7 +71,8 @@ CREATE TABLE results (
     academic_term VARCHAR(50) NOT NULL,
     test_score DECIMAL(5,2) DEFAULT 0.00,
     exam_score DECIMAL(5,2) DEFAULT 0.00,
-    total_score DECIMAL(5,2) GENERATED ALWAYS AS (test_score + exam_score) STORED
+    total_score DECIMAL(5,2) GENERATED ALWAYS AS (test_score + exam_score) STORED,
+    CONSTRAINT unique_result_per_term UNIQUE (student_id, subject_id, academic_term, school_id)
 );
 
 -- ==========================================
@@ -82,7 +83,8 @@ CREATE TABLE attendance (
     student_id INT REFERENCES students(student_id) ON DELETE CASCADE,
     school_id INT REFERENCES schools(school_id) ON DELETE CASCADE,
     date DATE NOT NULL,
-    status VARCHAR(20) CHECK (status IN ('Present', 'Absent', 'Late', 'Excused'))
+    status VARCHAR(20) CHECK (status IN ('Present', 'Absent', 'Late', 'Excused')),
+    CONSTRAINT unique_attendance_per_day UNIQUE (student_id, date, school_id)
 );
 
 CREATE TABLE timetables (
@@ -134,8 +136,8 @@ CREATE TABLE invoices (
     student_id INT REFERENCES students(student_id) ON DELETE CASCADE,
     school_id INT REFERENCES schools(school_id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
-    amount DECIMAL(10, 2) NOT NULL,
-    status VARCHAR(50) DEFAULT 'Pending',
+    amount DECIMAL(10, 2) NOT NULL CHECK (amount >= 0),
+    status VARCHAR(50) DEFAULT 'Pending' CHECK (status IN ('Pending', 'Paid', 'Overdue', 'Cancelled')),
     due_date DATE NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

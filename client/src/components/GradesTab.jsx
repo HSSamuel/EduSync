@@ -9,10 +9,9 @@ import {
   X,
   Edit3,
   UserSearch,
-  Loader2
+  Loader2,
 } from "lucide-react";
-
-const API_URL = import.meta.env.VITE_API_URL;
+import { apiFetchOrThrow } from "../utils/api";
 
 const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
   const [gradeForm, setGradeForm] = useState({
@@ -22,9 +21,9 @@ const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
     test_score: "",
     exam_score: "",
   });
-  
-  const [isSubmitting, setIsSubmitting] = useState(false); // 👈 NEW
-
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formMessage, setFormMessage] = useState("");
+  const [formMessageType, setFormMessageType] = useState("success");
   const [selectedReportStudent, setSelectedReportStudent] = useState("");
   const [reportCard, setReportCard] = useState([]);
   const [editingId, setEditingId] = useState(null);
@@ -39,11 +38,12 @@ const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
     if (isParent) {
       const fetchChildren = async () => {
         try {
-          const token = localStorage.getItem("token");
-          const response = await fetch(`${API_URL}/students/my-children`, {
-            headers: { jwt_token: token },
-          });
-          if (response.ok) setMyChildren(await response.json());
+          const data = await apiFetchOrThrow(
+            "/students/my-children",
+            { method: "GET" },
+            "Unable to load linked children.",
+          );
+          setMyChildren(Array.isArray(data) ? data : []);
         } catch (err) {
           console.error(err);
         }
@@ -54,11 +54,12 @@ const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
 
   const fetchMyReportCard = async () => {
     try {
-      const token = localStorage.getItem("token");
-      const response = await fetch(`${API_URL}/results/me`, {
-        headers: { jwt_token: token },
-      });
-      if (response.ok) setReportCard(await response.json());
+      const data = await apiFetchOrThrow(
+        "/results/me",
+        { method: "GET" },
+        "Unable to load your report card.",
+      );
+      setReportCard(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err.message);
     }
@@ -67,11 +68,12 @@ const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
   const fetchAdminReportCard = async (student_id) => {
     if (!student_id) return setReportCard([]);
     try {
-      const token = localStorage.getItem("token");
-      const response = await fetch(`${API_URL}/results/student/${student_id}`, {
-        headers: { jwt_token: token },
-      });
-      if (response.ok) setReportCard(await response.json());
+      const data = await apiFetchOrThrow(
+        `/results/student/${student_id}`,
+        { method: "GET" },
+        "Unable to load student report card.",
+      );
+      setReportCard(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err.message);
     }
@@ -84,31 +86,50 @@ const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
     setEditingId(null);
   };
 
+  const resetGradeForm = () => {
+    setGradeForm({
+      student_id: "",
+      subject_id: "",
+      academic_term: "",
+      test_score: "",
+      exam_score: "",
+    });
+  };
+
   const onSubmitGrade = async (e) => {
     e.preventDefault();
-    setIsSubmitting(true); // 👈 Start Loading
+    setIsSubmitting(true);
+    setFormMessage("");
+
     try {
-      const token = localStorage.getItem("token");
-      const response = await fetch(`${API_URL}/results`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", jwt_token: token },
-        body: JSON.stringify(gradeForm),
-      });
-      if (response.ok) {
-        setGradeForm({
-          student_id: "",
-          subject_id: "",
-          academic_term: "",
-          test_score: "",
-          exam_score: "",
-        });
-        if (selectedReportStudent === gradeForm.student_id)
-          fetchAdminReportCard(gradeForm.student_id);
-      } else alert("❌ Error saving grade.");
+      const data = await apiFetchOrThrow(
+        "/results",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            ...gradeForm,
+            academic_term: gradeForm.academic_term.trim().toUpperCase(),
+          }),
+        },
+        "Unable to save grade.",
+      );
+
+      setFormMessage(data?.message || "Grade saved successfully.");
+      setFormMessageType(data?.operation === "updated" ? "warning" : "success");
+
+      const viewedStudentId = selectedReportStudent || gradeForm.student_id;
+      resetGradeForm();
+
+      if (viewedStudentId) {
+        setSelectedReportStudent(viewedStudentId);
+        fetchAdminReportCard(viewedStudentId);
+      }
     } catch (err) {
+      setFormMessage(`❌ ${err.message}`);
+      setFormMessageType("error");
       console.error(err.message);
     } finally {
-      setIsSubmitting(false); // 👈 Stop Loading
+      setIsSubmitting(false);
     }
   };
 
@@ -127,17 +148,18 @@ const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
 
   const saveEdit = async (result_id) => {
     try {
-      const token = localStorage.getItem("token");
-      const response = await fetch(`${API_URL}/results/${result_id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", jwt_token: token },
-        body: JSON.stringify(editScores),
-      });
-      if (response.ok) {
-        setEditingId(null);
-        fetchAdminReportCard(selectedReportStudent);
-      }
+      await apiFetchOrThrow(
+        `/results/${result_id}`,
+        {
+          method: "PUT",
+          body: JSON.stringify(editScores),
+        },
+        "Unable to update grade.",
+      );
+      setEditingId(null);
+      fetchAdminReportCard(selectedReportStudent);
     } catch (err) {
+      alert(`❌ ${err.message}`);
       console.error(err.message);
     }
   };
@@ -181,6 +203,13 @@ const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
     }
   };
 
+  const formMessageClassName =
+    formMessageType === "error"
+      ? "bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-900/40"
+      : formMessageType === "warning"
+        ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-900/40"
+        : "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-900/40";
+
   return (
     <div className="animate-fade-in space-y-8">
       {(isAdmin || isTeacher) && (
@@ -203,7 +232,11 @@ const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
               disabled={isSubmitting}
             >
               <option value="">Select Student...</option>
-              {students.map((s) => <option key={s.student_id} value={s.student_id}>{s.full_name}</option>)}
+              {students.map((s) => (
+                <option key={s.student_id} value={s.student_id}>
+                  {s.full_name}
+                </option>
+              ))}
             </select>
             <select
               required
@@ -213,7 +246,11 @@ const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
               disabled={isSubmitting}
             >
               <option value="">Select Subject...</option>
-              {subjects.map((s) => <option key={s.subject_id} value={s.subject_id}>{s.subject_name}</option>)}
+              {subjects.map((s) => (
+                <option key={s.subject_id} value={s.subject_id}>
+                  {s.subject_name}
+                </option>
+              ))}
             </select>
             <input
               type="text"
@@ -226,7 +263,9 @@ const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
             />
 
             <div className="md:col-span-2 relative">
-              <span className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 font-bold text-xs">/ 40</span>
+              <span className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 font-bold text-xs">
+                / 40
+              </span>
               <input
                 type="number"
                 step="0.01"
@@ -240,7 +279,9 @@ const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
               />
             </div>
             <div className="md:col-span-2 relative">
-              <span className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 font-bold text-xs">/ 60</span>
+              <span className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 font-bold text-xs">
+                / 60
+              </span>
               <input
                 type="number"
                 step="0.01"
@@ -258,13 +299,24 @@ const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
               disabled={isSubmitting}
               className="md:col-span-1 flex items-center justify-center gap-2 py-3 bg-purple-600 text-white font-bold text-sm rounded-xl shadow-md shadow-purple-500/30 hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
-              {isSubmitting ? <><Loader2 size={16} className="animate-spin"/> Saving...</> : "Save Grade"}
+              {isSubmitting ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" /> Saving...
+                </>
+              ) : (
+                "Save Grade"
+              )}
             </button>
           </form>
+
+          {formMessage && (
+            <div className={`mt-4 border rounded-xl px-4 py-3 text-sm font-medium ${formMessageClassName}`}>
+              {formMessage}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Report Card Viewer (identical logic, omitted for brevity but functionally identical) */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden flex flex-col">
         <div className="p-6 md:p-8 border-b border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/20 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 shrink-0">
           <div className="flex items-center gap-3">
@@ -273,7 +325,11 @@ const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
             </div>
             <div>
               <h4 className="text-2xl font-black text-gray-900 dark:text-white tracking-tight">
-                {isAdmin || isTeacher ? "Official Transcript" : isParent ? "Child's Report Card" : "My Report Card"}
+                {isAdmin || isTeacher
+                  ? "Official Transcript"
+                  : isParent
+                    ? "Child's Report Card"
+                    : "My Report Card"}
               </h4>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Digital Academic Records</p>
             </div>
@@ -289,13 +345,20 @@ const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
                   onChange={handleStudentSelect}
                 >
                   <option value="">Select Student...</option>
-                  {(isParent ? myChildren : students).map((s) => <option key={s.student_id} value={s.student_id}>{s.full_name}</option>)}
+                  {(isParent ? myChildren : students).map((s) => (
+                    <option key={s.student_id} value={s.student_id}>
+                      {s.full_name}
+                    </option>
+                  ))}
                 </select>
               </div>
             )}
 
             {reportCard.length > 0 && (
-              <button onClick={downloadPDF} className="w-full sm:w-auto px-5 py-2.5 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 font-bold rounded-xl shadow-md hover:bg-gray-800 dark:hover:bg-white hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 text-sm">
+              <button
+                onClick={downloadPDF}
+                className="w-full sm:w-auto px-5 py-2.5 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 font-bold rounded-xl shadow-md hover:bg-gray-800 dark:hover:bg-white hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 text-sm"
+              >
                 <FileDown size={18} /> Download PDF
               </button>
             )}
@@ -303,9 +366,14 @@ const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
         </div>
 
         {(isAdmin || isTeacher || isParent) && !selectedReportStudent ? (
-          <div className="p-12 text-center text-gray-400"><UserSearch size={48} className="mx-auto mb-4 opacity-50" /><p className="font-medium">Please select a student to view their transcript.</p></div>
+          <div className="p-12 text-center text-gray-400">
+            <UserSearch size={48} className="mx-auto mb-4 opacity-50" />
+            <p className="font-medium">Please select a student to view their transcript.</p>
+          </div>
         ) : reportCard.length === 0 ? (
-          <div className="p-12 text-center text-gray-400"><p className="font-medium italic">No academic records found for this student.</p></div>
+          <div className="p-12 text-center text-gray-400">
+            <p className="font-medium italic">No academic records found for this student.</p>
+          </div>
         ) : (
           <div className="overflow-auto max-h-[60vh] w-full relative">
             <table className="w-full text-left border-collapse min-w-[700px]">
@@ -316,7 +384,9 @@ const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
                   <th className="p-4 font-bold text-center border-b border-gray-200 dark:border-gray-700">Test (/40)</th>
                   <th className="p-4 font-bold text-center border-b border-gray-200 dark:border-gray-700">Exam (/60)</th>
                   <th className="p-4 font-black text-indigo-600 dark:text-indigo-400 text-center border-b border-gray-200 dark:border-gray-700">Total (%)</th>
-                  {(isAdmin || isTeacher) && <th className="p-4 font-bold text-right pr-6 border-b border-gray-200 dark:border-gray-700">Action</th>}
+                  {(isAdmin || isTeacher) && (
+                    <th className="p-4 font-bold text-right pr-6 border-b border-gray-200 dark:border-gray-700">Action</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
@@ -326,21 +396,61 @@ const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
                     <td className="p-4 text-sm font-semibold text-gray-500">{row.academic_term}</td>
                     {editingId === row.result_id ? (
                       <>
-                        <td className="p-4 text-center"><input type="number" step="0.01" max="40" className="w-16 px-2 py-1.5 text-sm bg-white dark:bg-gray-900 border border-indigo-300 dark:border-indigo-600 rounded focus:ring-2 focus:ring-indigo-500 outline-none text-center font-bold shadow-inner font-mono" value={editScores.test_score} onChange={(e) => setEditScores({ ...editScores, test_score: e.target.value })} /></td>
-                        <td className="p-4 text-center"><input type="number" step="0.01" max="60" className="w-16 px-2 py-1.5 text-sm bg-white dark:bg-gray-900 border border-indigo-300 dark:border-indigo-600 rounded focus:ring-2 focus:ring-indigo-500 outline-none text-center font-bold shadow-inner font-mono" value={editScores.exam_score} onChange={(e) => setEditScores({ ...editScores, exam_score: e.target.value })} /></td>
+                        <td className="p-4 text-center">
+                          <input
+                            type="number"
+                            step="0.01"
+                            max="40"
+                            className="w-16 px-2 py-1.5 text-sm bg-white dark:bg-gray-900 border border-indigo-300 dark:border-indigo-600 rounded focus:ring-2 focus:ring-indigo-500 outline-none text-center font-bold shadow-inner font-mono"
+                            value={editScores.test_score}
+                            onChange={(e) => setEditScores({ ...editScores, test_score: e.target.value })}
+                          />
+                        </td>
+                        <td className="p-4 text-center">
+                          <input
+                            type="number"
+                            step="0.01"
+                            max="60"
+                            className="w-16 px-2 py-1.5 text-sm bg-white dark:bg-gray-900 border border-indigo-300 dark:border-indigo-600 rounded focus:ring-2 focus:ring-indigo-500 outline-none text-center font-bold shadow-inner font-mono"
+                            value={editScores.exam_score}
+                            onChange={(e) => setEditScores({ ...editScores, exam_score: e.target.value })}
+                          />
+                        </td>
                         <td className="p-4 text-center text-xs text-gray-400 italic">Calculating...</td>
                         <td className="p-4 text-right pr-4 space-x-2">
-                          <button onClick={() => saveEdit(row.result_id)} className="p-2 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors" title="Save"><Check size={16} /></button>
-                          <button onClick={cancelEditing} className="p-2 bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition-colors" title="Cancel"><X size={16} /></button>
+                          <button onClick={() => saveEdit(row.result_id)} className="p-2 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors" title="Save">
+                            <Check size={16} />
+                          </button>
+                          <button onClick={cancelEditing} className="p-2 bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition-colors" title="Cancel">
+                            <X size={16} />
+                          </button>
                         </td>
                       </>
                     ) : (
                       <>
                         <td className="p-4 text-center font-mono font-medium text-gray-600 dark:text-gray-300">{Number(row.test_score).toFixed(2)}</td>
                         <td className="p-4 text-center font-mono font-medium text-gray-600 dark:text-gray-300">{Number(row.exam_score).toFixed(2)}</td>
-                        <td className="p-4 text-center"><span className={`inline-flex items-center justify-center px-4 py-1.5 rounded-full text-sm font-black font-mono ${row.total_score >= 50 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"}`}>{Number(row.total_score).toFixed(2)}%</span></td>
+                        <td className="p-4 text-center">
+                          <span
+                            className={`inline-flex items-center justify-center px-4 py-1.5 rounded-full text-sm font-black font-mono ${
+                              row.total_score >= 50
+                                ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                                : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                            }`}
+                          >
+                            {Number(row.total_score).toFixed(2)}%
+                          </span>
+                        </td>
                         {(isAdmin || isTeacher) && (
-                          <td className="p-4 text-right pr-6"><button onClick={() => startEditing(row)} className="p-2 text-gray-400 hover:text-indigo-600 bg-gray-50 dark:bg-gray-900 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-all opacity-0 group-hover:opacity-100 ml-auto" title="Edit Grade"><Edit3 size={16} /></button></td>
+                          <td className="p-4 text-right pr-6">
+                            <button
+                              onClick={() => startEditing(row)}
+                              className="p-2 text-gray-400 hover:text-indigo-600 bg-gray-50 dark:bg-gray-900 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-all opacity-0 group-hover:opacity-100 ml-auto"
+                              title="Edit Grade"
+                            >
+                              <Edit3 size={16} />
+                            </button>
+                          </td>
                         )}
                       </>
                     )}

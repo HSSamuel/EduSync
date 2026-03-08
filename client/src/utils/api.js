@@ -1,9 +1,6 @@
 const API_BASE_URL =
   import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
-/**
- * Join base URL and endpoint safely (avoid double slashes)
- */
 function joinUrl(base, endpoint) {
   if (!endpoint) return base;
   const b = base.endsWith("/") ? base.slice(0, -1) : base;
@@ -11,12 +8,25 @@ function joinUrl(base, endpoint) {
   return `${b}${e}`;
 }
 
-/**
- * Centralized API client:
- * - Adds JWT automatically
- * - Sends cookies (refresh token cookie)
- * - Auto-refreshes access token on 401 and retries once
- */
+export function extractErrorMessage(payload, fallback = "Request failed.") {
+  if (!payload) return fallback;
+  if (typeof payload === "string") return payload;
+  if (typeof payload.error === "string") return payload.error;
+  if (typeof payload.message === "string") return payload.message;
+  return fallback;
+}
+
+export async function safeJson(response) {
+  const text = await response.text();
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { message: text };
+  }
+}
+
 export async function apiFetch(endpoint, options = {}, retry = true) {
   const token = localStorage.getItem("token");
 
@@ -24,14 +34,13 @@ export async function apiFetch(endpoint, options = {}, retry = true) {
     ...(options.headers || {}),
   };
 
-  // Only set JSON content-type if body is not FormData
   const isFormData = options.body instanceof FormData;
   if (!isFormData && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
 
   if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
+    headers.Authorization = `Bearer ${token}`;
   }
 
   const res = await fetch(joinUrl(API_BASE_URL, endpoint), {
@@ -40,7 +49,6 @@ export async function apiFetch(endpoint, options = {}, retry = true) {
     credentials: "include",
   });
 
-  // If token expired → try refresh once
   if (res.status === 401 && retry) {
     const refreshed = await refreshAccessToken();
     if (refreshed) return apiFetch(endpoint, options, false);
@@ -49,9 +57,33 @@ export async function apiFetch(endpoint, options = {}, retry = true) {
   return res;
 }
 
-/**
- * Refresh access token using refresh cookie
- */
+export async function apiJsonFetch(endpoint, options = {}, retry = true) {
+  const response = await apiFetch(endpoint, options, retry);
+  const data = await safeJson(response);
+
+  return {
+    ok: response.ok,
+    status: response.status,
+    data,
+    response,
+  };
+}
+
+export async function apiFetchOrThrow(endpoint, options = {}, fallbackMessage) {
+  const { ok, data, response } = await apiJsonFetch(endpoint, options);
+
+  if (!ok) {
+    const error = new Error(
+      extractErrorMessage(data, fallbackMessage || "Request failed."),
+    );
+    error.status = response.status;
+    error.payload = data;
+    throw error;
+  }
+
+  return data;
+}
+
 async function refreshAccessToken() {
   try {
     const res = await fetch(joinUrl(API_BASE_URL, "/auth/refresh"), {
@@ -61,7 +93,7 @@ async function refreshAccessToken() {
 
     if (!res.ok) return false;
 
-    const data = await res.json();
+    const data = await safeJson(res);
     if (data?.token) {
       localStorage.setItem("token", data.token);
       return true;

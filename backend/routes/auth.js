@@ -14,11 +14,8 @@ require("dotenv").config();
 const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-// ==========================================
-// 🛡️ SECURITY: RATE LIMITERS
-// ==========================================
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   max: 10,
   message: {
     error:
@@ -28,9 +25,8 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// 👈 NEW: Prevent mass fake-account creation
 const registerLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
+  windowMs: 60 * 60 * 1000,
   max: 15,
   message: {
     error: "Registration limit reached from this IP. Please try again later.",
@@ -39,9 +35,33 @@ const registerLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// 👈 NEW: Prevent email spam / inbox flooding
+const issueSessionTokens = ({ user_id, role, school_id }) => {
+  const accessToken = jwt.sign(
+    { user_id, role, school_id },
+    process.env.ACCESS_TOKEN_SECRET || process.env.JWT_SECRET,
+    { expiresIn: "15m" },
+  );
+
+  const refreshToken = jwt.sign(
+    { user_id, school_id },
+    process.env.REFRESH_TOKEN_SECRET || process.env.JWT_SECRET,
+    { expiresIn: "7d" },
+  );
+
+  return { accessToken, refreshToken };
+};
+
+const setRefreshCookie = (res, refreshToken) => {
+  res.cookie("refresh_token", refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+};
+
 const forgotPasswordLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   max: 5,
   message: {
     error:
@@ -51,16 +71,13 @@ const forgotPasswordLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// ==========================================
-// 📋 VALIDATION SCHEMAS
-// ==========================================
 const registerSchema = z.object({
   full_name: z.string().min(3, "Name must be at least 3 characters"),
   email: z.string().email("Invalid email format"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   role: z.enum(["Admin", "Teacher", "Student", "Parent"]),
   school_name: z.string().optional(),
-  school_id: z.string().optional(), // Reusing this prop name from frontend, but treating it as invite_code
+  school_id: z.string().optional(),
 });
 
 const loginSchema = z.object({
@@ -68,16 +85,13 @@ const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
-// ==========================================
-// 🚀 ROUTES
-// ==========================================
-
-// 👈 FIX: Applied registerLimiter
 router.post(
   "/register",
   registerLimiter,
   validate(registerSchema),
   async (req, res, next) => {
+    const client = await pool.connect();
+
     try {
       const {
         full_name,
@@ -88,46 +102,59 @@ router.post(
         school_id: invite_code,
       } = req.body;
 
-      const userExists = await pool.query(
-        "SELECT * FROM users WHERE email = $1",
+      await client.query("BEGIN");
+
+      const userExists = await client.query(
+        "SELECT 1 FROM users WHERE email = $1",
         [email],
       );
       if (userExists.rows.length > 0) {
+        await client.query("ROLLBACK");
         return res.status(400).json({ error: "User already exists" });
       }
 
       let finalSchoolId;
 
       if (role === "Admin") {
-        if (!school_name)
+        if (!school_name) {
+          await client.query("ROLLBACK");
           return res.status(400).json({
             error: "School name is required to register an Admin account.",
           });
+        }
 
         const newInviteCode = crypto
           .randomBytes(4)
           .toString("hex")
           .toUpperCase();
 
-        const newSchool = await pool.query(
-          "INSERT INTO schools (school_name, contact_email, invite_code) VALUES ($1, $2, $3) RETURNING school_id",
+        const newSchool = await client.query(
+          `
+            INSERT INTO schools (school_name, contact_email, invite_code)
+            VALUES ($1, $2, $3)
+            RETURNING school_id
+          `,
           [school_name, email, newInviteCode],
         );
         finalSchoolId = newSchool.rows[0].school_id;
       } else {
-        if (!invite_code)
+        if (!invite_code) {
+          await client.query("ROLLBACK");
           return res.status(400).json({
             error: "School Invite Code is required to join an existing school.",
           });
+        }
 
-        const schoolExists = await pool.query(
+        const schoolExists = await client.query(
           "SELECT school_id FROM schools WHERE invite_code = $1",
           [invite_code],
         );
-        if (schoolExists.rows.length === 0)
+        if (schoolExists.rows.length === 0) {
+          await client.query("ROLLBACK");
           return res
             .status(404)
             .json({ error: "Invalid Invite Code provided." });
+        }
 
         finalSchoolId = schoolExists.rows[0].school_id;
       }
@@ -135,14 +162,31 @@ router.post(
       const salt = await bcrypt.genSalt(10);
       const bcryptPassword = await bcrypt.hash(password, salt);
 
-      const newUser = await pool.query(
-        "INSERT INTO users (full_name, email, password_hash, role, school_id, auth_provider) VALUES ($1, $2, $3, $4, $5, 'local') RETURNING user_id, full_name, email, role, school_id",
+      const newUser = await client.query(
+        `
+          INSERT INTO users (full_name, email, password_hash, role, school_id, auth_provider)
+          VALUES ($1, $2, $3, $4, $5, 'local')
+          RETURNING user_id, full_name, email, role, school_id
+        `,
         [full_name, email, bcryptPassword, role, finalSchoolId],
       );
 
-      res.json(newUser.rows[0]);
+      await client.query("COMMIT");
+
+      const userPayload = newUser.rows[0];
+      const { accessToken, refreshToken } = issueSessionTokens(userPayload);
+      setRefreshCookie(res, refreshToken);
+
+      res.json({
+        token: accessToken,
+        user: userPayload,
+        message: "Registration successful!",
+      });
     } catch (err) {
+      await client.query("ROLLBACK");
       next(err);
+    } finally {
+      client.release();
     }
   },
 );
@@ -175,28 +219,13 @@ router.post(
       if (!validPassword)
         return res.status(401).json({ error: "Invalid Credentials" });
 
-      const accessToken = jwt.sign(
-        {
-          user_id: user.rows[0].user_id,
-          role: user.rows[0].role,
-          school_id: user.rows[0].school_id,
-        },
-        process.env.ACCESS_TOKEN_SECRET || process.env.JWT_SECRET,
-        { expiresIn: "15m" },
-      );
-
-      const refreshToken = jwt.sign(
-        { user_id: user.rows[0].user_id, school_id: user.rows[0].school_id },
-        process.env.REFRESH_TOKEN_SECRET || process.env.JWT_SECRET,
-        { expiresIn: "7d" },
-      );
-
-      res.cookie("refresh_token", refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: 7 * 24 * 60 * 60 * 1000,
+      const { accessToken, refreshToken } = issueSessionTokens({
+        user_id: user.rows[0].user_id,
+        role: user.rows[0].role,
+        school_id: user.rows[0].school_id,
       });
+
+      setRefreshCookie(res, refreshToken);
 
       res.json({ token: accessToken, message: "Login successful!" });
     } catch (err) {
@@ -246,7 +275,6 @@ router.post("/logout", (req, res) => {
   res.json({ message: "Logged out successfully" });
 });
 
-// 👈 FIX: Applied forgotPasswordLimiter
 router.post(
   "/forgot-password",
   forgotPasswordLimiter,
@@ -287,11 +315,12 @@ router.post(
       </div>
     `;
 
-      sendEmail({
+      await sendEmail({
         to: email,
         subject: "EduSync Password Reset",
         html: emailHTML,
       });
+
       res.json({ message: "Password reset link sent to your email!" });
     } catch (err) {
       next(err);
@@ -339,6 +368,8 @@ router.put("/reset-password", async (req, res, next) => {
 });
 
 router.post("/google", async (req, res, next) => {
+  const client = await pool.connect();
+
   try {
     const { token, type, role, school_name, school_id } = req.body;
 
@@ -351,15 +382,20 @@ router.post("/google", async (req, res, next) => {
     const email = payload.email;
     const full_name = payload.name;
 
-    const userExists = await pool.query(
+    await client.query("BEGIN");
+
+    const userExists = await client.query(
       "SELECT * FROM users WHERE email = $1",
       [email],
     );
 
-    let user_id, final_role, final_school_id;
+    let user_id;
+    let final_role;
+    let final_school_id;
 
     if (type === "login") {
       if (userExists.rows.length === 0) {
+        await client.query("ROLLBACK");
         return res
           .status(404)
           .json({ error: "Account not found. Please register first." });
@@ -369,6 +405,7 @@ router.post("/google", async (req, res, next) => {
       final_school_id = userExists.rows[0].school_id;
     } else if (type === "register") {
       if (userExists.rows.length > 0) {
+        await client.query("ROLLBACK");
         return res
           .status(400)
           .json({ error: "Email is already registered. Please log in." });
@@ -376,30 +413,40 @@ router.post("/google", async (req, res, next) => {
 
       final_school_id = school_id;
       if (role === "Admin") {
-        if (!school_name)
+        if (!school_name) {
+          await client.query("ROLLBACK");
           return res.status(400).json({ error: "School name is required." });
+        }
         const newInviteCode = crypto
           .randomBytes(4)
           .toString("hex")
           .toUpperCase();
-        const newSchool = await pool.query(
-          "INSERT INTO schools (school_name, contact_email, invite_code) VALUES ($1, $2, $3) RETURNING school_id",
+        const newSchool = await client.query(
+          `
+            INSERT INTO schools (school_name, contact_email, invite_code)
+            VALUES ($1, $2, $3)
+            RETURNING school_id
+          `,
           [school_name, email, newInviteCode],
         );
         final_school_id = newSchool.rows[0].school_id;
       } else {
-        if (!final_school_id)
+        if (!final_school_id) {
+          await client.query("ROLLBACK");
           return res
             .status(400)
             .json({ error: "School Invite Code is required." });
-        const schoolExists = await pool.query(
+        }
+        const schoolExists = await client.query(
           "SELECT school_id FROM schools WHERE invite_code = $1",
           [final_school_id],
         );
-        if (schoolExists.rows.length === 0)
+        if (schoolExists.rows.length === 0) {
+          await client.query("ROLLBACK");
           return res
             .status(404)
             .json({ error: "Invalid Invite Code provided." });
+        }
         final_school_id = schoolExists.rows[0].school_id;
       }
 
@@ -410,39 +457,40 @@ router.post("/google", async (req, res, next) => {
         salt,
       );
 
-      const newUser = await pool.query(
-        "INSERT INTO users (full_name, email, password_hash, role, school_id, auth_provider) VALUES ($1, $2, $3, $4, $5, 'google') RETURNING user_id",
+      const newUser = await client.query(
+        `
+          INSERT INTO users (full_name, email, password_hash, role, school_id, auth_provider)
+          VALUES ($1, $2, $3, $4, $5, 'google')
+          RETURNING user_id
+        `,
         [full_name, email, randomPassword, final_role, final_school_id],
       );
       user_id = newUser.rows[0].user_id;
+    } else {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "Invalid Google auth type." });
     }
 
-    const accessToken = jwt.sign(
-      { user_id, role: final_role, school_id: final_school_id },
-      process.env.ACCESS_TOKEN_SECRET || process.env.JWT_SECRET,
-      { expiresIn: "15m" },
-    );
+    await client.query("COMMIT");
 
-    const refreshToken = jwt.sign(
-      { user_id, school_id: final_school_id },
-      process.env.REFRESH_TOKEN_SECRET || process.env.JWT_SECRET,
-      { expiresIn: "7d" },
-    );
-
-    res.cookie("refresh_token", refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+    const { accessToken, refreshToken } = issueSessionTokens({
+      user_id,
+      role: final_role,
+      school_id: final_school_id,
     });
+
+    setRefreshCookie(res, refreshToken);
 
     res.json({
       token: accessToken,
       message: `${type === "login" ? "Login" : "Registration"} successful!`,
     });
   } catch (err) {
+    await client.query("ROLLBACK");
     console.error("Google Auth Error:", err);
     res.status(401).json({ error: "Google Authentication failed." });
+  } finally {
+    client.release();
   }
 });
 
