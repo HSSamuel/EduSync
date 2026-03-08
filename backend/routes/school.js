@@ -6,6 +6,7 @@ const multer = require('multer');
 const { storage, cloudinary } = require('../utils/cloudinary');
 const { emailQueue } = require('../utils/emailQueue');
 const validate = require('../middleware/validate');
+const { escapeHtml } = require('../utils/html');
 const {
   allowedDocumentMimeTypes,
   documentTitleSchema,
@@ -157,8 +158,8 @@ router.post('/broadcast', authorize, validate(broadcastSchema), async (req, res,
               <h2 style="color: white; margin: 0;">📢 EduSync Official Broadcast</h2>
             </div>
             <div style="padding: 30px; background-color: #f9fafb;">
-              <h3 style="color: #333;">Dear ${user.full_name},</h3>
-              <p style="white-space: pre-wrap;">${message}</p>
+              <h3 style="color: #333;">Dear ${escapeHtml(user.full_name)},</h3>
+              <p style="white-space: pre-wrap;">${escapeHtml(message)}</p>
               <p style="margin-top: 30px;">Warm regards,<br/><strong>The Administration Team</strong></p>
             </div>
           </div>

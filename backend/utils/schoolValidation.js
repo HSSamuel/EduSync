@@ -8,6 +8,7 @@ const allowedWeekdays = [
   "Friday",
 ];
 const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
+const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/;
 
 const allowedDocumentMimeTypes = [
   "application/pdf",
@@ -104,7 +105,10 @@ const eventSchema = z.object({
     .trim()
     .min(2, "Title is required")
     .max(255, "Title is too long"),
-  event_date: z.string().trim().min(1, "Event date is required"),
+  event_date: z
+    .string()
+    .trim()
+    .regex(isoDateRegex, "Event date must be in YYYY-MM-DD format"),
   event_type: z
     .string()
     .trim()
@@ -119,4 +123,5 @@ module.exports = {
   documentTitleSchema,
   broadcastSchema,
   eventSchema,
+  isoDateRegex,
 };

@@ -5,6 +5,7 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const sendEmail = require("../utils/sendEmail");
+const { escapeHtml } = require("../utils/html");
 const { z } = require("zod");
 const validate = require("../middleware/validate");
 const rateLimit = require("express-rate-limit");
@@ -36,31 +37,6 @@ const registerLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-const issueSessionTokens = ({ user_id, role, school_id }) => {
-  const accessToken = jwt.sign(
-    { user_id, role, school_id },
-    ACCESS_TOKEN_SECRET,
-    { expiresIn: "15m" },
-  );
-
-  const refreshToken = jwt.sign(
-    { user_id, school_id },
-    REFRESH_TOKEN_SECRET,
-    { expiresIn: "7d" },
-  );
-
-  return { accessToken, refreshToken };
-};
-
-const setRefreshCookie = (res, refreshToken) => {
-  res.cookie("refresh_token", refreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
-};
-
 const forgotPasswordLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
@@ -85,6 +61,77 @@ const loginSchema = z.object({
   email: z.string().email("Invalid email format"),
   password: z.string().min(1, "Password is required"),
 });
+
+const forgotPasswordSchema = z.object({
+  email: z.string().email("Invalid email format"),
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string().trim().min(1, "Reset token is required"),
+  newPassword: z.string().min(6, "Password must be at least 6 characters"),
+});
+
+const googleAuthSchema = z
+  .object({
+    token: z.string().trim().min(1, "Google token is required"),
+    type: z.enum(["login", "register"]),
+    role: z.enum(["Admin", "Teacher", "Student", "Parent"]).optional(),
+    school_name: z.string().trim().min(2).optional(),
+    invite_code: z.string().trim().min(1).optional(),
+    school_id: z.coerce.number().int().positive().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.type === "register") {
+      if (!data.role) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["role"],
+          message: "Role is required for Google registration",
+        });
+      }
+
+      if (data.role === "Admin" && !data.school_name) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["school_name"],
+          message: "School name is required for Admin registration",
+        });
+      }
+
+      if (data.role && data.role !== "Admin" && !data.invite_code && !data.school_id) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["invite_code"],
+          message: "Invite code or school ID is required to join an existing school",
+        });
+      }
+    }
+  });
+
+const issueSessionTokens = ({ user_id, role, school_id }) => {
+  const accessToken = jwt.sign(
+    { user_id, role, school_id },
+    ACCESS_TOKEN_SECRET,
+    { expiresIn: "15m" },
+  );
+
+  const refreshToken = jwt.sign(
+    { user_id, school_id },
+    REFRESH_TOKEN_SECRET,
+    { expiresIn: "7d" },
+  );
+
+  return { accessToken, refreshToken };
+};
+
+const setRefreshCookie = (res, refreshToken) => {
+  res.cookie("refresh_token", refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+};
 
 router.post(
   "/register",
@@ -282,6 +329,7 @@ router.post("/logout", (req, res) => {
 router.post(
   "/forgot-password",
   forgotPasswordLimiter,
+  validate(forgotPasswordSchema),
   async (req, res, next) => {
     try {
       const { email } = req.body;
@@ -303,16 +351,18 @@ router.post(
       );
 
       const resetLink = `${CLIENT_URL}/reset-password/${resetToken}`;
+      const safeName = escapeHtml(user.rows[0].full_name);
+      const safeLink = escapeHtml(resetLink);
       const emailHTML = `
       <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden;">
         <div style="background-color: #2563EB; padding: 20px; text-align: center;">
           <h2 style="color: white; margin: 0;">Password Reset Request</h2>
         </div>
         <div style="padding: 30px; background-color: #f9fafb;">
-          <h3 style="color: #333;">Hello ${user.rows[0].full_name},</h3>
+          <h3 style="color: #333;">Hello ${safeName},</h3>
           <p>We received a request to reset your EduSync password.</p>
           <div style="text-align: center; margin: 30px 0;">
-            <a href="${resetLink}" style="background-color: #2563EB; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">Reset Password</a>
+            <a href="${safeLink}" style="background-color: #2563EB; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">Reset Password</a>
           </div>
           <p style="color: #666; font-size: 14px;">This link will expire in 15 minutes. If you did not request this, please ignore this email.</p>
         </div>
@@ -332,7 +382,7 @@ router.post(
   },
 );
 
-router.put("/reset-password", async (req, res) => {
+router.put("/reset-password", validate(resetPasswordSchema), async (req, res) => {
   try {
     const { token, newPassword } = req.body;
     const payload = jwt.verify(token, ACCESS_TOKEN_SECRET);
@@ -369,7 +419,7 @@ router.put("/reset-password", async (req, res) => {
   }
 });
 
-router.post("/google", async (req, res) => {
+router.post("/google", validate(googleAuthSchema), async (req, res, next) => {
   const client = await pool.connect();
 
   try {
@@ -413,16 +463,8 @@ router.post("/google", async (req, res) => {
           .json({ error: "Email is already registered. Please log in." });
       }
 
-      final_school_id = invite_code || school_id;
       if (role === "Admin") {
-        if (!school_name) {
-          await client.query("ROLLBACK");
-          return res.status(400).json({ error: "School name is required." });
-        }
-        const newInviteCode = crypto
-          .randomBytes(4)
-          .toString("hex")
-          .toUpperCase();
+        const newInviteCode = crypto.randomBytes(4).toString("hex").toUpperCase();
         const newSchool = await client.query(
           `
             INSERT INTO schools (school_name, contact_email, invite_code)
@@ -432,32 +474,23 @@ router.post("/google", async (req, res) => {
           [school_name, email, newInviteCode],
         );
         final_school_id = newSchool.rows[0].school_id;
-      } else {
-        if (!final_school_id) {
-          await client.query("ROLLBACK");
-          return res
-            .status(400)
-            .json({ error: "School Invite Code is required." });
-        }
-        const schoolExists = await client.query(
+      } else if (invite_code) {
+        const schoolLookup = await client.query(
           "SELECT school_id FROM schools WHERE invite_code = $1",
-          [final_school_id],
+          [invite_code],
         );
-        if (schoolExists.rows.length === 0) {
+
+        if (schoolLookup.rows.length === 0) {
           await client.query("ROLLBACK");
-          return res
-            .status(404)
-            .json({ error: "Invalid Invite Code provided." });
+          return res.status(404).json({ error: "Invalid invite code." });
         }
-        final_school_id = schoolExists.rows[0].school_id;
+
+        final_school_id = schoolLookup.rows[0].school_id;
+      } else {
+        final_school_id = school_id;
       }
 
       final_role = role;
-      const salt = await bcrypt.genSalt(10);
-      const randomPassword = await bcrypt.hash(
-        Math.random().toString(36).slice(-10),
-        salt,
-      );
 
       const newUser = await client.query(
         `
@@ -465,12 +498,12 @@ router.post("/google", async (req, res) => {
           VALUES ($1, $2, $3, $4, $5, 'google')
           RETURNING user_id
         `,
-        [full_name, email, randomPassword, final_role, final_school_id],
+        [full_name, email, crypto.randomBytes(32).toString("hex"), final_role, final_school_id],
       );
       user_id = newUser.rows[0].user_id;
     } else {
       await client.query("ROLLBACK");
-      return res.status(400).json({ error: "Invalid Google auth type." });
+      return res.status(400).json({ error: "Invalid authentication type." });
     }
 
     await client.query("COMMIT");
@@ -482,15 +515,10 @@ router.post("/google", async (req, res) => {
     });
 
     setRefreshCookie(res, refreshToken);
-
-    res.json({
-      token: accessToken,
-      message: `${type === "login" ? "Login" : "Registration"} successful!`,
-    });
+    return res.json({ token: accessToken, message: "Google authentication successful!" });
   } catch (err) {
     await client.query("ROLLBACK");
-    console.error("Google Auth Error:", err);
-    res.status(401).json({ error: "Google Authentication failed." });
+    next(err);
   } finally {
     client.release();
   }

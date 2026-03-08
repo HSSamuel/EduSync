@@ -4,6 +4,8 @@ const pool = require("../db");
 const authorize = require("../middleware/authorize");
 const { emailQueue } = require("../utils/emailQueue");
 const { logAudit } = require("../utils/auditLogger");
+const { escapeHtml } = require("../utils/html");
+const { isoDateRegex } = require("../utils/schoolValidation");
 const { z } = require("zod");
 const validate = require("../middleware/validate");
 require("dotenv").config();
@@ -15,7 +17,7 @@ const createInvoiceSchema = z.object({
   student_id: z.coerce.number().int().positive(),
   title: z.string().trim().min(2, "Invoice title is required"),
   amount: z.coerce.number().positive("Amount must be greater than zero"),
-  due_date: z.string().trim().min(1, "Due date is required"),
+  due_date: z.string().trim().regex(isoDateRegex, "Due date must be in YYYY-MM-DD format"),
 });
 
 async function getInvoiceForActor(invoiceId, user) {
@@ -43,6 +45,8 @@ async function getInvoiceForActor(invoiceId, user) {
 }
 
 router.post("/invoices", authorize, validate(createInvoiceSchema), async (req, res, next) => {
+  const client = await pool.connect();
+
   try {
     if (req.user.role !== "Admin") {
       return res.status(403).json({ error: "Access Denied." });
@@ -50,7 +54,9 @@ router.post("/invoices", authorize, validate(createInvoiceSchema), async (req, r
 
     const { student_id, title, amount, due_date } = req.body;
 
-    const studentQuery = await pool.query(
+    await client.query("BEGIN");
+
+    const studentQuery = await client.query(
       `
         SELECT s.student_id, s.parent_id, student_user.full_name AS student_name,
                parent_user.email AS parent_email, parent_user.full_name AS parent_name
@@ -63,23 +69,27 @@ router.post("/invoices", authorize, validate(createInvoiceSchema), async (req, r
     );
 
     if (studentQuery.rows.length === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "Student not found in your school." });
     }
 
     const student = studentQuery.rows[0];
 
-    const newInvoice = await pool.query(
+    const newInvoice = await client.query(
       "INSERT INTO invoices (student_id, title, amount, due_date, school_id) VALUES ($1, $2, $3, $4, $5) RETURNING *",
       [student_id, title, amount, due_date, req.user.school_id],
     );
 
     await logAudit({
+      client,
       userId: req.user.user_id,
       action: "CREATE_INVOICE",
       targetTable: "invoices",
       recordId: newInvoice.rows[0].invoice_id,
       newValue: newInvoice.rows[0],
     });
+
+    await client.query("COMMIT");
 
     if (student.parent_email) {
       const emailHTML = `
@@ -88,9 +98,9 @@ router.post("/invoices", authorize, validate(createInvoiceSchema), async (req, r
             <h2 style="color: white; margin: 0;">New Invoice Issued</h2>
           </div>
           <div style="padding: 30px; background-color: #f9fafb;">
-            <h3>Dear ${student.parent_name || "Parent"},</h3>
-            <p>A new invoice of <strong>₦${amount}</strong> for <strong>${title}</strong> has been issued for ${student.student_name}.</p>
-            <p>Please log in to your EduSync portal to view and pay this invoice by ${new Date(due_date).toLocaleDateString()}.</p>
+            <h3>Dear ${escapeHtml(student.parent_name || "Parent")},</h3>
+            <p>A new invoice of <strong>₦${escapeHtml(amount)}</strong> for <strong>${escapeHtml(title)}</strong> has been issued for ${escapeHtml(student.student_name)}.</p>
+            <p>Please log in to your EduSync portal to view and pay this invoice by ${escapeHtml(new Date(due_date).toLocaleDateString())}.</p>
           </div>
         </div>
       `;
@@ -103,7 +113,10 @@ router.post("/invoices", authorize, validate(createInvoiceSchema), async (req, r
 
     res.json(newInvoice.rows[0]);
   } catch (err) {
+    await client.query("ROLLBACK");
     next(err);
+  } finally {
+    client.release();
   }
 });
 
@@ -213,31 +226,42 @@ router.post("/webhook", async (req, res) => {
       ? Number(session.metadata.paid_by_user_id)
       : null;
 
+    const client = await pool.connect();
+
     try {
-      const invoiceCheck = await pool.query(
-        "SELECT * FROM invoices WHERE invoice_id = $1 AND school_id = $2",
+      await client.query("BEGIN");
+
+      const invoiceCheck = await client.query(
+        "SELECT * FROM invoices WHERE invoice_id = $1 AND school_id = $2 FOR UPDATE",
         [invoiceId, schoolId],
       );
 
-      if (invoiceCheck.rows.length > 0 && invoiceCheck.rows[0].status === "Paid") {
+      if (invoiceCheck.rows.length === 0) {
+        await client.query("ROLLBACK");
+        return res.status(200).json({ received: true, message: "Invoice not found" });
+      }
+
+      if (invoiceCheck.rows[0].status === "Paid") {
+        await client.query("ROLLBACK");
         return res.status(200).json({ received: true, message: "Invoice already processed" });
       }
 
-      const updatedInvoice = await pool.query(
+      const updatedInvoice = await client.query(
         "UPDATE invoices SET status = 'Paid' WHERE invoice_id = $1 AND school_id = $2 RETURNING *",
         [invoiceId, schoolId],
       );
 
-      if (updatedInvoice.rows.length > 0) {
-        await logAudit({
-          userId: paidByUserId,
-          action: "PAY_INVOICE",
-          targetTable: "invoices",
-          recordId: Number(invoiceId),
-          oldValue: invoiceCheck.rows[0],
-          newValue: updatedInvoice.rows[0],
-        });
-      }
+      await logAudit({
+        client,
+        userId: paidByUserId,
+        action: "PAY_INVOICE",
+        targetTable: "invoices",
+        recordId: Number(invoiceId),
+        oldValue: invoiceCheck.rows[0],
+        newValue: updatedInvoice.rows[0],
+      });
+
+      await client.query("COMMIT");
 
       const invoiceDetails = await pool.query(
         `
@@ -261,8 +285,8 @@ router.post("/webhook", async (req, res) => {
               <h2 style="color: white; margin: 0;">Payment Receipt</h2>
             </div>
             <div style="padding: 30px; background-color: #f9fafb;">
-              <h3>Thank you, ${details.full_name}!</h3>
-              <p>We have successfully received your secure payment of <strong>₦${details.amount}</strong> for <strong>${details.title}</strong>.</p>
+              <h3>Thank you, ${escapeHtml(details.full_name)}!</h3>
+              <p>We have successfully received your secure payment of <strong>₦${escapeHtml(details.amount)}</strong> for <strong>${escapeHtml(details.title)}</strong>.</p>
               <p style="color: green; font-weight: bold;">Status: PAID ✅</p>
             </div>
           </div>
@@ -274,7 +298,10 @@ router.post("/webhook", async (req, res) => {
         });
       }
     } catch (dbErr) {
+      await client.query("ROLLBACK");
       console.error(`❌ Webhook Database Error: ${dbErr.message}`);
+    } finally {
+      client.release();
     }
   }
 

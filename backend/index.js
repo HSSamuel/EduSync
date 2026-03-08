@@ -12,6 +12,10 @@ const { Server } = require("socket.io");
 const app = express();
 const PORT = process.env.PORT || 5000;
 const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || CLIENT_URL)
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 const server = http.createServer(app);
 
@@ -22,20 +26,34 @@ const isValidRoomName = (room) => typeof room === "string" && ROOM_NAME_REGEX.te
 const isValidMessage = (message) =>
   typeof message === "string" && message.trim().length > 0 && message.trim().length <= MAX_CHAT_MESSAGE_LENGTH;
 
+const corsOptions = {
+  origin(origin, callback) {
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error("Origin not allowed by CORS"));
+  },
+  credentials: true,
+};
+
 const io = new Server(server, {
   cors: {
-    origin: CLIENT_URL,
+    origin: ALLOWED_ORIGINS,
     methods: ["GET", "POST"],
     credentials: true,
   },
 });
 
-app.use(
-  cors({
-    origin: CLIENT_URL,
-    credentials: true,
-  }),
-);
+app.disable("x-powered-by");
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  next();
+});
+
+app.use(cors(corsOptions));
 
 app.use("/api/finance/webhook", express.raw({ type: "application/json" }));
 
@@ -72,6 +90,10 @@ app.use((err, req, res, next) => {
 
   if (err.name === "MulterError") {
     return res.status(400).json({ error: "File upload error occurred." });
+  }
+
+  if (err.message === "Origin not allowed by CORS") {
+    return res.status(403).json({ error: "Origin not allowed." });
   }
 
   res.status(err.status || 500).json({

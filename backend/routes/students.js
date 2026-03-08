@@ -8,17 +8,12 @@ const crypto = require("crypto");
 const authorize = require("../middleware/authorize");
 const sendEmail = require("../utils/sendEmail");
 const { logAudit } = require("../utils/auditLogger");
+const { escapeHtml } = require("../utils/html");
 const { z } = require("zod");
 const validate = require("../middleware/validate");
 
 const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
 
-/**
- * Admin creates a student account.
- * Security note:
- * - We DO NOT email plain-text passwords.
- * - We generate a random temporary password (hashed) and email a secure "Set Password" link.
- */
 const createStudentSchema = z.object({
   full_name: z.string().min(2, "Full name is required"),
   email: z.string().email("A valid email is required"),
@@ -36,6 +31,8 @@ const bulkDeleteStudentsSchema = z.object({
 });
 
 router.post("/", authorize, validate(createStudentSchema), async (req, res) => {
+  const client = await pool.connect();
+
   try {
     if (req.user.role !== "Admin") {
       return res
@@ -46,24 +43,25 @@ router.post("/", authorize, validate(createStudentSchema), async (req, res) => {
     const { full_name, email, class_grade } = req.body;
 
     const tempPassword = crypto.randomBytes(24).toString("base64url");
-
-    const saltRounds = 10;
-    const salt = await bcrypt.genSalt(saltRounds);
+    const salt = await bcrypt.genSalt(10);
     const bcryptPassword = await bcrypt.hash(tempPassword, salt);
 
-    const newUser = await pool.query(
+    await client.query("BEGIN");
+
+    const newUser = await client.query(
       "INSERT INTO users (full_name, email, password_hash, role, school_id) VALUES ($1, $2, $3, 'Student', $4) RETURNING user_id, full_name, email",
       [full_name, email, bcryptPassword, req.user.school_id],
     );
 
     const newUserId = newUser.rows[0].user_id;
 
-    const newStudent = await pool.query(
+    const newStudent = await client.query(
       "INSERT INTO students (user_id, class_grade) VALUES ($1, $2) RETURNING *",
       [newUserId, class_grade],
     );
 
     await logAudit({
+      client,
       userId: req.user.user_id,
       action: "CREATE_STUDENT",
       targetTable: "students",
@@ -75,6 +73,8 @@ router.post("/", authorize, validate(createStudentSchema), async (req, res) => {
       },
     });
 
+    await client.query("COMMIT");
+
     const secretHashSlice = bcryptPassword.substring(0, 10);
     const resetToken = jwt.sign(
       { user_id: newUserId, secret: secretHashSlice },
@@ -83,6 +83,10 @@ router.post("/", authorize, validate(createStudentSchema), async (req, res) => {
     );
 
     const setPasswordLink = `${CLIENT_URL}/reset-password/${resetToken}`;
+    const safeName = escapeHtml(full_name);
+    const safePortal = escapeHtml(CLIENT_URL);
+    const safeEmail = escapeHtml(email);
+    const safeSetPasswordLink = escapeHtml(setPasswordLink);
 
     const emailHTML = `
       <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden;">
@@ -90,14 +94,14 @@ router.post("/", authorize, validate(createStudentSchema), async (req, res) => {
           <h2 style="color: white; margin: 0;">Welcome to EduSync</h2>
         </div>
         <div style="padding: 30px; background-color: #f9fafb;">
-          <h3 style="color: #1e3a8a;">Dear ${full_name},</h3>
+          <h3 style="color: #1e3a8a;">Dear ${safeName},</h3>
           <p>Welcome to your new digital learning and management portal!</p>
           <p>Through your secure dashboard, you will be able to download study materials and view your official report cards.</p>
 
           <div style="background-color: white; padding: 15px; border-radius: 5px; margin: 20px 0; border: 1px dashed #cbd5e1;">
             <p style="margin: 0 0 10px 0;"><strong>Get Started</strong></p>
-            <p style="margin: 0;"><strong>Portal Link:</strong> ${CLIENT_URL}</p>
-            <p style="margin: 0;"><strong>Username:</strong> ${email}</p>
+            <p style="margin: 0;"><strong>Portal Link:</strong> ${safePortal}</p>
+            <p style="margin: 0;"><strong>Username:</strong> ${safeEmail}</p>
           </div>
 
           <p style="margin: 0 0 12px 0;">
@@ -106,7 +110,7 @@ router.post("/", authorize, validate(createStudentSchema), async (req, res) => {
           </p>
 
           <div style="text-align: center; margin: 18px 0;">
-            <a href="${setPasswordLink}" style="display: inline-block; background-color: #2563EB; color: #fff; padding: 12px 18px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+            <a href="${safeSetPasswordLink}" style="display: inline-block; background-color: #2563EB; color: #fff; padding: 12px 18px; border-radius: 8px; text-decoration: none; font-weight: 600;">
               Set Your Password
             </a>
           </div>
@@ -140,11 +144,14 @@ router.post("/", authorize, validate(createStudentSchema), async (req, res) => {
       academic_record: newStudent.rows[0],
     });
   } catch (err) {
+    await client.query("ROLLBACK");
     console.error(err.message);
     res.status(500).json({
       error:
         "Internal Server Error. (Did you use an email that already exists?)",
     });
+  } finally {
+    client.release();
   }
 });
 
@@ -266,6 +273,7 @@ router.delete(
         ]);
 
         await logAudit({
+          client,
           userId: req.user.user_id,
           action: "DELETE_STUDENT",
           targetTable: "students",
@@ -351,6 +359,7 @@ router.delete("/:id", authorize, async (req, res) => {
     ]);
 
     await logAudit({
+      client,
       userId: req.user.user_id,
       action: "DELETE_STUDENT",
       targetTable: "students",

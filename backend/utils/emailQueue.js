@@ -10,34 +10,48 @@ const connection = new IORedis(
   },
 );
 
-// 👈 FIX: Catch Redis connection errors so the server doesn't crash
 connection.on("error", (err) => {
   console.error("❌ Redis Connection Error:", err.message);
 });
 
 const emailQueue = new Queue("email-queue", { connection });
 
-const emailWorker = new Worker(
-  "email-queue",
-  async (job) => {
-    console.log(`⏳ Processing Job ${job.id}: Sending email to ${job.data.to}`);
-    await sendEmail({
-      to: job.data.to,
-      subject: job.data.subject,
-      html: job.data.html,
-    });
-    console.log(`✅ Job ${job.id} complete!`);
-  },
-  { connection },
-);
+function createEmailWorker() {
+  const worker = new Worker(
+    "email-queue",
+    async (job) => {
+      console.log(`⏳ Processing Job ${job.id}: Sending email to ${job.data.to}`);
+      await sendEmail({
+        to: job.data.to,
+        subject: job.data.subject,
+        html: job.data.html,
+      });
+      console.log(`✅ Job ${job.id} complete!`);
+    },
+    { connection },
+  );
 
-emailWorker.on("failed", (job, err) => {
-  console.error(`❌ Job ${job?.id} failed with error: ${err.message}`);
-});
+  worker.on("failed", (job, err) => {
+    console.error(`❌ Job ${job?.id} failed with error: ${err.message}`);
+  });
 
-// 👈 FIX: Catch worker-level stalling errors
-emailWorker.on("error", (err) => {
-  console.error("❌ BullMQ Worker Error:", err.message);
-});
+  worker.on("error", (err) => {
+    console.error("❌ BullMQ Worker Error:", err.message);
+  });
 
-module.exports = { emailQueue };
+  return worker;
+}
+
+let emailWorker = null;
+
+function shouldRunInlineWorker() {
+  if (process.env.EMAIL_QUEUE_INLINE_WORKER === "true") return true;
+  if (process.env.EMAIL_QUEUE_INLINE_WORKER === "false") return false;
+  return process.env.NODE_ENV !== "production";
+}
+
+if (shouldRunInlineWorker()) {
+  emailWorker = createEmailWorker();
+}
+
+module.exports = { emailQueue, connection, createEmailWorker, emailWorker };

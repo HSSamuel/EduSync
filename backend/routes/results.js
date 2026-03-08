@@ -4,6 +4,7 @@ const pool = require("../db");
 const authorize = require("../middleware/authorize");
 const { emailQueue } = require("../utils/emailQueue");
 const { logAudit } = require("../utils/auditLogger");
+const { escapeHtml } = require("../utils/html");
 const { z } = require("zod");
 const validate = require("../middleware/validate");
 
@@ -31,8 +32,8 @@ const getGradeEmailHTML = (
       <h2 style="color: white; margin: 0;">📊 ${isUpdate ? "Grade Updated" : "New Grade Published"}</h2>
     </div>
     <div style="padding: 30px; background-color: #f9fafb;">
-      <h3 style="color: #333;">Hello ${recipientName},</h3>
-      <p>An academic result for <strong>${subjectName}</strong> (${term}) has been ${isUpdate ? "updated" : "published"} to your profile.</p>
+      <h3 style="color: #333;">Hello ${escapeHtml(recipientName)},</h3>
+      <p>An academic result for <strong>${escapeHtml(subjectName)}</strong> (${escapeHtml(term)}) has been ${isUpdate ? "updated" : "published"} to your profile.</p>
       <p>Please log in to the EduSync portal to view the updated report card and total percentages.</p>
       <p style="margin-top: 30px;">Warm regards,<br/><strong>The Administration Team</strong></p>
     </div>
@@ -159,6 +160,8 @@ async function getReadableReportCard(studentId, user) {
 }
 
 router.post("/", authorize, validate(createGradeSchema), async (req, res) => {
+  const client = await pool.connect();
+
   try {
     if (req.user.role !== "Admin" && req.user.role !== "Teacher") {
       return res.status(403).json({ error: "Access Denied." });
@@ -179,7 +182,9 @@ router.post("/", authorize, validate(createGradeSchema), async (req, res) => {
       return res.status(404).json({ error: "Subject not found or not assigned to you." });
     }
 
-    const existingResult = await pool.query(
+    await client.query("BEGIN");
+
+    const existingResult = await client.query(
       `
         SELECT *
         FROM results
@@ -197,7 +202,7 @@ router.post("/", authorize, validate(createGradeSchema), async (req, res) => {
     if (existingResult.rows.length > 0) {
       const oldRecord = existingResult.rows[0];
 
-      const updated = await pool.query(
+      const updated = await client.query(
         `
           UPDATE results
           SET test_score = $1, exam_score = $2
@@ -211,6 +216,7 @@ router.post("/", authorize, validate(createGradeSchema), async (req, res) => {
       operation = "updated";
 
       await logAudit({
+        client,
         userId: req.user.user_id,
         action: "UPSERT_GRADE_UPDATE",
         targetTable: "results",
@@ -223,7 +229,7 @@ router.post("/", authorize, validate(createGradeSchema), async (req, res) => {
         newValue: savedResult,
       });
     } else {
-      const inserted = await pool.query(
+      const inserted = await client.query(
         `
           INSERT INTO results (student_id, subject_id, academic_term, test_score, exam_score, school_id)
           VALUES ($1, $2, $3, $4, $5, $6)
@@ -235,6 +241,7 @@ router.post("/", authorize, validate(createGradeSchema), async (req, res) => {
       savedResult = inserted.rows[0];
 
       await logAudit({
+        client,
         userId: req.user.user_id,
         action: "CREATE_GRADE",
         targetTable: "results",
@@ -242,6 +249,8 @@ router.post("/", authorize, validate(createGradeSchema), async (req, res) => {
         newValue: savedResult,
       });
     }
+
+    await client.query("COMMIT");
 
     await queueGradeNotifications({
       student,
@@ -259,8 +268,11 @@ router.post("/", authorize, validate(createGradeSchema), async (req, res) => {
       result: savedResult,
     });
   } catch (err) {
+    await client.query("ROLLBACK");
     console.error(err.message);
-    res.status(500).send("Server Error.");
+    res.status(500).json({ error: "Server Error." });
+  } finally {
+    client.release();
   }
 });
 
@@ -299,6 +311,8 @@ router.get("/me", authorize, async (req, res) => {
 });
 
 router.put("/:id", authorize, validate(updateGradeSchema), async (req, res) => {
+  const client = await pool.connect();
+
   try {
     if (req.user.role !== "Admin" && req.user.role !== "Teacher") {
       return res.status(403).json({ error: "Access Denied." });
@@ -307,7 +321,7 @@ router.put("/:id", authorize, validate(updateGradeSchema), async (req, res) => {
     const { id } = req.params;
     const { test_score, exam_score } = req.body;
 
-    const oldRecordQuery = await pool.query(
+    const oldRecordQuery = await client.query(
       `
         SELECT r.*, sub.subject_name
         FROM results r
@@ -330,7 +344,9 @@ router.put("/:id", authorize, validate(updateGradeSchema), async (req, res) => {
       }
     }
 
-    const updateGrade = await pool.query(
+    await client.query("BEGIN");
+
+    const updateGrade = await client.query(
       `
         UPDATE results
         SET test_score = $1, exam_score = $2
@@ -343,6 +359,7 @@ router.put("/:id", authorize, validate(updateGradeSchema), async (req, res) => {
     const resultData = updateGrade.rows[0];
 
     await logAudit({
+      client,
       userId: req.user.user_id,
       action: "UPDATE_GRADE",
       targetTable: "results",
@@ -359,6 +376,8 @@ router.put("/:id", authorize, validate(updateGradeSchema), async (req, res) => {
       },
     });
 
+    await client.query("COMMIT");
+
     const student = await getAccessibleStudent(oldRecord.student_id, req.user.school_id);
     if (student) {
       await queueGradeNotifications({
@@ -374,8 +393,11 @@ router.put("/:id", authorize, validate(updateGradeSchema), async (req, res) => {
       result: resultData,
     });
   } catch (err) {
+    await client.query("ROLLBACK");
     console.error(err.message);
     res.status(500).json({ error: "Internal Server Error" });
+  } finally {
+    client.release();
   }
 });
 

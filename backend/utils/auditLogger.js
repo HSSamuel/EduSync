@@ -1,4 +1,4 @@
-const pool = require('../db');
+const pool = require("../db");
 
 async function logAudit({
   userId,
@@ -7,17 +7,20 @@ async function logAudit({
   recordId,
   oldValue = null,
   newValue = null,
+  client = null,
 }) {
-  if (!userId || !action || !targetTable || recordId === undefined || recordId === null) {
+  if (!action || !targetTable || recordId === undefined || recordId === null) {
     return;
   }
 
+  const executor = client || pool;
+
   try {
-    await pool.query(
+    await executor.query(
       `INSERT INTO audit_logs (user_id, action, target_table, record_id, old_value, new_value)
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [
-        userId,
+        userId || null,
         action,
         targetTable,
         recordId,
@@ -26,7 +29,8 @@ async function logAudit({
       ],
     );
   } catch (err) {
-    console.error('Audit log insert failed:', err.message);
+    console.error("Audit log insert failed:", err.message);
+    throw err;
   }
 }
 
