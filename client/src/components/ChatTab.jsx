@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import io from "socket.io-client";
 import { Users, MessageSquare, Send, Loader2 } from "lucide-react";
-import { apiFetch } from "../utils/api";
+import { apiFetch, getAccessToken } from "../utils/api";
 
 const API_URL = import.meta.env.VITE_API_URL;
 const SOCKET_URL = API_URL
@@ -28,7 +28,7 @@ const ChatTab = ({ userData }) => {
 
   // 1) Initialize Socket (auth via token)
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const token = getAccessToken();
     if (!token) return;
 
     const newSocket = io(SOCKET_URL, {

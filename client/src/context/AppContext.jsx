@@ -6,7 +6,13 @@ import React, {
   useCallback,
 } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiFetchOrThrow, apiJsonFetch } from "../utils/api";
+import {
+  apiFetchOrThrow,
+  apiJsonFetch,
+  clearAccessToken,
+  getAccessToken,
+  refreshAccessToken,
+} from "../utils/api";
 
 const AuthContext = createContext();
 const SchoolContext = createContext();
@@ -35,8 +41,13 @@ export const AppProvider = ({ children }) => {
     setLoading(true);
 
     try {
-      const token = localStorage.getItem("token");
-      if (!token) {
+      let hasToken = Boolean(getAccessToken());
+
+      if (!hasToken) {
+        hasToken = await refreshAccessToken();
+      }
+
+      if (!hasToken) {
         resetAppState();
         return;
       }
@@ -69,7 +80,7 @@ export const AppProvider = ({ children }) => {
       }
     } catch (err) {
       console.error("Context Fetch Error:", err);
-      localStorage.removeItem("token");
+      clearAccessToken();
       resetAppState();
       navigate("/login", { replace: true });
     } finally {
@@ -87,7 +98,7 @@ export const AppProvider = ({ children }) => {
     } catch (err) {
       console.error("Logout error:", err);
     } finally {
-      localStorage.removeItem("token");
+      clearAccessToken();
       resetAppState();
       setLoading(false);
       navigate("/login", { replace: true });

@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import { Mail, Lock, LogIn } from "lucide-react";
 import { GoogleLogin } from "@react-oauth/google";
-import { apiFetchOrThrow } from "../utils/api";
+import { apiFetchOrThrow, setAccessToken } from "../utils/api";
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -15,7 +15,7 @@ const Login = () => {
   const redirectPath = location.state?.from?.pathname || "/dashboard";
 
   const handleAuthSuccess = (token, message = "✅ Login Successful! Redirecting...") => {
-    localStorage.setItem("token", token);
+    setAccessToken(token);
     setStatusMessage(message);
     setTimeout(() => navigate(redirectPath, { replace: true }), 1000);
   };

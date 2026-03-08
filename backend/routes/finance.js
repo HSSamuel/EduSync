@@ -18,6 +18,30 @@ const createInvoiceSchema = z.object({
   due_date: z.string().trim().min(1, "Due date is required"),
 });
 
+async function getInvoiceForActor(invoiceId, user) {
+  const params = [invoiceId, user.school_id];
+  let query = `
+    SELECT i.*, s.parent_id, s.user_id AS student_user_id, student_user.full_name AS student_name
+    FROM invoices i
+    JOIN students s ON i.student_id = s.student_id
+    JOIN users student_user ON s.user_id = student_user.user_id
+    WHERE i.invoice_id = $1 AND i.school_id = $2
+  `;
+
+  if (user.role === "Parent") {
+    query += " AND s.parent_id = $3";
+    params.push(user.user_id);
+  } else if (user.role === "Student") {
+    query += " AND s.user_id = $3";
+    params.push(user.user_id);
+  } else if (user.role !== "Admin") {
+    return null;
+  }
+
+  const result = await pool.query(query, params);
+  return result.rows[0] || null;
+}
+
 router.post("/invoices", authorize, validate(createInvoiceSchema), async (req, res, next) => {
   try {
     if (req.user.role !== "Admin") {
@@ -64,7 +88,7 @@ router.post("/invoices", authorize, validate(createInvoiceSchema), async (req, r
             <h2 style="color: white; margin: 0;">New Invoice Issued</h2>
           </div>
           <div style="padding: 30px; background-color: #f9fafb;">
-            <h3>Dear ${student.parent_name},</h3>
+            <h3>Dear ${student.parent_name || "Parent"},</h3>
             <p>A new invoice of <strong>₦${amount}</strong> for <strong>${title}</strong> has been issued for ${student.student_name}.</p>
             <p>Please log in to your EduSync portal to view and pay this invoice by ${new Date(due_date).toLocaleDateString()}.</p>
           </div>
@@ -86,7 +110,7 @@ router.post("/invoices", authorize, validate(createInvoiceSchema), async (req, r
 router.get("/invoices", authorize, async (req, res, next) => {
   try {
     let query = `
-      SELECT i.*, u.full_name AS student_name, s.class_grade 
+      SELECT i.*, u.full_name AS student_name, s.class_grade
       FROM invoices i
       JOIN students s ON i.student_id = s.student_id
       JOIN users u ON s.user_id = u.user_id
@@ -97,7 +121,7 @@ router.get("/invoices", authorize, async (req, res, next) => {
 
     if (req.user.role === "Parent") {
       query = `
-        SELECT i.*, u.full_name AS student_name, s.class_grade 
+        SELECT i.*, u.full_name AS student_name, s.class_grade
         FROM invoices i
         JOIN students s ON i.student_id = s.student_id
         JOIN users u ON s.user_id = u.user_id
@@ -107,7 +131,7 @@ router.get("/invoices", authorize, async (req, res, next) => {
       queryParams = [req.user.user_id, req.user.school_id];
     } else if (req.user.role === "Student") {
       query = `
-        SELECT i.*, u.full_name AS student_name, s.class_grade 
+        SELECT i.*, u.full_name AS student_name, s.class_grade
         FROM invoices i
         JOIN students s ON i.student_id = s.student_id
         JOIN users u ON s.user_id = u.user_id
@@ -115,6 +139,8 @@ router.get("/invoices", authorize, async (req, res, next) => {
         ORDER BY i.created_at DESC
       `;
       queryParams = [req.user.user_id, req.user.school_id];
+    } else if (req.user.role !== "Admin") {
+      return res.status(403).json({ error: "Access Denied." });
     }
 
     const invoices = await pool.query(query, queryParams);
@@ -127,17 +153,11 @@ router.get("/invoices", authorize, async (req, res, next) => {
 router.post("/invoices/:id/checkout", authorize, async (req, res, next) => {
   try {
     const { id } = req.params;
+    const invoice = await getInvoiceForActor(id, req.user);
 
-    const invoiceQuery = await pool.query(
-      "SELECT * FROM invoices WHERE invoice_id = $1 AND school_id = $2",
-      [id, req.user.school_id],
-    );
-
-    if (invoiceQuery.rows.length === 0) {
-      return res.status(404).json({ error: "Invoice not found" });
+    if (!invoice) {
+      return res.status(404).json({ error: "Invoice not found or not accessible." });
     }
-
-    const invoice = invoiceQuery.rows[0];
 
     if (invoice.status === "Paid") {
       return res.status(400).json({ error: "Invoice is already paid." });
@@ -151,17 +171,18 @@ router.post("/invoices/:id/checkout", authorize, async (req, res, next) => {
             currency: "ngn",
             product_data: {
               name: invoice.title,
-              description: "EduSync Academic Invoice",
+              description: `EduSync Academic Invoice for ${invoice.student_name}`,
             },
-            unit_amount: Math.round(invoice.amount * 100),
+            unit_amount: Math.round(Number(invoice.amount) * 100),
           },
           quantity: 1,
         },
       ],
       mode: "payment",
       metadata: {
-        invoice_id: id,
-        school_id: req.user.school_id,
+        invoice_id: String(invoice.invoice_id),
+        school_id: String(req.user.school_id),
+        paid_by_user_id: String(req.user.user_id),
       },
       success_url: `${CLIENT_URL}/dashboard?payment_success=true`,
       cancel_url: `${CLIENT_URL}/dashboard?payment_canceled=true`,
@@ -169,7 +190,7 @@ router.post("/invoices/:id/checkout", authorize, async (req, res, next) => {
 
     res.json({ url: session.url });
   } catch (err) {
-    res.status(500).json({ error: "Stripe connection failed." });
+    next(err);
   }
 });
 
@@ -188,6 +209,9 @@ router.post("/webhook", async (req, res) => {
     const session = event.data.object;
     const invoiceId = session.metadata.invoice_id;
     const schoolId = session.metadata.school_id;
+    const paidByUserId = session.metadata.paid_by_user_id
+      ? Number(session.metadata.paid_by_user_id)
+      : null;
 
     try {
       const invoiceCheck = await pool.query(
@@ -206,10 +230,10 @@ router.post("/webhook", async (req, res) => {
 
       if (updatedInvoice.rows.length > 0) {
         await logAudit({
-          userId: null,
+          userId: paidByUserId,
           action: "PAY_INVOICE",
           targetTable: "invoices",
-          recordId: invoiceId,
+          recordId: Number(invoiceId),
           oldValue: invoiceCheck.rows[0],
           newValue: updatedInvoice.rows[0],
         });

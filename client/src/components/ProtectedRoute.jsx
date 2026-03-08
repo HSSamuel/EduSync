@@ -2,13 +2,14 @@ import React from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAppContext } from "../context/AppContext";
 import DashboardSkeleton from "./DashboardSkeleton";
+import { getAccessToken } from "../utils/api";
 
 const ProtectedRoute = ({ children }) => {
   const { userData, loading } = useAppContext();
   const location = useLocation();
-  const token = localStorage.getItem("token");
+  const token = getAccessToken();
 
-  if (loading && token) {
+  if (loading) {
     return <DashboardSkeleton />;
   }
 

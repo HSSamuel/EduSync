@@ -1,31 +1,22 @@
 -- ==========================================
--- 🧹 CLEANUP EXISTING TABLES (To prevent "already exists" errors)
+-- EduSync database bootstrap (safe for repeat runs)
+-- This script avoids destructive DROP TABLE statements.
+-- Seed data is optional and uses ON CONFLICT DO NOTHING.
 -- ==========================================
-DROP TABLE IF EXISTS 
-    audit_logs, cbt_results, quizzes, invoices, events, 
-    school_documents, attendance, timetables, student_activities, 
-    extracurriculars, results, modules, subjects, 
-    students, messages, users, schools CASCADE;
 
--- ==========================================
--- 🏢 1. SCHOOLS (TENANTS) TABLE - MUST BE CREATED FIRST
--- ==========================================
-CREATE TABLE schools (
+CREATE TABLE IF NOT EXISTS schools (
     school_id SERIAL PRIMARY KEY,
     school_name VARCHAR(255) NOT NULL,
     contact_email VARCHAR(255),
-    invite_code VARCHAR(50) UNIQUE NOT NULL, 
+    invite_code VARCHAR(50) UNIQUE NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Insert a "Default" School so your initial data doesn't break
-INSERT INTO schools (school_name, contact_email, invite_code) 
-VALUES ('EduSync Alpha Academy', 'admin@edusync.com', 'ALPHA-0001');
+INSERT INTO schools (school_name, contact_email, invite_code)
+VALUES ('EduSync Alpha Academy', 'admin@edusync.com', 'ALPHA-0001')
+ON CONFLICT (invite_code) DO NOTHING;
 
--- ==========================================
--- 👥 2. CORE USERS TABLE
--- ==========================================
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     user_id SERIAL PRIMARY KEY,
     full_name VARCHAR(255) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
@@ -36,10 +27,7 @@ CREATE TABLE users (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- ==========================================
--- 🎓 3. ACADEMIC TABLES
--- ==========================================
-CREATE TABLE students (
+CREATE TABLE IF NOT EXISTS students (
     student_id SERIAL PRIMARY KEY,
     user_id INT UNIQUE REFERENCES users(user_id) ON DELETE CASCADE,
     parent_id INT REFERENCES users(user_id) ON DELETE SET NULL,
@@ -47,14 +35,14 @@ CREATE TABLE students (
     enrollment_date DATE DEFAULT CURRENT_DATE
 );
 
-CREATE TABLE subjects (
+CREATE TABLE IF NOT EXISTS subjects (
     subject_id SERIAL PRIMARY KEY,
     subject_name VARCHAR(100) NOT NULL,
     teacher_id INT REFERENCES users(user_id) ON DELETE SET NULL,
     school_id INT REFERENCES schools(school_id) ON DELETE CASCADE
 );
 
-CREATE TABLE modules (
+CREATE TABLE IF NOT EXISTS modules (
     module_id SERIAL PRIMARY KEY,
     subject_id INT REFERENCES subjects(subject_id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
@@ -63,7 +51,7 @@ CREATE TABLE modules (
     uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE results (
+CREATE TABLE IF NOT EXISTS results (
     result_id SERIAL PRIMARY KEY,
     student_id INT REFERENCES students(student_id) ON DELETE CASCADE,
     subject_id INT REFERENCES subjects(subject_id) ON DELETE CASCADE,
@@ -75,10 +63,7 @@ CREATE TABLE results (
     CONSTRAINT unique_result_per_term UNIQUE (student_id, subject_id, academic_term, school_id)
 );
 
--- ==========================================
--- 📅 4. ATTENDANCE & SCHEDULES
--- ==========================================
-CREATE TABLE attendance (
+CREATE TABLE IF NOT EXISTS attendance (
     attendance_id SERIAL PRIMARY KEY,
     student_id INT REFERENCES students(student_id) ON DELETE CASCADE,
     school_id INT REFERENCES schools(school_id) ON DELETE CASCADE,
@@ -87,7 +72,7 @@ CREATE TABLE attendance (
     CONSTRAINT unique_attendance_per_day UNIQUE (student_id, date, school_id)
 );
 
-CREATE TABLE timetables (
+CREATE TABLE IF NOT EXISTS timetables (
     timetable_id SERIAL PRIMARY KEY,
     class_grade VARCHAR(50) NOT NULL,
     schedule JSONB NOT NULL,
@@ -97,7 +82,7 @@ CREATE TABLE timetables (
     CONSTRAINT unique_class_per_school UNIQUE (class_grade, school_id)
 );
 
-CREATE TABLE events (
+CREATE TABLE IF NOT EXISTS events (
     event_id SERIAL PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
     event_date DATE NOT NULL,
@@ -106,20 +91,17 @@ CREATE TABLE events (
     created_by INT REFERENCES users(user_id) ON DELETE SET NULL
 );
 
--- ==========================================
--- 💻 5. CBT (COMPUTER BASED TESTING)
--- ==========================================
-CREATE TABLE quizzes (
+CREATE TABLE IF NOT EXISTS quizzes (
     quiz_id SERIAL PRIMARY KEY,
     subject_id INT REFERENCES subjects(subject_id) ON DELETE CASCADE,
     school_id INT REFERENCES schools(school_id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
-    questions JSONB NOT NULL, 
+    questions JSONB NOT NULL,
     created_by INT REFERENCES users(user_id) ON DELETE SET NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE cbt_results (
+CREATE TABLE IF NOT EXISTS cbt_results (
     result_id SERIAL PRIMARY KEY,
     quiz_id INT REFERENCES quizzes(quiz_id) ON DELETE CASCADE,
     student_id INT REFERENCES students(student_id) ON DELETE CASCADE,
@@ -128,10 +110,7 @@ CREATE TABLE cbt_results (
     submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- ==========================================
--- 💰 6. FINANCE, ADMIN & COMMUNICATIONS
--- ==========================================
-CREATE TABLE invoices (
+CREATE TABLE IF NOT EXISTS invoices (
     invoice_id SERIAL PRIMARY KEY,
     student_id INT REFERENCES students(student_id) ON DELETE CASCADE,
     school_id INT REFERENCES schools(school_id) ON DELETE CASCADE,
@@ -142,7 +121,7 @@ CREATE TABLE invoices (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE school_documents (
+CREATE TABLE IF NOT EXISTS school_documents (
     doc_id SERIAL PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
     file_url TEXT NOT NULL,
@@ -151,7 +130,7 @@ CREATE TABLE school_documents (
     uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE audit_logs (
+CREATE TABLE IF NOT EXISTS audit_logs (
     log_id SERIAL PRIMARY KEY,
     user_id INT REFERENCES users(user_id) ON DELETE SET NULL,
     action VARCHAR(50) NOT NULL,
@@ -162,37 +141,34 @@ CREATE TABLE audit_logs (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE messages (
+CREATE TABLE IF NOT EXISTS messages (
     message_id SERIAL PRIMARY KEY,
     room VARCHAR(255) NOT NULL,
     message TEXT NOT NULL,
     sender_name VARCHAR(255) NOT NULL,
     sender_role VARCHAR(50) NOT NULL,
+    sender_user_id INT REFERENCES users(user_id) ON DELETE SET NULL,
     school_id INT REFERENCES schools(school_id) ON DELETE CASCADE,
     sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- ==========================================
--- 🎾 7. EXTRACURRICULAR ACTIVITIES
--- ==========================================
-CREATE TABLE extracurriculars (
+CREATE TABLE IF NOT EXISTS extracurriculars (
     activity_id SERIAL PRIMARY KEY,
     activity_name VARCHAR(100) NOT NULL,
     description TEXT,
     coordinator_id INT REFERENCES users(user_id) ON DELETE SET NULL
 );
 
-CREATE TABLE student_activities (
+CREATE TABLE IF NOT EXISTS student_activities (
     student_id INT REFERENCES students(student_id) ON DELETE CASCADE,
     activity_id INT REFERENCES extracurriculars(activity_id) ON DELETE CASCADE,
     role VARCHAR(50) DEFAULT 'Member',
     PRIMARY KEY (student_id, activity_id)
 );
 
--- ==========================================
--- ⚙️ 8. AUTOMATED TRIGGERS & INDEXES
--- ==========================================
--- Function to automatically update the updated_at column
+ALTER TABLE messages
+    ADD COLUMN IF NOT EXISTS sender_user_id INT REFERENCES users(user_id) ON DELETE SET NULL;
+
 CREATE OR REPLACE FUNCTION update_modified_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -201,17 +177,18 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
+DROP TRIGGER IF EXISTS update_timetables_modtime ON timetables;
 CREATE TRIGGER update_timetables_modtime
 BEFORE UPDATE ON timetables
 FOR EACH ROW
 EXECUTE PROCEDURE update_modified_column();
 
-CREATE INDEX idx_users_school_id ON users(school_id);
-CREATE INDEX idx_students_user_id ON students(user_id);
-CREATE INDEX idx_students_parent_id ON students(parent_id);
-CREATE INDEX idx_results_student_id ON results(student_id);
-CREATE INDEX idx_results_school_id ON results(school_id);
-CREATE INDEX idx_attendance_student_id ON attendance(student_id);
-CREATE INDEX idx_invoices_student_id ON invoices(student_id);
-CREATE INDEX idx_modules_subject_id ON modules(subject_id);
-CREATE INDEX idx_messages_room_school ON messages(room, school_id);
+CREATE INDEX IF NOT EXISTS idx_users_school_id ON users(school_id);
+CREATE INDEX IF NOT EXISTS idx_students_user_id ON students(user_id);
+CREATE INDEX IF NOT EXISTS idx_students_parent_id ON students(parent_id);
+CREATE INDEX IF NOT EXISTS idx_results_student_id ON results(student_id);
+CREATE INDEX IF NOT EXISTS idx_results_school_id ON results(school_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_student_id ON attendance(student_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_student_id ON invoices(student_id);
+CREATE INDEX IF NOT EXISTS idx_modules_subject_id ON modules(subject_id);
+CREATE INDEX IF NOT EXISTS idx_messages_room_school ON messages(room, school_id);

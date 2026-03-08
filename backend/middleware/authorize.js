@@ -1,32 +1,27 @@
 const jwt = require("jsonwebtoken");
-require("dotenv").config();
+const { ACCESS_TOKEN_SECRET } = require("../utils/tokenConfig");
 
-module.exports = function (req, res, next) {
-  // 👈 FIX: Check standard Authorization Bearer header first, fallback to jwt_token or cookie
-  let token = req.cookies?.access_token || req.header("jwt_token");
-  
+module.exports = function authorize(req, res, next) {
+  let token = null;
+
   const authHeader = req.header("Authorization");
   if (authHeader && authHeader.startsWith("Bearer ")) {
-    token = authHeader.split(" ")[1];
+    token = authHeader.slice(7).trim();
+  } else if (req.header("jwt_token")) {
+    token = req.header("jwt_token");
+  } else if (req.cookies?.access_token) {
+    token = req.cookies.access_token;
   }
 
   if (!token) {
-    return res
-      .status(403)
-      .json({ error: "Access Denied. No VIP pass provided!" });
+    return res.status(403).json({ error: "Access Denied. No access token provided." });
   }
 
   try {
-    const payload = jwt.verify(
-      token,
-      process.env.ACCESS_TOKEN_SECRET || process.env.JWT_SECRET,
-    );
-
-    // Payload now contains: { user_id, role, school_id }
+    const payload = jwt.verify(token, ACCESS_TOKEN_SECRET);
     req.user = payload;
-
     next();
   } catch (err) {
-    res.status(401).json({ error: "Invalid or expired token." });
+    return res.status(401).json({ error: "Invalid or expired token." });
   }
 };

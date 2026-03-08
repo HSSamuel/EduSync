@@ -1,3 +1,11 @@
+import {
+  clearAccessToken,
+  getAccessToken,
+  getRefreshPromise,
+  setAccessToken,
+  setRefreshPromise,
+} from "./auth";
+
 const API_BASE_URL =
   import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
@@ -28,7 +36,7 @@ export async function safeJson(response) {
 }
 
 export async function apiFetch(endpoint, options = {}, retry = true) {
-  const token = localStorage.getItem("token");
+  const token = getAccessToken();
 
   const headers = {
     ...(options.headers || {}),
@@ -84,24 +92,43 @@ export async function apiFetchOrThrow(endpoint, options = {}, fallbackMessage) {
   return data;
 }
 
-async function refreshAccessToken() {
-  try {
-    const res = await fetch(joinUrl(API_BASE_URL, "/auth/refresh"), {
-      method: "POST",
-      credentials: "include",
-    });
-
-    if (!res.ok) return false;
-
-    const data = await safeJson(res);
-    if (data?.token) {
-      localStorage.setItem("token", data.token);
-      return true;
-    }
-
-    return false;
-  } catch (err) {
-    console.error("Refresh token failed:", err);
-    return false;
+export async function refreshAccessToken() {
+  const pendingRefresh = getRefreshPromise();
+  if (pendingRefresh) {
+    return pendingRefresh;
   }
+
+  const refreshTask = (async () => {
+    try {
+      const res = await fetch(joinUrl(API_BASE_URL, "/auth/refresh"), {
+        method: "POST",
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        clearAccessToken();
+        return false;
+      }
+
+      const data = await safeJson(res);
+      if (data?.token) {
+        setAccessToken(data.token);
+        return true;
+      }
+
+      clearAccessToken();
+      return false;
+    } catch (err) {
+      console.error("Refresh token failed:", err);
+      clearAccessToken();
+      return false;
+    } finally {
+      setRefreshPromise(null);
+    }
+  })();
+
+  setRefreshPromise(refreshTask);
+  return refreshTask;
 }
+
+export { clearAccessToken, getAccessToken, setAccessToken };

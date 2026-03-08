@@ -9,6 +9,7 @@ const { z } = require("zod");
 const validate = require("../middleware/validate");
 const rateLimit = require("express-rate-limit");
 const { OAuth2Client } = require("google-auth-library");
+const { ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET } = require("../utils/tokenConfig");
 require("dotenv").config();
 
 const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
@@ -38,13 +39,13 @@ const registerLimiter = rateLimit({
 const issueSessionTokens = ({ user_id, role, school_id }) => {
   const accessToken = jwt.sign(
     { user_id, role, school_id },
-    process.env.ACCESS_TOKEN_SECRET || process.env.JWT_SECRET,
+    ACCESS_TOKEN_SECRET,
     { expiresIn: "15m" },
   );
 
   const refreshToken = jwt.sign(
     { user_id, school_id },
-    process.env.REFRESH_TOKEN_SECRET || process.env.JWT_SECRET,
+    REFRESH_TOKEN_SECRET,
     { expiresIn: "7d" },
   );
 
@@ -202,8 +203,9 @@ router.post(
         email,
       ]);
 
-      if (user.rows.length === 0)
+      if (user.rows.length === 0) {
         return res.status(401).json({ error: "Invalid Credentials" });
+      }
 
       if (user.rows[0].auth_provider === "google") {
         return res.status(400).json({
@@ -216,14 +218,17 @@ router.post(
         password,
         user.rows[0].password_hash,
       );
-      if (!validPassword)
+      if (!validPassword) {
         return res.status(401).json({ error: "Invalid Credentials" });
+      }
 
-      const { accessToken, refreshToken } = issueSessionTokens({
+      const userPayload = {
         user_id: user.rows[0].user_id,
         role: user.rows[0].role,
         school_id: user.rows[0].school_id,
-      });
+      };
+
+      const { accessToken, refreshToken } = issueSessionTokens(userPayload);
 
       setRefreshCookie(res, refreshToken);
 
@@ -234,25 +239,24 @@ router.post(
   },
 );
 
-router.post("/refresh", async (req, res, next) => {
+router.post("/refresh", async (req, res) => {
   try {
     const refreshToken = req.cookies.refresh_token;
-    if (!refreshToken)
+    if (!refreshToken) {
       return res
         .status(401)
         .json({ error: "Session expired. Please log in again." });
+    }
 
-    const payload = jwt.verify(
-      refreshToken,
-      process.env.REFRESH_TOKEN_SECRET || process.env.JWT_SECRET,
-    );
+    const payload = jwt.verify(refreshToken, REFRESH_TOKEN_SECRET);
 
     const user = await pool.query(
       "SELECT role, school_id FROM users WHERE user_id = $1",
       [payload.user_id],
     );
-    if (user.rows.length === 0)
+    if (user.rows.length === 0) {
       return res.status(401).json({ error: "User no longer exists." });
+    }
 
     const newAccessToken = jwt.sign(
       {
@@ -260,7 +264,7 @@ router.post("/refresh", async (req, res, next) => {
         role: user.rows[0].role,
         school_id: user.rows[0].school_id,
       },
-      process.env.ACCESS_TOKEN_SECRET || process.env.JWT_SECRET,
+      ACCESS_TOKEN_SECRET,
       { expiresIn: "15m" },
     );
 
@@ -294,7 +298,7 @@ router.post(
       const secretHashSlice = user.rows[0].password_hash.substring(0, 10);
       const resetToken = jwt.sign(
         { user_id: user.rows[0].user_id, secret: secretHashSlice },
-        process.env.ACCESS_TOKEN_SECRET || process.env.JWT_SECRET,
+        ACCESS_TOKEN_SECRET,
         { expiresIn: "15m" },
       );
 
@@ -328,20 +332,18 @@ router.post(
   },
 );
 
-router.put("/reset-password", async (req, res, next) => {
+router.put("/reset-password", async (req, res) => {
   try {
     const { token, newPassword } = req.body;
-    const payload = jwt.verify(
-      token,
-      process.env.ACCESS_TOKEN_SECRET || process.env.JWT_SECRET,
-    );
+    const payload = jwt.verify(token, ACCESS_TOKEN_SECRET);
 
     const user = await pool.query(
       "SELECT password_hash FROM users WHERE user_id = $1",
       [payload.user_id],
     );
-    if (user.rows.length === 0)
+    if (user.rows.length === 0) {
       return res.status(404).json({ error: "User not found." });
+    }
 
     const currentHashSlice = user.rows[0].password_hash.substring(0, 10);
     if (payload.secret !== currentHashSlice) {
@@ -367,7 +369,7 @@ router.put("/reset-password", async (req, res, next) => {
   }
 });
 
-router.post("/google", async (req, res, next) => {
+router.post("/google", async (req, res) => {
   const client = await pool.connect();
 
   try {

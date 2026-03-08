@@ -113,6 +113,51 @@ async function queueGradeNotifications({ student, subjectName, academicTerm, isU
   }
 }
 
+async function getReadableReportCard(studentId, user) {
+  const student = await getAccessibleStudent(studentId, user.school_id);
+  if (!student) {
+    return { status: 404, error: "Student not found in your school." };
+  }
+
+  const params = [studentId, user.school_id];
+  let roleFilter = "";
+
+  if (user.role === "Student") {
+    if (student.user_id !== user.user_id) {
+      return { status: 403, error: "You can only view your own report card." };
+    }
+  } else if (user.role === "Parent") {
+    if (student.parent_id !== user.user_id) {
+      return { status: 403, error: "You can only view report cards for your linked child." };
+    }
+  } else if (user.role === "Teacher") {
+    roleFilter = " AND s.teacher_id = $3";
+    params.push(user.user_id);
+  } else if (user.role !== "Admin") {
+    return { status: 403, error: "Access Denied." };
+  }
+
+  const reportCard = await pool.query(
+    `
+      SELECT r.result_id, s.subject_name, r.academic_term, r.test_score, r.exam_score, r.total_score
+      FROM results r
+      JOIN subjects s ON r.subject_id = s.subject_id
+      WHERE r.student_id = $1 AND r.school_id = $2${roleFilter}
+      ORDER BY r.academic_term DESC, s.subject_name ASC
+    `,
+    params,
+  );
+
+  if (user.role === "Teacher" && reportCard.rows.length === 0) {
+    return {
+      status: 403,
+      error: "You can only view report entries for subjects assigned to you.",
+    };
+  }
+
+  return { status: 200, data: reportCard.rows };
+}
+
 router.post("/", authorize, validate(createGradeSchema), async (req, res) => {
   try {
     if (req.user.role !== "Admin" && req.user.role !== "Teacher") {
@@ -222,17 +267,13 @@ router.post("/", authorize, validate(createGradeSchema), async (req, res) => {
 router.get("/student/:student_id", authorize, async (req, res) => {
   try {
     const { student_id } = req.params;
-    const reportCard = await pool.query(
-      `
-        SELECT r.result_id, s.subject_name, r.academic_term, r.test_score, r.exam_score, r.total_score
-        FROM results r
-        JOIN subjects s ON r.subject_id = s.subject_id
-        WHERE r.student_id = $1 AND r.school_id = $2
-        ORDER BY r.academic_term DESC, s.subject_name ASC
-      `,
-      [student_id, req.user.school_id],
-    );
-    res.json(reportCard.rows);
+    const outcome = await getReadableReportCard(student_id, req.user);
+
+    if (outcome.error) {
+      return res.status(outcome.status).json({ error: outcome.error });
+    }
+
+    return res.json(outcome.data);
   } catch (err) {
     res.status(500).json({ error: "Internal Server Error" });
   }
@@ -305,7 +346,7 @@ router.put("/:id", authorize, validate(updateGradeSchema), async (req, res) => {
       userId: req.user.user_id,
       action: "UPDATE_GRADE",
       targetTable: "results",
-      recordId: id,
+      recordId: Number(id),
       oldValue: {
         test_score: oldRecord.test_score,
         exam_score: oldRecord.exam_score,

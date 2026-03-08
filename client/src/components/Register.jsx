@@ -9,7 +9,7 @@ import {
   Hash,
 } from "lucide-react";
 import { GoogleLogin } from "@react-oauth/google";
-import { apiFetchOrThrow } from "../utils/api";
+import { apiFetchOrThrow, setAccessToken } from "../utils/api";
 
 const Register = () => {
   const [searchParams] = useSearchParams();
@@ -33,7 +33,7 @@ const Register = () => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
 
   const handleAuthSuccess = (token) => {
-    localStorage.setItem("token", token);
+    setAccessToken(token);
     setStatusMessage("✅ Account Created! Redirecting...");
     setTimeout(() => navigate("/dashboard", { replace: true }), 1500);
   };
