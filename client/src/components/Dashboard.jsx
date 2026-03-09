@@ -173,6 +173,8 @@ const Dashboard = () => {
               <DashboardHero
                 title={currentTab?.label || "Dashboard"}
                 description={getTabDescription(activeTab, flags)}
+                inviteCode={userData?.role === "Admin" ? userData?.invite_code : null}
+                schoolName={userData?.school_name}
               />
 
               <DashboardContent

@@ -8,7 +8,16 @@ const { sendError, sendSuccess } = require('../utils/response');
 router.get('/', authorize, async (req, res) => {
   try {
     const user = await pool.query(
-      'SELECT full_name, role FROM users WHERE user_id = $1 AND school_id = $2',
+      `
+        SELECT
+          u.full_name,
+          u.role,
+          s.school_name,
+          CASE WHEN u.role = 'Admin' THEN s.invite_code ELSE NULL END AS invite_code
+        FROM users u
+        JOIN schools s ON s.school_id = u.school_id
+        WHERE u.user_id = $1 AND u.school_id = $2
+      `,
       [req.user.user_id, req.user.school_id],
     );
 
@@ -19,6 +28,8 @@ router.get('/', authorize, async (req, res) => {
     const profile = {
       full_name: user.rows[0].full_name,
       role: user.rows[0].role,
+      school_name: user.rows[0].school_name,
+      invite_code: user.rows[0].invite_code,
       welcome_message: `Welcome back, ${user.rows[0].full_name}!`,
     };
 

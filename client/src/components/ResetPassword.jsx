@@ -1,13 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import {
-  ArrowLeft,
-  KeyRound,
-  Lock,
-  ShieldCheck,
-  Eye,
-  EyeOff,
-} from "lucide-react";
+import { ArrowLeft, KeyRound, Lock, ShieldCheck, Eye, EyeOff } from "lucide-react";
 import { apiFetchOrThrow } from "../utils/api";
 
 const ResetPassword = () => {
@@ -21,15 +14,14 @@ const ResetPassword = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  const passwordChecks = useMemo(
+  const checks = useMemo(
     () => ({
       minLength: newPassword.length >= 6,
+      hasNumber: /\d/.test(newPassword),
       matches: Boolean(confirmPassword) && newPassword === confirmPassword,
     }),
     [newPassword, confirmPassword],
   );
-
-  const isSuccess = status.includes("✅");
 
   const onSubmit = async (e) => {
     e.preventDefault();
@@ -40,6 +32,7 @@ const ResetPassword = () => {
     }
 
     setIsSubmitting(true);
+    setStatus("Updating password...");
 
     try {
       const data = await apiFetchOrThrow(
@@ -52,7 +45,7 @@ const ResetPassword = () => {
       );
 
       setStatus(data?.message || "✅ Password successfully reset!");
-      setTimeout(() => navigate("/login", { replace: true }), 2500);
+      setTimeout(() => navigate("/login", { replace: true }), 2200);
     } catch (err) {
       setStatus(`❌ ${err.message}`);
     } finally {
@@ -60,23 +53,11 @@ const ResetPassword = () => {
     }
   };
 
-  const CheckItem = ({ done, text }) => (
-    <div className="flex items-center justify-center gap-2 text-sm">
-      <span
-        className={`inline-flex h-2.5 w-2.5 rounded-full ${
-          done ? "bg-emerald-400" : "bg-white/35"
-        }`}
-        aria-hidden="true"
-      />
-      <span className={done ? "text-emerald-200" : "text-white/82"}>
-        {text}
-      </span>
-    </div>
-  );
+  const isSuccess = status.includes("✅");
 
   return (
     <div
-      className="relative min-h-screen overflow-hidden bg-slate-900"
+      className="relative min-h-screen overflow-hidden bg-slate-950"
       style={{
         backgroundImage: "url('/images/edusync-auth-bg.jpg')",
         backgroundSize: "cover",
@@ -84,181 +65,83 @@ const ResetPassword = () => {
         backgroundRepeat: "no-repeat",
       }}
     >
-      <div className="absolute inset-0 bg-slate-900/28" />
-      <div className="absolute inset-0 bg-gradient-to-br from-emerald-900/18 via-slate-800/12 to-cyan-900/22" />
+      <div className="absolute inset-0 bg-slate-950/35" />
+      <div className="absolute inset-0 bg-gradient-to-br from-emerald-950/35 via-slate-950/20 to-cyan-950/35" />
 
-      <div
-        className="pointer-events-none absolute left-6 top-8 h-40 w-40 rounded-full bg-emerald-300/20 blur-3xl sm:h-64 sm:w-64"
-        aria-hidden="true"
-      />
-      <div
-        className="pointer-events-none absolute bottom-0 right-0 h-40 w-40 rounded-full bg-cyan-300/20 blur-3xl sm:h-64 sm:w-64"
-        aria-hidden="true"
-      />
-
-      <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-6 sm:px-6 sm:py-10">
-        <div className="grid w-full max-w-6xl overflow-hidden rounded-[2rem] border border-white/25 bg-white/12 shadow-[0_20px_80px_rgba(0,0,0,0.22)] backdrop-blur-2xl md:grid-cols-2">
-          <div className="hidden border-r border-white/15 bg-white/10 p-8 text-white md:flex md:flex-col md:justify-center lg:p-10">
-            <div className="mx-auto w-full max-w-lg text-center">
-              <div className="mb-6 inline-flex h-16 w-16 items-center justify-center rounded-2xl border border-white/25 bg-white/18 shadow-lg backdrop-blur-md">
-                <ShieldCheck size={28} className="text-white" />
+      <div className="relative z-10 flex min-h-screen items-center justify-center px-3 py-4 sm:px-6 sm:py-8">
+        <div className="grid w-full max-w-5xl overflow-hidden rounded-[1.75rem] border border-white/20 bg-white/10 shadow-[0_20px_70px_rgba(0,0,0,0.28)] backdrop-blur-2xl md:grid-cols-[1.05fr_0.95fr]">
+          <aside className="hidden border-r border-white/15 bg-white/8 p-7 text-white md:flex md:flex-col md:justify-center lg:p-8">
+            <div className="mx-auto w-full max-w-sm">
+              <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/20 bg-white/12 shadow-lg">
+                <ShieldCheck size={20} className="text-white" />
               </div>
 
-              <p className="text-xs font-bold uppercase tracking-[0.35em] text-white/80">
+              <p className="mt-4 text-[10px] font-bold uppercase tracking-[0.32em] text-white/75">
                 EduSync Security
               </p>
 
-              <h1 className="mt-5 text-4xl font-black leading-tight text-slate-950">
-                Create a stronger password and protect your account.
+              <h1 className="mt-4 max-w-xs text-3xl font-black leading-tight text-slate-950">
+                Create a new secure password.
               </h1>
 
-              <p className="mx-auto mt-5 max-w-md text-base leading-8 text-white/90">
-                Choose a new password you can remember easily but others cannot
-                guess. Once updated, you’ll be redirected to log in again.
+              <p className="mt-3 max-w-sm text-sm leading-6 text-white/88">
+                Choose a fresh password, confirm it once, and sign in again with
+                confidence.
               </p>
 
-              <div className="mt-8 rounded-[1.75rem] border border-white/20 bg-white/14 p-6 backdrop-blur-md">
-                <div className="space-y-4">
-                  <p className="text-base leading-8 text-white/92">
-                    Your new password should be secure and different from your
-                    old one.
-                  </p>
-
-                  <div className="rounded-2xl bg-white/10 px-4 py-3 text-base text-white/92">
-                    Use at least 6 characters.
-                  </div>
-
-                  <div className="rounded-2xl bg-white/10 px-4 py-3 text-base text-white/92">
-                    Make sure both fields match before submitting.
-                  </div>
-                </div>
+              <div className="mt-5 flex flex-wrap gap-2">
+                <Hint ok={checks.minLength} text="6+ characters" />
+                <Hint ok={checks.hasNumber} text="Include a number" />
+                <Hint ok={checks.matches} text="Passwords match" />
               </div>
             </div>
-          </div>
+          </aside>
 
-          <div className="flex items-center justify-center p-4 sm:p-6 md:p-8 lg:p-10">
-            <div className="w-full max-w-md rounded-[1.75rem] border border-white/22 bg-white/14 p-6 text-center shadow-[0_10px_40px_rgba(0,0,0,0.14)] backdrop-blur-xl sm:p-7">
-              <div className="mb-6">
-                <div className="mx-auto mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl border border-white/25 bg-gradient-to-br from-emerald-500/90 to-teal-600/90 text-white shadow-lg shadow-emerald-900/25">
-                  <KeyRound size={26} />
+          <main className="flex items-center justify-center p-3 sm:p-5 md:p-6">
+            <div className="w-full max-w-md rounded-[1.4rem] border border-white/20 bg-white/12 p-4 text-white shadow-[0_10px_32px_rgba(0,0,0,0.18)] backdrop-blur-xl sm:p-5">
+              <div className="text-center">
+                <div className="mx-auto inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-gradient-to-br from-emerald-500 to-cyan-600 shadow-lg shadow-emerald-950/30">
+                  <KeyRound size={18} />
                 </div>
-
-                <h2 className="text-3xl font-black tracking-tight text-white">
-                  Create New Password
-                </h2>
-
-                <p className="mx-auto mt-3 max-w-sm text-base leading-7 text-white/88">
-                  Enter your new password below to complete your password reset.
+                <h2 className="mt-3 text-2xl font-black tracking-tight">Set New Password</h2>
+                <p className="mt-1 text-sm text-white/78">
+                  Enter and confirm your new password below.
                 </p>
               </div>
 
-              <form onSubmit={onSubmit} className="space-y-5">
-                <div className="text-left">
-                  <label
-                    htmlFor="newPassword"
-                    className="mb-2 block text-xs font-bold uppercase tracking-wider text-white/90"
-                  >
-                    New Password
-                  </label>
+              <form onSubmit={onSubmit} className="mt-4 space-y-3">
+                <PasswordField
+                  id="newPassword"
+                  label="New Password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  visible={showPassword}
+                  toggleVisible={() => setShowPassword((prev) => !prev)}
+                  disabled={isSubmitting}
+                />
 
-                  <div className="relative">
-                    <Lock
-                      className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-300"
-                      size={18}
-                      aria-hidden="true"
-                    />
-                    <input
-                      id="newPassword"
-                      type={showPassword ? "text" : "password"}
-                      className="w-full rounded-2xl border border-white/20 bg-white/85 py-3.5 pl-11 pr-11 text-sm font-medium text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-emerald-400 focus:bg-white focus:ring-4 focus:ring-emerald-500/20"
-                      placeholder="••••••••"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      required
-                      minLength="6"
-                      disabled={isSubmitting}
-                    />
-
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword((prev) => !prev)}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600"
-                      aria-label={
-                        showPassword ? "Hide new password" : "Show new password"
-                      }
-                    >
-                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="text-left">
-                  <label
-                    htmlFor="confirmPassword"
-                    className="mb-2 block text-xs font-bold uppercase tracking-wider text-white/90"
-                  >
-                    Confirm Password
-                  </label>
-
-                  <div className="relative">
-                    <Lock
-                      className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-300"
-                      size={18}
-                      aria-hidden="true"
-                    />
-                    <input
-                      id="confirmPassword"
-                      type={showConfirmPassword ? "text" : "password"}
-                      className="w-full rounded-2xl border border-white/20 bg-white/85 py-3.5 pl-11 pr-11 text-sm font-medium text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-emerald-400 focus:bg-white focus:ring-4 focus:ring-emerald-500/20"
-                      placeholder="••••••••"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      required
-                      disabled={isSubmitting}
-                    />
-
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmPassword((prev) => !prev)}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-slate-700"
-                      aria-label={
-                        showConfirmPassword
-                          ? "Hide confirm password"
-                          : "Show confirm password"
-                      }
-                    >
-                      {showConfirmPassword ? (
-                        <EyeOff size={18} />
-                      ) : (
-                        <Eye size={18} />
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-2 rounded-2xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-sm">
-                  <CheckItem
-                    done={passwordChecks.minLength}
-                    text="Minimum of 6 characters"
-                  />
-                  <CheckItem
-                    done={passwordChecks.matches}
-                    text="Passwords match"
-                  />
-                </div>
+                <PasswordField
+                  id="confirmPassword"
+                  label="Confirm Password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  visible={showConfirmPassword}
+                  toggleVisible={() => setShowConfirmPassword((prev) => !prev)}
+                  disabled={isSubmitting}
+                />
 
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="flex w-full items-center justify-center rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-3.5 text-sm font-bold text-white shadow-lg shadow-emerald-900/25 transition-all hover:-translate-y-0.5 hover:from-emerald-700 hover:to-teal-700 disabled:cursor-not-allowed disabled:opacity-70"
+                  className="flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-950/25 transition hover:-translate-y-0.5 hover:from-emerald-600 hover:to-cyan-700 disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   {isSubmitting ? "Updating..." : "Update Password"}
                 </button>
               </form>
 
-              {status && (
+              {status ? (
                 <div
-                  className={`mt-5 rounded-2xl border px-4 py-3 text-sm font-semibold leading-6 ${
+                  className={`mt-3 rounded-xl border px-3 py-2.5 text-sm font-semibold ${
                     isSuccess
                       ? "border-emerald-200/70 bg-emerald-100/90 text-emerald-800"
                       : "border-red-200/70 bg-red-100/90 text-red-700"
@@ -267,28 +150,70 @@ const ResetPassword = () => {
                 >
                   {status}
                 </div>
-              )}
+              ) : null}
 
-              <div className="mt-6 flex justify-center">
+              <div className="mt-4 flex justify-center">
                 <Link
                   to="/login"
-                  className="inline-flex items-center gap-2 text-sm font-bold text-white transition-colors hover:text-emerald-200"
+                  className="inline-flex items-center gap-2 text-sm font-semibold text-white/86 transition hover:text-white"
                 >
-                  <ArrowLeft size={16} />
+                  <ArrowLeft size={15} />
                   Back to Login
                 </Link>
               </div>
-
-              <div className="mt-6 rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-center text-xs leading-6 text-white/88 md:hidden">
-                Use a strong password and keep it private. You’ll be redirected
-                to the login page after a successful update.
-              </div>
             </div>
-          </div>
+          </main>
         </div>
       </div>
     </div>
   );
 };
+
+const PasswordField = ({ id, label, value, onChange, visible, toggleVisible, disabled }) => (
+  <div className="text-left">
+    <label
+      htmlFor={id}
+      className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.16em] text-white/80"
+    >
+      {label}
+    </label>
+    <div className="relative">
+      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+        <Lock size={15} />
+      </span>
+      <input
+        id={id}
+        type={visible ? "text" : "password"}
+        className="w-full rounded-xl border border-white/20 bg-white/88 py-2.5 pl-10 pr-10 text-sm font-medium text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-400 focus:bg-white focus:ring-4 focus:ring-emerald-500/20"
+        placeholder="••••••••"
+        value={value}
+        onChange={onChange}
+        required
+        minLength="6"
+        disabled={disabled}
+      />
+      <button
+        type="button"
+        onClick={toggleVisible}
+        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600"
+        aria-label={visible ? `Hide ${label}` : `Show ${label}`}
+      >
+        {visible ? <EyeOff size={16} /> : <Eye size={16} />}
+      </button>
+    </div>
+  </div>
+);
+
+const Hint = ({ ok, text }) => (
+  <span
+    className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+      ok
+        ? "border-emerald-300/60 bg-emerald-400/15 text-emerald-100"
+        : "border-white/15 bg-white/8 text-white/65"
+    }`}
+  >
+    {text}
+  </span>
+);
 
 export default ResetPassword;

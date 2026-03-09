@@ -15,7 +15,6 @@ const Login = () => {
 
   const navigate = useNavigate();
   const location = useLocation();
-
   const redirectPath = location.state?.from?.pathname || "/dashboard";
   const isSuccess = statusMessage.includes("✅");
 
@@ -28,7 +27,7 @@ const Login = () => {
   const onSubmitForm = async (e) => {
     e.preventDefault();
     setIsLoading(true);
-    setStatusMessage("Authenticating...");
+    setStatusMessage("Signing you in...");
 
     try {
       const data = await apiFetchOrThrow(
@@ -93,241 +92,193 @@ const Login = () => {
         backgroundRepeat: "no-repeat",
       }}
     >
-      <div className="absolute inset-0 bg-slate-950/20" />
-      <div className="absolute inset-0 bg-gradient-to-br from-sky-900/10 via-slate-900/8 to-indigo-900/14" />
-
-      <div
-        className="pointer-events-none absolute left-4 top-6 h-32 w-32 rounded-full bg-sky-300/15 blur-3xl sm:h-56 sm:w-56"
-        aria-hidden="true"
-      />
-      <div
-        className="pointer-events-none absolute bottom-0 right-0 h-32 w-32 rounded-full bg-indigo-300/15 blur-3xl sm:h-56 sm:w-56"
-        aria-hidden="true"
-      />
+      <div className="absolute inset-0 bg-slate-950/35" />
+      <div className="absolute inset-0 bg-gradient-to-br from-sky-950/35 via-slate-950/20 to-indigo-950/35" />
 
       <div className="relative z-10 flex min-h-screen items-center justify-center px-3 py-4 sm:px-6 sm:py-8">
-        <div className="w-full max-w-6xl">
-          <div className="md:grid md:grid-cols-2 md:overflow-hidden md:rounded-[2rem] md:border md:border-white/25 md:bg-white/12 md:shadow-[0_20px_80px_rgba(0,0,0,0.22)] md:backdrop-blur-2xl">
-            <div className="hidden border-r border-white/15 bg-white/10 p-8 text-white md:flex md:flex-col md:justify-center lg:p-10">
-              <div className="mx-auto w-full max-w-lg text-center">
-                <div className="mb-6 inline-flex h-16 w-16 items-center justify-center rounded-2xl border border-white/25 bg-white/18 shadow-lg backdrop-blur-md">
-                  <ShieldCheck size={28} className="text-white" />
-                </div>
+        <div className="grid w-full max-w-5xl overflow-hidden rounded-[1.75rem] border border-white/20 bg-white/10 shadow-[0_20px_70px_rgba(0,0,0,0.28)] backdrop-blur-2xl md:grid-cols-[1.05fr_0.95fr]">
+          <aside className="hidden border-r border-white/15 bg-white/8 p-7 text-white md:flex md:flex-col md:justify-center lg:p-8">
+            <div className="mx-auto w-full max-w-sm">
+              <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/20 bg-white/12 shadow-lg">
+                <ShieldCheck size={20} className="text-white" />
+              </div>
 
-                <p className="text-xs font-bold uppercase tracking-[0.35em] text-white/80">
-                  EduSync Portal
-                </p>
+              <p className="mt-4 text-[10px] font-bold uppercase tracking-[0.32em] text-white/75">
+                EduSync Portal
+              </p>
 
-                <h1 className="mt-5 text-4xl font-black leading-tight text-slate-950">
-                  Welcome back to your smart learning space.
-                </h1>
+              <h1 className="mt-4 max-w-xs text-3xl font-black leading-tight text-slate-950">
+                Welcome back to your learning space.
+              </h1>
 
-                <p className="mx-auto mt-5 max-w-md text-base leading-6 text-white">
-                  Sign in to manage learning activities, track academic
-                  progress, and stay connected across your school environment.
-                </p>
+              <p className="mt-3 max-w-sm text-sm leading-6 text-white/88">
+                Sign in fast, track school activity, and keep your academic
+                workflow moving from one secure portal.
+              </p>
 
-                <div className="mt-8 rounded-[1.75rem] border border-white/20 bg-white/14 p-6 backdrop-blur-md">
-                  <div className="flex items-start justify-center gap-3 text-left">
-                    <div className="mt-2 h-2.5 w-2.5 rounded-full bg-emerald-300" />
-                    <p className="text-base leading-6 text-white">
-                      Secure access for students, teachers, parents, and admins.
-                    </p>
+              <div className="mt-5 space-y-3 rounded-[1.35rem] border border-white/15 bg-white/10 p-4">
+                {[
+                  "Secure access for admins, teachers, students, and parents.",
+                  "One compact dashboard for academics and communication.",
+                ].map((item) => (
+                  <div key={item} className="flex items-start gap-3">
+                    <span className="mt-2 h-2 w-2 rounded-full bg-emerald-300" />
+                    <p className="text-sm leading-6 text-white/88">{item}</p>
                   </div>
-
-                  <div className="mt-4 flex items-start justify-center gap-3 text-left">
-                    <div className="mt-2 h-2.5 w-2.5 rounded-full bg-cyan-300" />
-                    <p className="text-base leading-6 text-white">
-                      Built to simplify school coordination and learning
-                      management.
-                    </p>
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
+          </aside>
 
-            <div className="flex items-center justify-center md:p-8 lg:p-10">
-              <div className="w-full max-w-[18.5rem] rounded-[1.2rem] border border-white/20 bg-white/14 px-3 py-3 text-center shadow-[0_10px_30px_rgba(0,0,0,0.16)] backdrop-blur-xl sm:max-w-[22rem] sm:px-4 sm:py-4 md:max-w-md md:rounded-[1.75rem] md:border-white/22 md:px-6 md:py-6">
-                <div className="mb-3 sm:mb-4">
-                  <div className="mx-auto mb-2 inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/25 bg-gradient-to-br from-sky-500/90 to-indigo-600/90 text-white shadow-lg shadow-sky-900/25 sm:h-12 sm:w-12 md:h-16 md:w-16 md:rounded-2xl">
-                    <LogIn size={16} className="sm:h-5 sm:w-5 md:h-7 md:w-7" />
-                  </div>
-
-                  <h2 className="text-[1.55rem] font-black tracking-tight text-white md:text-3xl">
-                    Welcome Back
-                  </h2>
-
-                  <p className="mx-auto mt-1.5 max-w-[15rem] text-[13px] leading-[1.15rem] text-white md:mt-3 md:max-w-sm md:text-base md:leading-6">
-                    Enter your credentials to access the portal.
-                  </p>
+          <main className="flex items-center justify-center p-3 sm:p-5 md:p-6">
+            <div className="w-full max-w-md rounded-[1.4rem] border border-white/20 bg-white/12 p-4 text-white shadow-[0_10px_32px_rgba(0,0,0,0.18)] backdrop-blur-xl sm:p-5">
+              <div className="text-center">
+                <div className="mx-auto inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-gradient-to-br from-sky-500 to-indigo-600 shadow-lg shadow-indigo-950/30">
+                  <LogIn size={18} />
                 </div>
+                <h2 className="mt-3 text-2xl font-black tracking-tight">Welcome Back</h2>
+                <p className="mt-1 text-sm text-white/78">
+                  Use your email or Google account to continue.
+                </p>
+              </div>
 
-                {GOOGLE_AUTH_ENABLED ? (
-                  <>
-                    <div className="mb-3 flex justify-center">
-                      <div className="w-full overflow-hidden rounded-xl bg-white/90 p-1 shadow-sm md:rounded-2xl">
-                        <div className="flex justify-center">
-                          <GoogleLogin
-                            onSuccess={onGoogleSuccess}
-                            onError={() => {
-                              setIsLoading(false);
-                              setStatusMessage(
-                                "❌ Google popup closed or failed",
-                              );
-                            }}
-                            theme="outline"
-                            size="large"
-                            shape="rectangular"
-                            text="signin_with"
-                            width="260"
-                          />
-                        </div>
-                      </div>
+              {GOOGLE_AUTH_ENABLED ? (
+                <div className="mt-4 space-y-3">
+                  <div className="overflow-hidden rounded-xl bg-white/90 p-1">
+                    <div className="flex justify-center">
+                      <GoogleLogin
+                        onSuccess={onGoogleSuccess}
+                        onError={() => {
+                          setIsLoading(false);
+                          setStatusMessage("❌ Google popup closed or failed.");
+                        }}
+                        theme="outline"
+                        size="large"
+                        shape="rectangular"
+                        text="signin_with"
+                        width="280"
+                      />
                     </div>
-
-                    <div className="my-3 flex items-center">
-                      <div className="h-px flex-1 bg-white/20" />
-                      <span className="mx-3 text-[10px] font-bold uppercase tracking-[0.24em] text-white/75 md:mx-4 md:text-[11px] md:tracking-[0.28em]">
-                        Or continue with email
-                      </span>
-                      <div className="h-px flex-1 bg-white/20" />
-                    </div>
-                  </>
-                ) : (
-                  <div className="mb-3 rounded-xl border border-amber-200/70 bg-amber-100/90 px-3 py-2 text-sm text-amber-900 md:mb-4 md:rounded-2xl md:px-4 md:py-3">
-                    Google sign-in is unavailable because{" "}
-                    <code>VITE_GOOGLE_CLIENT_ID</code> is not configured.
                   </div>
-                )}
+                  <div className="flex items-center gap-3">
+                    <div className="h-px flex-1 bg-white/15" />
+                    <span className="text-[10px] font-bold uppercase tracking-[0.26em] text-white/60">
+                      or continue with email
+                    </span>
+                    <div className="h-px flex-1 bg-white/15" />
+                  </div>
+                </div>
+              ) : null}
 
-                <form
-                  onSubmit={onSubmitForm}
-                  className="space-y-2.5 md:space-y-4"
-                >
-                  <div className="text-left">
+              <form onSubmit={onSubmitForm} className="mt-4 space-y-3">
+                <Field
+                  id="email"
+                  type="email"
+                  label="Email"
+                  icon={<Mail size={15} />}
+                  placeholder="Email address"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={isLoading}
+                />
+
+                <div className="text-left">
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
                     <label
-                      htmlFor="email"
-                      className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-white/90 md:mb-2 md:text-xs"
+                      htmlFor="password"
+                      className="block text-[11px] font-bold uppercase tracking-[0.16em] text-white/80"
                     >
-                      Email Address
+                      Password
                     </label>
-
-                    <div className="relative">
-                      <Mail
-                        className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-300 md:left-4"
-                        size={16}
-                        aria-hidden="true"
-                      />
-                      <input
-                        id="email"
-                        type="email"
-                        className="w-full rounded-xl border border-white/20 bg-white/85 py-2 pl-10 pr-3.5 text-sm font-medium text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-sky-400 focus:bg-white focus:ring-4 focus:ring-sky-500/20 md:rounded-2xl md:py-3 md:pl-11 md:pr-4"
-                        placeholder="Email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        required
-                        disabled={isLoading}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="text-left">
-                    <div className="mb-1.5 flex items-end justify-between gap-2 md:mb-2 md:gap-3">
-                      <label
-                        htmlFor="password"
-                        className="block text-[10px] font-bold uppercase tracking-wider text-white/90 md:text-xs"
-                      >
-                        Password
-                      </label>
-
-                      <Link
-                        to="/forgot-password"
-                        className="text-[11px] font-bold text-blue-200 transition-colors hover:text-blue-100 md:text-xs"
-                      >
-                        Forgot Password?
-                      </Link>
-                    </div>
-
-                    <div className="relative">
-                      <Lock
-                        className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-300 md:left-4"
-                        size={16}
-                        aria-hidden="true"
-                      />
-
-                      <input
-                        id="password"
-                        type={showPassword ? "text" : "password"}
-                        className="w-full rounded-xl border border-white/20 bg-white/85 py-2 pl-10 pr-10 text-sm font-medium text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-sky-400 focus:bg-white focus:ring-4 focus:ring-sky-500/20 md:rounded-2xl md:py-3 md:pl-11 md:pr-11"
-                        placeholder="••••••••"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required
-                        disabled={isLoading}
-                      />
-
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword((prev) => !prev)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-slate-700 md:right-4"
-                        aria-label={
-                          showPassword ? "Hide password" : "Show password"
-                        }
-                      >
-                        {showPassword ? (
-                          <EyeOff size={17} />
-                        ) : (
-                          <Eye size={17} />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-sky-900/25 transition-all hover:-translate-y-0.5 hover:from-sky-700 hover:to-indigo-700 disabled:cursor-not-allowed disabled:opacity-70 md:rounded-2xl md:py-3.5"
-                  >
-                    <LogIn size={16} />
-                    {isLoading ? "Authenticating..." : "Sign In"}
-                  </button>
-                </form>
-
-                {statusMessage && (
-                  <div
-                    className={`mt-3 rounded-xl border px-3 py-2 text-sm font-semibold leading-5 md:mt-4 md:rounded-2xl md:px-4 md:py-3 ${
-                      isSuccess
-                        ? "border-emerald-200/70 bg-emerald-100/90 text-emerald-800"
-                        : "border-red-200/70 bg-red-100/90 text-red-700"
-                    }`}
-                    aria-live="polite"
-                  >
-                    {statusMessage}
-                  </div>
-                )}
-
-                <div className="mt-3 flex justify-center">
-                  <p className="text-sm text-white">
-                    Don&apos;t have an account?{" "}
                     <Link
-                      to="/register"
-                      className="font-bold text-white underline decoration-white/50 underline-offset-4 transition hover:text-sky-200"
+                      to="/forgot-password"
+                      className="text-[11px] font-semibold text-blue-200 hover:text-blue-100"
                     >
-                      Sign Up
+                      Forgot Password?
                     </Link>
-                  </p>
+                  </div>
+
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                      <Lock size={15} />
+                    </span>
+                    <input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      className="w-full rounded-xl border border-white/20 bg-white/88 py-2.5 pl-10 pr-10 text-sm font-medium text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:bg-white focus:ring-4 focus:ring-sky-500/20"
+                      placeholder="Password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      disabled={isLoading}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((prev) => !prev)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
 
-                <div className="mt-3 rounded-xl border border-white/15 bg-white/10 px-3 py-1.5 text-center text-[10px] leading-[1.1rem] text-white md:mt-5 md:rounded-2xl md:px-4 md:py-3 md:text-xs">
-                  Access your school portal securely from any device.
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-sky-950/25 transition hover:-translate-y-0.5 hover:from-sky-600 hover:to-indigo-700 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {isLoading ? "Signing in..." : "Sign In"}
+                </button>
+              </form>
+
+              {statusMessage ? (
+                <div
+                  className={`mt-3 rounded-xl border px-3 py-2.5 text-sm font-semibold ${
+                    isSuccess
+                      ? "border-emerald-200/70 bg-emerald-100/90 text-emerald-800"
+                      : "border-red-200/70 bg-red-100/90 text-red-700"
+                  }`}
+                  aria-live="polite"
+                >
+                  {statusMessage}
                 </div>
+              ) : null}
+
+              <div className="mt-4 flex items-center justify-between gap-3 text-xs text-white/72">
+                <p>Don’t have an account?</p>
+                <Link to="/register" className="font-bold text-white hover:text-blue-200">
+                  Sign Up
+                </Link>
               </div>
             </div>
-          </div>
+          </main>
         </div>
       </div>
     </div>
   );
 };
+
+const Field = ({ id, label, icon, ...props }) => (
+  <div className="text-left">
+    <label
+      htmlFor={id}
+      className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.16em] text-white/80"
+    >
+      {label}
+    </label>
+    <div className="relative">
+      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+        {icon}
+      </span>
+      <input
+        id={id}
+        className="w-full rounded-xl border border-white/20 bg-white/88 py-2.5 pl-10 pr-3 text-sm font-medium text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:bg-white focus:ring-4 focus:ring-sky-500/20"
+        required
+        {...props}
+      />
+    </div>
+  </div>
+);
 
 export default Login;

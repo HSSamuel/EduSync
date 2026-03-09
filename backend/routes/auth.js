@@ -60,12 +60,15 @@ const forgotPasswordLimiter = rateLimit({
 });
 
 const registerSchema = z.object({
-  full_name: z.string().min(3, 'Name must be at least 3 characters'),
-  email: z.string().email('Invalid email format'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
-  role: z.enum(['Admin', 'Teacher', 'Student', 'Parent']),
+  full_name: z.string().min(3, "Name must be at least 3 characters"),
+  email: z.string().email("Invalid email format"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  role: z.enum(["Admin", "Teacher", "Student", "Parent"]),
   school_name: z.string().optional(),
-  invite_code: z.string().trim().min(1, 'School Invite Code is required').optional(),
+  invite_code: z.preprocess((val) => {
+    if (typeof val === "string" && val.trim() === "") return undefined;
+    return val;
+  }, z.string().trim().min(1, "School Invite Code is required").optional()),
 });
 
 const loginSchema = z.object({
@@ -164,11 +167,12 @@ router.post('/register', registerLimiter, validate(registerSchema), async (req, 
         `
           INSERT INTO schools (school_name, contact_email, invite_code)
           VALUES ($1, $2, $3)
-          RETURNING school_id
+          RETURNING school_id, school_name, invite_code
         `,
         [school_name, email, newInviteCode],
       );
       finalSchoolId = newSchool.rows[0].school_id;
+      req.registrationSchool = newSchool.rows[0];
     } else {
       if (!invite_code) {
         await client.query('ROLLBACK');
@@ -203,7 +207,21 @@ router.post('/register', registerLimiter, validate(registerSchema), async (req, 
 
     await client.query('COMMIT');
 
-    return respondWithSession(res, req, newUser.rows[0], 'Registration successful!');
+    return respondWithSession(
+      res,
+      req,
+      newUser.rows[0],
+      'Registration successful!',
+      req.registrationSchool
+        ? {
+            school: {
+              school_id: req.registrationSchool.school_id,
+              school_name: req.registrationSchool.school_name,
+              invite_code: req.registrationSchool.invite_code,
+            },
+          }
+        : {},
+    );
   } catch (err) {
     await client.query('ROLLBACK');
     next(err);
@@ -437,11 +455,12 @@ router.post('/google', validate(googleAuthSchema), async (req, res, next) => {
           `
             INSERT INTO schools (school_name, contact_email, invite_code)
             VALUES ($1, $2, $3)
-            RETURNING school_id
+            RETURNING school_id, school_name, invite_code
           `,
           [school_name, email, newInviteCode],
         );
         final_school_id = newSchool.rows[0].school_id;
+        req.registrationSchool = newSchool.rows[0];
       } else if (invite_code) {
         const schoolLookup = await client.query('SELECT school_id FROM schools WHERE invite_code = $1', [
           invite_code,
@@ -480,6 +499,15 @@ router.post('/google', validate(googleAuthSchema), async (req, res, next) => {
       req,
       { user_id, full_name, email, role: final_role, school_id: final_school_id },
       'Google authentication successful!',
+      req.registrationSchool
+        ? {
+            school: {
+              school_id: req.registrationSchool.school_id,
+              school_name: req.registrationSchool.school_name,
+              invite_code: req.registrationSchool.invite_code,
+            },
+          }
+        : {},
     );
   } catch (err) {
     await client.query('ROLLBACK');
