@@ -16,8 +16,9 @@ const SchoolVaultTab = ({ isAdmin }) => {
       });
 
       if (response.ok) {
-        const docs = await response.json();
-        setDocuments(Array.isArray(docs) ? docs : []);
+        const payload = await response.json().catch(() => ({}));
+        const docs = Array.isArray(payload?.data) ? payload.data : [];
+        setDocuments(docs);
       } else {
         const err = await response.json().catch(() => ({}));
         console.error("Failed to fetch documents:", err);
@@ -46,7 +47,8 @@ const SchoolVaultTab = ({ isAdmin }) => {
       });
 
       if (response.ok) {
-        const newDoc = await response.json().catch(() => null);
+        const payload = await response.json().catch(() => null);
+        const newDoc = payload?.data || null;
         alert("✅ Document Uploaded to Vault!");
         e.target.reset();
 

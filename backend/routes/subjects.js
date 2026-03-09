@@ -5,6 +5,7 @@ const authorize = require("../middleware/authorize");
 const { logAudit } = require("../utils/auditLogger");
 const { z } = require("zod");
 const validate = require("../middleware/validate");
+const { sendError, sendSuccess } = require("../utils/response");
 
 const subjectSchema = z.object({
   subject_name: z.string().trim().min(2, "Subject name must be at least 2 characters"),
@@ -14,7 +15,7 @@ const subjectSchema = z.object({
 router.post("/", authorize, validate(subjectSchema), async (req, res) => {
   try {
     if (req.user.role !== "Admin") {
-      return res.status(403).json({ error: "Access Denied." });
+      return sendError(res, { status: 403, message: "Access Denied." });
     }
 
     const { subject_name, teacher_id } = req.body;
@@ -27,11 +28,11 @@ router.post("/", authorize, validate(subjectSchema), async (req, res) => {
       );
 
       if (teacherCheck.rows.length === 0) {
-        return res.status(404).json({ error: "Teacher not found in your school." });
+        return sendError(res, { status: 404, message: "Teacher not found in your school." });
       }
 
       if (teacherCheck.rows[0].role !== "Teacher") {
-        return res.status(400).json({ error: "Assigned user must be a teacher." });
+        return sendError(res, { status: 400, message: "Assigned user must be a teacher." });
       }
     }
 
@@ -48,10 +49,14 @@ router.post("/", authorize, validate(subjectSchema), async (req, res) => {
       newValue: newSubject.rows[0],
     });
 
-    res.json(newSubject.rows[0]);
+    return sendSuccess(res, {
+      status: 201,
+      message: "Subject created successfully.",
+      data: newSubject.rows[0],
+    });
   } catch (err) {
     console.error(err.message);
-    res.status(500).send("Server Error");
+    return sendError(res, { status: 500, message: "Internal Server Error" });
   }
 });
 
@@ -71,17 +76,17 @@ router.get("/", authorize, async (req, res) => {
       );
     }
 
-    res.json(subjects.rows);
+    return sendSuccess(res, { data: subjects.rows });
   } catch (err) {
     console.error(err.message);
-    res.status(500).send("Server Error");
+    return sendError(res, { status: 500, message: "Internal Server Error" });
   }
 });
 
 router.delete("/:id", authorize, async (req, res) => {
   try {
     if (req.user.role !== "Admin") {
-      return res.status(403).json({ error: "Access Denied. Only Admins can delete subjects." });
+      return sendError(res, { status: 403, message: "Access Denied. Only Admins can delete subjects." });
     }
 
     const { id } = req.params;
@@ -91,7 +96,7 @@ router.delete("/:id", authorize, async (req, res) => {
     );
 
     if (subjectLookup.rows.length === 0) {
-      return res.status(404).json({ error: "Subject not found." });
+      return sendError(res, { status: 404, message: "Subject not found." });
     }
 
     await pool.query(
@@ -107,10 +112,10 @@ router.delete("/:id", authorize, async (req, res) => {
       oldValue: subjectLookup.rows[0],
     });
 
-    res.json({ message: "Subject deleted successfully!" });
+    return sendSuccess(res, { message: "Subject deleted successfully!" });
   } catch (err) {
     console.error(err.message);
-    res.status(500).json({ error: "Internal Server Error" });
+    return sendError(res, { status: 500, message: "Internal Server Error" });
   }
 });
 

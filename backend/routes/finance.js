@@ -8,6 +8,7 @@ const { escapeHtml } = require("../utils/html");
 const { isoDateRegex } = require("../utils/schoolValidation");
 const { z } = require("zod");
 const validate = require("../middleware/validate");
+const { sendError, sendSuccess } = require("../utils/response");
 require("dotenv").config();
 
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
@@ -49,7 +50,7 @@ router.post("/invoices", authorize, validate(createInvoiceSchema), async (req, r
 
   try {
     if (req.user.role !== "Admin") {
-      return res.status(403).json({ error: "Access Denied." });
+      return sendError(res, { status: 403, message: "Access Denied." });
     }
 
     const { student_id, title, amount, due_date } = req.body;
@@ -70,7 +71,7 @@ router.post("/invoices", authorize, validate(createInvoiceSchema), async (req, r
 
     if (studentQuery.rows.length === 0) {
       await client.query("ROLLBACK");
-      return res.status(404).json({ error: "Student not found in your school." });
+      return sendError(res, { status: 404, message: "Student not found in your school." });
     }
 
     const student = studentQuery.rows[0];
@@ -111,7 +112,11 @@ router.post("/invoices", authorize, validate(createInvoiceSchema), async (req, r
       });
     }
 
-    res.json(newInvoice.rows[0]);
+    return sendSuccess(res, {
+      status: 201,
+      message: "Invoice created successfully.",
+      data: newInvoice.rows[0],
+    });
   } catch (err) {
     await client.query("ROLLBACK");
     next(err);
@@ -153,11 +158,11 @@ router.get("/invoices", authorize, async (req, res, next) => {
       `;
       queryParams = [req.user.user_id, req.user.school_id];
     } else if (req.user.role !== "Admin") {
-      return res.status(403).json({ error: "Access Denied." });
+      return sendError(res, { status: 403, message: "Access Denied." });
     }
 
     const invoices = await pool.query(query, queryParams);
-    res.json(invoices.rows);
+    return sendSuccess(res, { data: invoices.rows });
   } catch (err) {
     next(err);
   }
@@ -169,11 +174,11 @@ router.post("/invoices/:id/checkout", authorize, async (req, res, next) => {
     const invoice = await getInvoiceForActor(id, req.user);
 
     if (!invoice) {
-      return res.status(404).json({ error: "Invoice not found or not accessible." });
+      return sendError(res, { status: 404, message: "Invoice not found or not accessible." });
     }
 
     if (invoice.status === "Paid") {
-      return res.status(400).json({ error: "Invoice is already paid." });
+      return sendError(res, { status: 400, message: "Invoice is already paid." });
     }
 
     const session = await stripe.checkout.sessions.create({
@@ -201,7 +206,7 @@ router.post("/invoices/:id/checkout", authorize, async (req, res, next) => {
       cancel_url: `${CLIENT_URL}/dashboard?payment_canceled=true`,
     });
 
-    res.json({ url: session.url });
+    return sendSuccess(res, { data: { url: session.url } });
   } catch (err) {
     next(err);
   }

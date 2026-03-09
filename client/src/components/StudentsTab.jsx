@@ -88,8 +88,8 @@ const StudentsTab = ({ isAdmin }) => {
         const nextStudents = parsed.data || [];
 
         setStudents(nextStudents);
-        setTotalPages(parsed.pagination?.totalPages || 1);
-        setTotalStudents(parsed.pagination?.total || 0);
+        setTotalPages(parsed.meta?.pagination?.totalPages || 1);
+        setTotalStudents(parsed.meta?.pagination?.total || 0);
 
         setSelectedStudentIds((prev) =>
           prev.filter((id) =>
@@ -119,7 +119,8 @@ const StudentsTab = ({ isAdmin }) => {
           });
 
           if (res.ok) {
-            setParents(await res.json());
+            const payload = await res.json();
+            setParents(Array.isArray(payload?.data) ? payload.data : []);
           }
         } catch (err) {
           console.error(err);

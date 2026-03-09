@@ -4,6 +4,7 @@ const pool = require("../db");
 const authorize = require("../middleware/authorize");
 const { emailQueue } = require("../utils/emailQueue");
 const { z } = require("zod");
+const { sendError, sendSuccess } = require("../utils/response");
 
 const attendanceRecordSchema = z.object({
   student_id: z.coerce.number().int().positive(),
@@ -127,10 +128,10 @@ router.get("/", authorize, async (req, res) => {
     query += ` ORDER BY a.date DESC, s.class_grade ASC, u.full_name ASC`;
 
     const attendance = await pool.query(query, params);
-    res.json(attendance.rows);
+    return sendSuccess(res, { data: attendance.rows });
   } catch (err) {
     console.error(err.message);
-    res.status(500).json({ error: "Internal Server Error" });
+    return sendError(res, { status: 500, message: "Internal Server Error" });
   }
 });
 
@@ -139,15 +140,17 @@ router.post("/", authorize, async (req, res) => {
 
   try {
     if (!["Admin", "Teacher"].includes(req.user.role)) {
-      return res.status(403).json({ error: "Access Denied." });
+      return sendError(res, { status: 403, message: "Access Denied." });
     }
 
     const normalized = normalizeAttendancePayload(req.body);
 
     if (normalized.error) {
-      return res.status(400).json({
-        error: normalized.error,
-        details: normalized.details || [],
+      return sendError(res, {
+        status: 400,
+        message: normalized.error,
+        details: (normalized.details || []).map((item) => item.message || item),
+        code: "VALIDATION_ERROR",
       });
     }
 
@@ -166,9 +169,7 @@ router.post("/", authorize, async (req, res) => {
     );
 
     if (studentScopeCheck.rows.length !== studentIds.length) {
-      return res.status(400).json({
-        error: "One or more students do not belong to your school.",
-      });
+      return sendError(res, { status: 400, message: "One or more students do not belong to your school." });
     }
 
     await client.query("BEGIN");
@@ -228,11 +229,11 @@ router.post("/", authorize, async (req, res) => {
     }
 
     await client.query("COMMIT");
-    res.json({ message: "Attendance saved and parent alerts dispatched!" });
+    return sendSuccess(res, { message: "Attendance saved and parent alerts dispatched!" });
   } catch (err) {
     await client.query("ROLLBACK");
     console.error(err.message);
-    res.status(500).json({ error: "Internal Server Error" });
+    return sendError(res, { status: 500, message: "Internal Server Error" });
   } finally {
     client.release();
   }

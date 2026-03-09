@@ -37,7 +37,15 @@ const AnalyticsCards = ({ onNavigate }) => {
         });
 
         if (response.ok) {
-          setStats(await response.json());
+          const payload = await response.json();
+          setStats(
+            payload?.data || {
+              totalStudents: 0,
+              totalTeachers: 0,
+              totalSubjects: 0,
+              totalDocuments: 0,
+            },
+          );
         }
       } catch (err) {
         console.error("Failed to fetch stats", err);

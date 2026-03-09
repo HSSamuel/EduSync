@@ -87,8 +87,8 @@ const TimetableTab = ({ isAdmin, subjects = [] }) => {
         throw new Error("Failed to load timetable.");
       }
 
-      const data = await res.json();
-      setSchedule(normalizeSchedule(data));
+      const payload = await res.json().catch(() => ({}));
+      setSchedule(normalizeSchedule(payload?.data));
     } catch (error) {
       console.error(error);
       setSchedule(EMPTY_SCHEDULE);
@@ -212,6 +212,7 @@ const TimetableTab = ({ isAdmin, subjects = [] }) => {
         );
       }
 
+      setSchedule(normalizeSchedule(data?.data?.schedule || schedule));
       setFeedback({
         type: "success",
         message: data?.message || `Saved for ${selectedClass}.`,

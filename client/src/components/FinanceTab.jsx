@@ -40,7 +40,10 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
   const fetchInvoices = async () => {
     try {
       const res = await apiFetch("/finance/invoices", { method: "GET" });
-      if (res.ok) setInvoices(await res.json());
+      if (res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        setInvoices(Array.isArray(payload?.data) ? payload.data : []);
+      }
     } catch (err) {
       console.error(err);
     }
@@ -80,9 +83,10 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
       });
 
       const data = await res.json().catch(() => ({}));
+      const checkoutUrl = data?.data?.url || data?.url;
 
-      if (res.ok && data.url) {
-        window.location.href = data.url;
+      if (res.ok && checkoutUrl) {
+        window.location.href = checkoutUrl;
       } else {
         alert("❌ " + (data.error || "Failed to initialize payment gateway."));
         setIsProcessing(false);

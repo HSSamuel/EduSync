@@ -285,6 +285,8 @@ router.post('/forgot-password', forgotPasswordLimiter, validate(forgotPasswordSc
   try {
     const { email } = req.body;
     const user = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    let emailDeliveryFailed = false;
+    let emailDeliveryError = null;
 
     if (user.rows.length > 0) {
       const secretHashSlice = user.rows[0].password_hash.substring(0, 10);
@@ -320,12 +322,34 @@ router.post('/forgot-password', forgotPasswordLimiter, validate(forgotPasswordSc
           html: emailHTML,
         });
       } catch (emailErr) {
+        emailDeliveryFailed = true;
+        emailDeliveryError = emailErr;
         console.error('Password reset email failed:', emailErr?.message || emailErr);
       }
     }
 
+    if (user.rows.length > 0 && emailDeliveryFailed && process.env.NODE_ENV !== 'production') {
+      return sendError(res, {
+        status: 500,
+        message: 'Password reset email could not be sent. Check EMAIL_* settings and SMTP connectivity.',
+        details: {
+          email,
+          smtpError: emailDeliveryError?.message || 'Unknown SMTP error',
+        },
+      });
+    }
+
     return sendSuccess(res, {
       message: 'If that email exists, a reset link has been sent.',
+      ...(process.env.NODE_ENV !== 'production'
+        ? {
+            meta: {
+              emailAttempted: user.rows.length > 0,
+              emailDelivered: user.rows.length > 0 ? !emailDeliveryFailed : null,
+              smtpError: emailDeliveryFailed ? (emailDeliveryError?.message || 'Unknown SMTP error') : null,
+            },
+          }
+        : {}),
     });
   } catch (err) {
     next(err);

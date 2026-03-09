@@ -4,24 +4,22 @@ import {
   PlusCircle,
   Loader2,
   Clock3,
-  MapPin,
 } from "lucide-react";
 import PremiumEmptyState from "./PremiumEmptyState";
 import { apiFetch } from "../utils/api";
 
-const CalendarTab = ({ isAdmin, isTeacher }) => {
+const CalendarTab = ({ isAdmin }) => {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
 
   const [formData, setFormData] = useState({
     title: "",
-    description: "",
     event_date: "",
-    location: "",
+    event_type: "General",
   });
 
-  const canManage = isAdmin || isTeacher;
+  const canManage = isAdmin;
 
   const fetchEvents = async () => {
     setLoading(true);
@@ -32,7 +30,7 @@ const CalendarTab = ({ isAdmin, isTeacher }) => {
 
       if (res.ok) {
         const data = await res.json();
-        setEvents(Array.isArray(data) ? data : []);
+        setEvents(Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : []);
       } else {
         const err = await res.json().catch(() => ({}));
         console.error("Failed to fetch calendar events:", err);
@@ -54,7 +52,7 @@ const CalendarTab = ({ isAdmin, isTeacher }) => {
     e.preventDefault();
 
     if (!formData.title.trim() || !formData.event_date) {
-      alert("Please provide at least title and date.");
+      alert("Please provide at least the event title and date.");
       return;
     }
 
@@ -64,9 +62,8 @@ const CalendarTab = ({ isAdmin, isTeacher }) => {
         method: "POST",
         body: JSON.stringify({
           title: formData.title.trim(),
-          description: formData.description.trim(),
           event_date: formData.event_date,
-          location: formData.location.trim(),
+          event_type: formData.event_type,
         }),
       });
 
@@ -80,9 +77,8 @@ const CalendarTab = ({ isAdmin, isTeacher }) => {
       alert(data.message || "✅ Event created successfully.");
       setFormData({
         title: "",
-        description: "",
         event_date: "",
-        location: "",
+        event_type: "General",
       });
       await fetchEvents();
     } catch (err) {
@@ -124,20 +120,9 @@ const CalendarTab = ({ isAdmin, isTeacher }) => {
               required
             />
 
-            <textarea
-              rows="4"
-              placeholder="Event description"
-              value={formData.description}
-              onChange={(e) =>
-                setFormData({ ...formData, description: e.target.value })
-              }
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-sm outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
-              disabled={creating}
-            />
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <input
-                type="datetime-local"
+                type="date"
                 value={formData.event_date}
                 onChange={(e) =>
                   setFormData({ ...formData, event_date: e.target.value })
@@ -147,16 +132,21 @@ const CalendarTab = ({ isAdmin, isTeacher }) => {
                 required
               />
 
-              <input
-                type="text"
-                placeholder="Location"
-                value={formData.location}
+              <select
+                value={formData.event_type}
                 onChange={(e) =>
-                  setFormData({ ...formData, location: e.target.value })
+                  setFormData({ ...formData, event_type: e.target.value })
                 }
                 className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
                 disabled={creating}
-              />
+              >
+                <option value="General">General</option>
+                <option value="Academic">Academic</option>
+                <option value="Examination">Examination</option>
+                <option value="Holiday">Holiday</option>
+                <option value="Sports">Sports</option>
+                <option value="Meeting">Meeting</option>
+              </select>
             </div>
 
             <div className="flex justify-end">
@@ -219,10 +209,12 @@ const CalendarTab = ({ isAdmin, isTeacher }) => {
                   {event.title}
                 </h4>
 
-                {event.description && (
-                  <p className="text-sm text-gray-700 dark:text-gray-300 mb-3 leading-relaxed">
-                    {event.description}
-                  </p>
+                {event.event_type && (
+                  <div className="mb-3">
+                    <span className="inline-flex items-center rounded-full bg-indigo-100 px-3 py-1 text-xs font-semibold text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">
+                      {event.event_type}
+                    </span>
+                  </div>
                 )}
 
                 <div className="flex flex-col md:flex-row gap-3 md:gap-6 text-sm text-gray-600 dark:text-gray-400">
@@ -232,13 +224,6 @@ const CalendarTab = ({ isAdmin, isTeacher }) => {
                       ? new Date(event.event_date).toLocaleString()
                       : ""}
                   </span>
-
-                  {event.location && (
-                    <span className="inline-flex items-center gap-2">
-                      <MapPin size={15} />
-                      {event.location}
-                    </span>
-                  )}
                 </div>
               </div>
             ))}

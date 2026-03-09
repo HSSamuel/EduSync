@@ -14,6 +14,7 @@ const {
   eventSchema,
 } = require('../utils/schoolValidation');
 const { logAudit } = require('../utils/auditLogger');
+const { sendError, sendSuccess } = require('../utils/response');
 
 const upload = multer({
   storage,
@@ -28,17 +29,19 @@ const upload = multer({
 
 router.post('/documents', authorize, upload.single('document_file'), async (req, res, next) => {
   try {
-    if (req.user.role !== 'Admin') return res.status(403).json({ error: 'Access Denied.' });
+    if (req.user.role !== 'Admin') return sendError(res, { status: 403, message: 'Access Denied.' });
 
     const parsed = documentTitleSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({
-        error: parsed.error.issues[0]?.message || 'Validation Failed',
+      return sendError(res, {
+        status: 400,
+        message: parsed.error.issues[0]?.message || 'Validation Failed',
         details: parsed.error.issues.map((issue) => `${issue.path.join('.') || 'Input'}: ${issue.message}`),
+        code: 'VALIDATION_ERROR',
       });
     }
 
-    if (!req.file) return res.status(400).json({ error: 'No file was uploaded.' });
+    if (!req.file) return sendError(res, { status: 400, message: 'No file was uploaded.' });
 
     const file_url = req.file.path;
     const { title } = parsed.data;
@@ -68,7 +71,11 @@ router.post('/documents', authorize, upload.single('document_file'), async (req,
       },
     });
 
-    return res.json(newDoc.rows[0]);
+    return sendSuccess(res, {
+      status: 201,
+      message: 'Document uploaded successfully.',
+      data: newDoc.rows[0],
+    });
   } catch (err) {
     return next(err);
   }
@@ -80,7 +87,7 @@ router.get('/documents', authorize, async (req, res, next) => {
       'SELECT * FROM school_documents WHERE school_id = $1 ORDER BY uploaded_at DESC',
       [req.user.school_id],
     );
-    return res.json(docs.rows);
+    return sendSuccess(res, { data: docs.rows });
   } catch (err) {
     return next(err);
   }
@@ -88,14 +95,14 @@ router.get('/documents', authorize, async (req, res, next) => {
 
 router.delete('/documents/:id', authorize, async (req, res, next) => {
   try {
-    if (req.user.role !== 'Admin') return res.status(403).json({ error: 'Access Denied.' });
+    if (req.user.role !== 'Admin') return sendError(res, { status: 403, message: 'Access Denied.' });
 
     const docQuery = await pool.query(
       'SELECT doc_id, title, file_url, file_public_id, file_resource_type FROM school_documents WHERE doc_id = $1 AND school_id = $2',
       [req.params.id, req.user.school_id],
     );
 
-    if (docQuery.rows.length === 0) return res.status(404).json({ error: 'Document not found' });
+    if (docQuery.rows.length === 0) return sendError(res, { status: 404, message: 'Document not found' });
 
     const doc = docQuery.rows[0];
 
@@ -121,7 +128,7 @@ router.delete('/documents/:id', authorize, async (req, res, next) => {
       },
     });
 
-    return res.json({ message: 'Document deleted successfully from DB and Cloudinary!' });
+    return sendSuccess(res, { message: 'Document deleted successfully from DB and Cloudinary!' });
   } catch (err) {
     return next(err);
   }
@@ -129,7 +136,7 @@ router.delete('/documents/:id', authorize, async (req, res, next) => {
 
 router.post('/broadcast', authorize, validate(broadcastSchema), async (req, res, next) => {
   try {
-    if (req.user.role !== 'Admin') return res.status(403).json({ error: 'Access Denied.' });
+    if (req.user.role !== 'Admin') return sendError(res, { status: 403, message: 'Access Denied.' });
 
     const { audience, subject, message } = req.body;
 
@@ -144,7 +151,7 @@ router.post('/broadcast', authorize, validate(broadcastSchema), async (req, res,
     const targetUsers = await pool.query(query, queryParams);
 
     if (targetUsers.rows.length === 0) {
-      return res.status(400).json({ error: 'No users found in this audience category.' });
+      return sendError(res, { status: 400, message: 'No users found in this audience category.' });
     }
 
     const jobs = targetUsers.rows.map((user) => ({
@@ -181,8 +188,9 @@ router.post('/broadcast', authorize, validate(broadcastSchema), async (req, res,
       },
     });
 
-    return res.json({
+    return sendSuccess(res, {
       message: `Broadcast queued successfully for ${targetUsers.rows.length} recipient(s).`,
+      data: { recipients: targetUsers.rows.length },
     });
   } catch (err) {
     return next(err);
@@ -195,7 +203,7 @@ router.get('/events', authorize, async (req, res, next) => {
       'SELECT * FROM events WHERE school_id = $1 ORDER BY event_date ASC',
       [req.user.school_id],
     );
-    return res.json(events.rows);
+    return sendSuccess(res, { data: events.rows });
   } catch (err) {
     return next(err);
   }
@@ -203,7 +211,7 @@ router.get('/events', authorize, async (req, res, next) => {
 
 router.post('/events', authorize, validate(eventSchema), async (req, res, next) => {
   try {
-    if (req.user.role !== 'Admin') return res.status(403).json({ error: 'Access Denied.' });
+    if (req.user.role !== 'Admin') return sendError(res, { status: 403, message: 'Access Denied.' });
 
     const { title, event_date, event_type } = req.body;
 
@@ -224,7 +232,11 @@ router.post('/events', authorize, validate(eventSchema), async (req, res, next) 
       },
     });
 
-    return res.json(newEvent.rows[0]);
+    return sendSuccess(res, {
+      status: 201,
+      message: 'Event created successfully.',
+      data: newEvent.rows[0],
+    });
   } catch (err) {
     return next(err);
   }
@@ -232,7 +244,7 @@ router.post('/events', authorize, validate(eventSchema), async (req, res, next) 
 
 router.delete('/events/:id', authorize, async (req, res, next) => {
   try {
-    if (req.user.role !== 'Admin') return res.status(403).json({ error: 'Access Denied.' });
+    if (req.user.role !== 'Admin') return sendError(res, { status: 403, message: 'Access Denied.' });
 
     const existing = await pool.query(
       'SELECT event_id, title, event_date, event_type FROM events WHERE event_id = $1 AND school_id = $2',
@@ -240,7 +252,7 @@ router.delete('/events/:id', authorize, async (req, res, next) => {
     );
 
     if (existing.rows.length === 0) {
-      return res.status(404).json({ error: 'Event not found.' });
+      return sendError(res, { status: 404, message: 'Event not found.' });
     }
 
     await pool.query('DELETE FROM events WHERE event_id = $1 AND school_id = $2', [req.params.id, req.user.school_id]);
@@ -253,7 +265,7 @@ router.delete('/events/:id', authorize, async (req, res, next) => {
       oldValue: existing.rows[0],
     });
 
-    return res.json({ message: 'Event deleted!' });
+    return sendSuccess(res, { message: 'Event deleted!' });
   } catch (err) {
     return next(err);
   }

@@ -8,6 +8,7 @@ const {
   allowedWeekdays,
 } = require("../utils/schoolValidation");
 const { logAudit } = require("../utils/auditLogger");
+const { sendError, sendSuccess } = require("../utils/response");
 
 function normalizeSchedule(schedule = {}) {
   const normalized = {};
@@ -33,20 +34,20 @@ router.get("/:class_grade", authorize, async (req, res) => {
     );
 
     if (timetable.rows.length === 0) {
-      return res.json(normalizeSchedule());
+      return sendSuccess(res, { data: normalizeSchedule() });
     }
 
-    return res.json(normalizeSchedule(timetable.rows[0].schedule));
+    return sendSuccess(res, { data: normalizeSchedule(timetable.rows[0].schedule) });
   } catch (err) {
     console.error("Error fetching timetable:", err.message);
-    return res.status(500).json({ error: "Internal Server Error" });
+    return sendError(res, { status: 500, message: "Internal Server Error" });
   }
 });
 
 router.post("/", authorize, validate(timetableSchema), async (req, res) => {
   try {
     if (req.user.role !== "Admin") {
-      return res.status(403).json({ error: "Access Denied." });
+      return sendError(res, { status: 403, message: "Access Denied." });
     }
 
     const { class_grade, schedule } = req.body;
@@ -80,13 +81,13 @@ router.post("/", authorize, validate(timetableSchema), async (req, res) => {
       newValue: saved.schedule,
     });
 
-    return res.json({
+    return sendSuccess(res, {
       message: "Timetable saved successfully.",
-      schedule: normalizeSchedule(saved.schedule),
+      data: { schedule: normalizeSchedule(saved.schedule) },
     });
   } catch (err) {
     console.error("Error saving timetable:", err.message);
-    return res.status(500).json({ error: "Internal Server Error" });
+    return sendError(res, { status: 500, message: "Internal Server Error" });
   }
 });
 

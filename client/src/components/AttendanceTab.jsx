@@ -72,7 +72,8 @@ const AttendanceTab = ({ students = [] }) => {
         : "/attendance";
 
       const res = await apiFetch(url, { method: "GET" });
-      const data = await res.json().catch(() => []);
+      const payload = await res.json().catch(() => ({}));
+      const data = Array.isArray(payload?.data) ? payload.data : [];
 
       if (!res.ok) {
         throw new Error(data?.error || "Failed to load attendance history.");

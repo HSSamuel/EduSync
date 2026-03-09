@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
-import { Mail, Lock, LogIn } from "lucide-react";
+import { Mail, Lock, LogIn, ShieldCheck, Eye, EyeOff } from "lucide-react";
 import { GoogleLogin } from "@react-oauth/google";
 import { apiFetchOrThrow, setAccessToken } from "../utils/api";
 
@@ -11,10 +11,13 @@ const Login = () => {
   const [password, setPassword] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
   const navigate = useNavigate();
   const location = useLocation();
 
   const redirectPath = location.state?.from?.pathname || "/dashboard";
+  const isSuccess = statusMessage.includes("✅");
 
   const handleAuthSuccess = (token, message = "✅ Login successful.") => {
     setAccessToken(token);
@@ -68,7 +71,9 @@ const Login = () => {
 
       const accessToken = data?.data?.token || data?.token;
       if (!accessToken) {
-        throw new Error("Google login succeeded but no access token was returned.");
+        throw new Error(
+          "Google login succeeded but no access token was returned.",
+        );
       }
 
       handleAuthSuccess(accessToken);
@@ -79,139 +84,247 @@ const Login = () => {
   };
 
   return (
-    <div className="relative min-h-[calc(100vh-80px)] w-full flex items-center justify-center overflow-hidden pt-10">
-      <div
-        className="absolute top-[10%] left-[20%] w-96 h-96 bg-blue-400/30 dark:bg-blue-600/20 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-[100px] opacity-70 animate-pulse"
-        aria-hidden="true"
-      ></div>
-      <div
-        className="absolute bottom-[10%] right-[20%] w-96 h-96 bg-purple-400/30 dark:bg-purple-600/20 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-[100px] opacity-70 animate-pulse"
-        style={{ animationDelay: "2s" }}
-        aria-hidden="true"
-      ></div>
+    <div
+      className="relative min-h-screen overflow-hidden bg-slate-950"
+      style={{
+        backgroundImage: "url('/images/edusync-login-bg.jpg')",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
+      }}
+    >
+      <div className="absolute inset-0 bg-slate-950/20" />
+      <div className="absolute inset-0 bg-gradient-to-br from-sky-900/10 via-slate-900/8 to-indigo-900/14" />
 
-      <div className="relative z-10 w-full max-w-md p-10 bg-white/95 md:bg-white/60 dark:bg-gray-900/95 md:dark:bg-gray-900/60 md:backdrop-blur-2xl border border-white/50 dark:border-gray-700/50 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.08)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.3)] transition-all duration-300">
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30 mb-4">
-            <LogIn size={32} />
-          </div>
-          <h2 className="text-3xl font-black font-serif tracking-tight text-gray-900 dark:text-white">
-            Welcome Back
-          </h2>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-2 font-medium">
-            Enter your credentials to access the portal.
-          </p>
-        </div>
+      <div
+        className="pointer-events-none absolute left-4 top-6 h-32 w-32 rounded-full bg-sky-300/15 blur-3xl sm:h-56 sm:w-56"
+        aria-hidden="true"
+      />
+      <div
+        className="pointer-events-none absolute bottom-0 right-0 h-32 w-32 rounded-full bg-indigo-300/15 blur-3xl sm:h-56 sm:w-56"
+        aria-hidden="true"
+      />
 
-        {GOOGLE_AUTH_ENABLED ? (
-          <>
-            <div className="flex justify-center mb-6 w-full">
-              <div className="w-full max-w-md">
-                <GoogleLogin
-                  onSuccess={onGoogleSuccess}
-                  onError={() => {
-                    setIsLoading(false);
-                    setStatusMessage("❌ Google popup closed or failed");
-                  }}
-                  theme="outline"
-                  size="large"
-                  shape="rectangular"
-                  width="380"
-                />
+      <div className="relative z-10 flex min-h-screen items-center justify-center px-3 py-4 sm:px-6 sm:py-8">
+        <div className="w-full max-w-6xl">
+          <div className="md:grid md:grid-cols-2 md:overflow-hidden md:rounded-[2rem] md:border md:border-white/25 md:bg-white/12 md:shadow-[0_20px_80px_rgba(0,0,0,0.22)] md:backdrop-blur-2xl">
+            <div className="hidden border-r border-white/15 bg-white/10 p-8 text-white md:flex md:flex-col md:justify-center lg:p-10">
+              <div className="mx-auto w-full max-w-lg text-center">
+                <div className="mb-6 inline-flex h-16 w-16 items-center justify-center rounded-2xl border border-white/25 bg-white/18 shadow-lg backdrop-blur-md">
+                  <ShieldCheck size={28} className="text-white" />
+                </div>
+
+                <p className="text-xs font-bold uppercase tracking-[0.35em] text-white/80">
+                  EduSync Portal
+                </p>
+
+                <h1 className="mt-5 text-4xl font-black leading-tight text-slate-950">
+                  Welcome back to your smart learning space.
+                </h1>
+
+                <p className="mx-auto mt-5 max-w-md text-base leading-6 text-white">
+                  Sign in to manage learning activities, track academic
+                  progress, and stay connected across your school environment.
+                </p>
+
+                <div className="mt-8 rounded-[1.75rem] border border-white/20 bg-white/14 p-6 backdrop-blur-md">
+                  <div className="flex items-start justify-center gap-3 text-left">
+                    <div className="mt-2 h-2.5 w-2.5 rounded-full bg-emerald-300" />
+                    <p className="text-base leading-6 text-white">
+                      Secure access for students, teachers, parents, and admins.
+                    </p>
+                  </div>
+
+                  <div className="mt-4 flex items-start justify-center gap-3 text-left">
+                    <div className="mt-2 h-2.5 w-2.5 rounded-full bg-cyan-300" />
+                    <p className="text-base leading-6 text-white">
+                      Built to simplify school coordination and learning
+                      management.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="my-6 flex items-center">
-              <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
-              <span className="mx-4 text-xs font-bold text-gray-400 uppercase tracking-widest">
-                Or
-              </span>
-              <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
-            </div>
-          </>
-        ) : (
-          <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
-            Google sign-in is unavailable because{" "}
-            <code>VITE_GOOGLE_CLIENT_ID</code> is not configured.
-          </div>
-        )}
+            <div className="flex items-center justify-center md:p-8 lg:p-10">
+              <div className="w-full max-w-[18.5rem] rounded-[1.2rem] border border-white/20 bg-white/14 px-3 py-3 text-center shadow-[0_10px_30px_rgba(0,0,0,0.16)] backdrop-blur-xl sm:max-w-[22rem] sm:px-4 sm:py-4 md:max-w-md md:rounded-[1.75rem] md:border-white/22 md:px-6 md:py-6">
+                <div className="mb-3 sm:mb-4">
+                  <div className="mx-auto mb-2 inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/25 bg-gradient-to-br from-sky-500/90 to-indigo-600/90 text-white shadow-lg shadow-sky-900/25 sm:h-12 sm:w-12 md:h-16 md:w-16 md:rounded-2xl">
+                    <LogIn size={16} className="sm:h-5 sm:w-5 md:h-7 md:w-7" />
+                  </div>
 
-        <form onSubmit={onSubmitForm} className="space-y-5">
-          <div className="relative">
-            <label
-              htmlFor="email"
-              className="block mb-1.5 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider"
-            >
-              Email Address
-            </label>
-            <div className="relative">
-              <Mail
-                className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400"
-                size={18}
-                aria-hidden="true"
-              />
-              <input
-                id="email"
-                type="email"
-                className="w-full pl-11 pr-4 py-3.5 bg-white/50 dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/50 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white dark:focus:bg-gray-800 transition-all font-medium placeholder-gray-400"
-                placeholder="admin@edusync.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
+                  <h2 className="text-[1.55rem] font-black tracking-tight text-white md:text-3xl">
+                    Welcome Back
+                  </h2>
+
+                  <p className="mx-auto mt-1.5 max-w-[15rem] text-[13px] leading-[1.15rem] text-white md:mt-3 md:max-w-sm md:text-base md:leading-6">
+                    Enter your credentials to access the portal.
+                  </p>
+                </div>
+
+                {GOOGLE_AUTH_ENABLED ? (
+                  <>
+                    <div className="mb-3 flex justify-center">
+                      <div className="w-full overflow-hidden rounded-xl bg-white/90 p-1 shadow-sm md:rounded-2xl">
+                        <div className="flex justify-center">
+                          <GoogleLogin
+                            onSuccess={onGoogleSuccess}
+                            onError={() => {
+                              setIsLoading(false);
+                              setStatusMessage(
+                                "❌ Google popup closed or failed",
+                              );
+                            }}
+                            theme="outline"
+                            size="large"
+                            shape="rectangular"
+                            text="signin_with"
+                            width="260"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="my-3 flex items-center">
+                      <div className="h-px flex-1 bg-white/20" />
+                      <span className="mx-3 text-[10px] font-bold uppercase tracking-[0.24em] text-white/75 md:mx-4 md:text-[11px] md:tracking-[0.28em]">
+                        Or continue with email
+                      </span>
+                      <div className="h-px flex-1 bg-white/20" />
+                    </div>
+                  </>
+                ) : (
+                  <div className="mb-3 rounded-xl border border-amber-200/70 bg-amber-100/90 px-3 py-2 text-sm text-amber-900 md:mb-4 md:rounded-2xl md:px-4 md:py-3">
+                    Google sign-in is unavailable because{" "}
+                    <code>VITE_GOOGLE_CLIENT_ID</code> is not configured.
+                  </div>
+                )}
+
+                <form
+                  onSubmit={onSubmitForm}
+                  className="space-y-2.5 md:space-y-4"
+                >
+                  <div className="text-left">
+                    <label
+                      htmlFor="email"
+                      className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-white/90 md:mb-2 md:text-xs"
+                    >
+                      Email Address
+                    </label>
+
+                    <div className="relative">
+                      <Mail
+                        className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-300 md:left-4"
+                        size={16}
+                        aria-hidden="true"
+                      />
+                      <input
+                        id="email"
+                        type="email"
+                        className="w-full rounded-xl border border-white/20 bg-white/85 py-2 pl-10 pr-3.5 text-sm font-medium text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-sky-400 focus:bg-white focus:ring-4 focus:ring-sky-500/20 md:rounded-2xl md:py-3 md:pl-11 md:pr-4"
+                        placeholder="Email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                        disabled={isLoading}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="text-left">
+                    <div className="mb-1.5 flex items-end justify-between gap-2 md:mb-2 md:gap-3">
+                      <label
+                        htmlFor="password"
+                        className="block text-[10px] font-bold uppercase tracking-wider text-white/90 md:text-xs"
+                      >
+                        Password
+                      </label>
+
+                      <Link
+                        to="/forgot-password"
+                        className="text-[11px] font-bold text-blue-200 transition-colors hover:text-blue-100 md:text-xs"
+                      >
+                        Forgot Password?
+                      </Link>
+                    </div>
+
+                    <div className="relative">
+                      <Lock
+                        className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-300 md:left-4"
+                        size={16}
+                        aria-hidden="true"
+                      />
+
+                      <input
+                        id="password"
+                        type={showPassword ? "text" : "password"}
+                        className="w-full rounded-xl border border-white/20 bg-white/85 py-2 pl-10 pr-10 text-sm font-medium text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-sky-400 focus:bg-white focus:ring-4 focus:ring-sky-500/20 md:rounded-2xl md:py-3 md:pl-11 md:pr-11"
+                        placeholder="••••••••"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                        disabled={isLoading}
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((prev) => !prev)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-slate-700 md:right-4"
+                        aria-label={
+                          showPassword ? "Hide password" : "Show password"
+                        }
+                      >
+                        {showPassword ? (
+                          <EyeOff size={17} />
+                        ) : (
+                          <Eye size={17} />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-sky-900/25 transition-all hover:-translate-y-0.5 hover:from-sky-700 hover:to-indigo-700 disabled:cursor-not-allowed disabled:opacity-70 md:rounded-2xl md:py-3.5"
+                  >
+                    <LogIn size={16} />
+                    {isLoading ? "Authenticating..." : "Sign In"}
+                  </button>
+                </form>
+
+                {statusMessage && (
+                  <div
+                    className={`mt-3 rounded-xl border px-3 py-2 text-sm font-semibold leading-5 md:mt-4 md:rounded-2xl md:px-4 md:py-3 ${
+                      isSuccess
+                        ? "border-emerald-200/70 bg-emerald-100/90 text-emerald-800"
+                        : "border-red-200/70 bg-red-100/90 text-red-700"
+                    }`}
+                    aria-live="polite"
+                  >
+                    {statusMessage}
+                  </div>
+                )}
+
+                <div className="mt-3 flex justify-center">
+                  <p className="text-sm text-white">
+                    Don&apos;t have an account?{" "}
+                    <Link
+                      to="/register"
+                      className="font-bold text-white underline decoration-white/50 underline-offset-4 transition hover:text-sky-200"
+                    >
+                      Sign Up
+                    </Link>
+                  </p>
+                </div>
+
+                <div className="mt-3 rounded-xl border border-white/15 bg-white/10 px-3 py-1.5 text-center text-[10px] leading-[1.1rem] text-white md:mt-5 md:rounded-2xl md:px-4 md:py-3 md:text-xs">
+                  Access your school portal securely from any device.
+                </div>
+              </div>
             </div>
           </div>
-
-          <div className="relative">
-            <div className="flex justify-between items-end mb-1.5">
-              <label
-                htmlFor="password"
-                className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider"
-              >
-                Password
-              </label>
-              <Link
-                to="/forgot-password"
-                className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:text-blue-800 transition-colors"
-              >
-                Forgot Password?
-              </Link>
-            </div>
-            <div className="relative">
-              <Lock
-                className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400"
-                size={18}
-                aria-hidden="true"
-              />
-              <input
-                id="password"
-                type="password"
-                className="w-full pl-11 pr-4 py-3.5 bg-white/50 dark:bg-gray-800/50 border border-gray-200/60 dark:border-gray-700/50 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white dark:focus:bg-gray-800 transition-all font-medium placeholder-gray-400"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full py-4 mt-2 font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl hover:from-blue-700 hover:to-indigo-700 shadow-lg shadow-blue-500/25 transform hover:-translate-y-0.5 transition-all flex justify-center items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
-          >
-            {isLoading ? "Authenticating..." : "Sign In"}
-          </button>
-        </form>
-
-        {statusMessage && (
-          <div
-            className={`mt-5 p-3.5 text-center font-bold text-sm rounded-xl ${statusMessage.includes("✅") ? "bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20" : "bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20"}`}
-            aria-live="polite"
-          >
-            {statusMessage}
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );
