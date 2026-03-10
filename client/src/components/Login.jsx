@@ -97,29 +97,36 @@ const Login = () => {
 
       <div className="relative z-10 flex min-h-screen items-center justify-center px-3 py-4 sm:px-6 sm:py-8">
         <div className="grid w-full max-w-5xl overflow-hidden rounded-[1.75rem] border border-white/20 bg-white/10 shadow-[0_20px_70px_rgba(0,0,0,0.28)] backdrop-blur-2xl md:grid-cols-[1.05fr_0.95fr]">
-          <aside className="hidden border-r border-white/15 bg-white/8 p-7 text-white md:flex md:flex-col md:justify-center lg:p-8">
-            <div className="mx-auto w-full max-w-sm">
-              <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/20 bg-white/12 shadow-lg">
-                <ShieldCheck size={20} className="text-white" />
+          <aside className="hidden border-r border-white/15 bg-white/8 text-white md:flex md:min-h-[720px] md:items-center md:justify-center md:p-8 lg:p-10">
+            <div className="flex w-full max-w-sm flex-col items-center text-center">
+              <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-white/20 bg-white/12 shadow-lg">
+                <ShieldCheck size={22} className="text-white" />
               </div>
 
-              <p className="mt-4 text-[10px] font-bold uppercase tracking-[0.32em] text-white/75">
+              <p className="mt-5 text-[10px] font-bold uppercase tracking-[0.32em] text-white/75">
                 EduSync Portal
               </p>
 
-              <h1 className="mt-4 max-w-xs text-3xl font-black leading-tight text-slate-950">
+              <h1 className="mt-4 max-w-md text-3xl font-black leading-tight text-white lg:text-[2.15rem]">
                 Welcome back to your learning space.
               </h1>
 
-              <p className="mt-3 max-w-sm text-sm leading-6 text-white/88">
+              <p className="mt-4 max-w-sm text-sm leading-6 text-white/88">
                 Sign in fast, track school activity, and keep your academic
                 workflow moving from one secure portal.
               </p>
 
-              <div className="mt-5 space-y-3 rounded-[1.35rem] border border-white/15 bg-white/10 p-4">
+              <img
+                src="/images/edusync-login-side.jpg"
+                alt="Students learning in class"
+                className="mt-6 h-40 w-full rounded-[1.35rem] border border-white/15 object-cover"
+              />
+
+              <div className="mt-6 w-full space-y-3 rounded-[1.35rem] border border-white/15 bg-white/10 p-4 text-left">
                 {[
                   "Secure access for admins, teachers, students, and parents.",
                   "One compact dashboard for academics and communication.",
+                  "Everything you need to stay connected in one trusted portal.",
                 ].map((item) => (
                   <div key={item} className="flex items-start gap-3">
                     <span className="mt-2 h-2 w-2 rounded-full bg-emerald-300" />
@@ -136,7 +143,9 @@ const Login = () => {
                 <div className="mx-auto inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-gradient-to-br from-sky-500 to-indigo-600 shadow-lg shadow-indigo-950/30">
                   <LogIn size={18} />
                 </div>
-                <h2 className="mt-3 text-2xl font-black tracking-tight">Welcome Back</h2>
+                <h2 className="mt-3 text-2xl font-black tracking-tight text-white">
+                  Welcome Back
+                </h2>
                 <p className="mt-1 text-sm text-white/78">
                   Use your email or Google account to continue.
                 </p>
@@ -216,7 +225,9 @@ const Login = () => {
                       type="button"
                       onClick={() => setShowPassword((prev) => !prev)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600"
-                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      aria-label={
+                        showPassword ? "Hide password" : "Show password"
+                      }
                     >
                       {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
@@ -247,7 +258,10 @@ const Login = () => {
 
               <div className="mt-4 flex items-center justify-between gap-3 text-xs text-white/72">
                 <p>Don’t have an account?</p>
-                <Link to="/register" className="font-bold text-white hover:text-blue-200">
+                <Link
+                  to="/register"
+                  className="font-bold text-white hover:text-blue-200"
+                >
                   Sign Up
                 </Link>
               </div>

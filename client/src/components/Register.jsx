@@ -223,8 +223,12 @@ const Register = () => {
               Your invite code is ready
             </h1>
             <p className="mt-2 text-sm leading-6 text-white/85">
-              Share this code with teachers, students, and parents so they can join
-              {inviteCodeDetails.schoolName ? ` ${inviteCodeDetails.schoolName}` : " your school"}.
+              Share this code with teachers, students, and parents so they can
+              join
+              {inviteCodeDetails.schoolName
+                ? ` ${inviteCodeDetails.schoolName}`
+                : " your school"}
+              .
             </p>
 
             <div className="mt-4 rounded-[1.2rem] border border-white/15 bg-white/10 p-4 text-left">
@@ -288,21 +292,21 @@ const Register = () => {
 
       <div className="relative z-10 flex min-h-screen items-center justify-center px-3 py-4 sm:px-6 sm:py-8">
         <div className="grid w-full max-w-5xl overflow-hidden rounded-[1.75rem] border border-white/20 bg-white/10 shadow-[0_20px_70px_rgba(0,0,0,0.28)] backdrop-blur-2xl md:grid-cols-[1.05fr_0.95fr]">
-          <aside className="hidden border-r border-white/15 bg-white/8 p-7 text-white md:flex md:flex-col md:justify-center lg:p-8">
-            <div className="mx-auto w-full max-w-sm">
-              <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/20 bg-white/12 shadow-lg">
-                <School size={20} className="text-white" />
+          <aside className="hidden border-r border-white/15 bg-white/8 text-white md:flex md:min-h-[720px] md:items-center md:justify-center md:p-8 lg:p-10">
+            <div className="flex w-full max-w-sm flex-col items-center text-center">
+              <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-white/20 bg-white/12 shadow-lg">
+                <School size={22} className="text-white" />
               </div>
 
-              <p className="mt-4 text-[10px] font-bold uppercase tracking-[0.32em] text-white/75">
+              <p className="mt-5 text-[10px] font-bold uppercase tracking-[0.32em] text-white/75">
                 EduSync Registration
               </p>
 
-              <h1 className="mt-4 max-w-xs text-3xl font-black leading-tight text-slate-950">
+              <h1 className="mt-4 max-w-md text-3xl font-black leading-tight text-white lg:text-[2.15rem]">
                 Create your school account in minutes.
               </h1>
 
-              <p className="mt-3 max-w-sm text-sm leading-6 text-white/88">
+              <p className="mt-4 max-w-sm text-sm leading-6 text-white/88">
                 Launch a cleaner school workspace and onboard staff, students,
                 and parents with less friction.
               </p>
@@ -310,17 +314,20 @@ const Register = () => {
               <img
                 src="/images/edusync-register-side.jpg"
                 alt="Students learning together"
-                className="mt-5 h-40 w-full rounded-[1.35rem] border border-white/15 object-cover"
+                className="mt-6 h-40 w-full rounded-[1.35rem] border border-white/15 object-cover"
               />
 
-              <div className="mt-5 space-y-3 rounded-[1.35rem] border border-white/15 bg-white/10 p-4">
+              <div className="mt-6 w-full space-y-3 rounded-[1.35rem] border border-white/15 bg-white/10 p-4 text-left">
                 {[
                   "Admins can create their school workspace instantly.",
                   "Teachers, students, and parents join securely with invite codes.",
                   "Everything starts from one streamlined portal.",
                 ].map((item) => (
                   <div key={item} className="flex items-start gap-3">
-                    <CheckCircle2 size={16} className="mt-0.5 text-emerald-300" />
+                    <CheckCircle2
+                      size={16}
+                      className="mt-0.5 text-emerald-300"
+                    />
                     <p className="text-sm leading-6 text-white/88">{item}</p>
                   </div>
                 ))}
@@ -334,7 +341,9 @@ const Register = () => {
                 <div className="mx-auto inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-gradient-to-br from-emerald-500 to-blue-600 shadow-lg shadow-emerald-950/30">
                   <UserPlus size={18} />
                 </div>
-                <h2 className="mt-3 text-2xl font-black tracking-tight">Create Account</h2>
+                <h2 className="mt-3 text-2xl font-black tracking-tight text-white">
+                  Create Account
+                </h2>
                 <p className="mt-1 text-sm text-white/78">
                   Register your school to continue. Thank you.
                 </p>
@@ -431,9 +440,15 @@ const Register = () => {
                         type="button"
                         onClick={() => setShowPassword((prev) => !prev)}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600"
-                        aria-label={showPassword ? "Hide password" : "Show password"}
+                        aria-label={
+                          showPassword ? "Hide password" : "Show password"
+                        }
                       >
-                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        {showPassword ? (
+                          <EyeOff size={16} />
+                        ) : (
+                          <Eye size={16} />
+                        )}
                       </button>
                     </div>
                     <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11px] font-medium">
@@ -452,7 +467,9 @@ const Register = () => {
                           onSuccess={onGoogleSuccess}
                           onError={() => {
                             setIsLoading(false);
-                            setStatusMessage("❌ Google popup closed or failed.");
+                            setStatusMessage(
+                              "❌ Google popup closed or failed.",
+                            );
                           }}
                           theme="outline"
                           size="large"
@@ -492,7 +509,10 @@ const Register = () => {
 
               <div className="mt-4 flex items-center justify-between gap-3 text-xs text-white/72">
                 <p>Already have an account?</p>
-                <Link to="/login" className="font-bold text-white hover:text-blue-200">
+                <Link
+                  to="/login"
+                  className="font-bold text-white hover:text-blue-200"
+                >
                   Sign In
                 </Link>
               </div>
