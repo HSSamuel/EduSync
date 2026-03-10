@@ -55,7 +55,7 @@ async function runTests() {
     console.log(`\n🛡️  3. Testing Dashboard Access with Token...`);
     const dashRes = await fetch(`${API_URL}/dashboard`, {
       method: "GET",
-      headers: { jwt_token: token },
+      headers: { Authorization: `Bearer ${token}` },
     });
     const dashData = await dashRes.json();
 

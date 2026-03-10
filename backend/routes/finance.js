@@ -9,25 +9,48 @@ const { isoDateRegex } = require("../utils/schoolValidation");
 const { z } = require("zod");
 const validate = require("../middleware/validate");
 const { sendError, sendSuccess } = require("../utils/response");
+const { withTransaction } = require("../utils/dbTransaction");
 require("dotenv").config();
 
-const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+const stripe = stripeSecretKey ? require("stripe")(stripeSecretKey) : null;
 const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
 
 const createInvoiceSchema = z.object({
   student_id: z.coerce.number().int().positive(),
-  title: z.string().trim().min(2, "Invoice title is required"),
+  title: z.string().trim().min(2, "Invoice title is required").max(255),
   amount: z.coerce.number().positive("Amount must be greater than zero"),
   due_date: z.string().trim().regex(isoDateRegex, "Due date must be in YYYY-MM-DD format"),
 });
 
-async function getInvoiceForActor(invoiceId, user) {
+function formatCurrencyAmount(amount) {
+  return Number(amount).toFixed(2);
+}
+
+function ensureStripeWebhookConfigured() {
+  if (!process.env.STRIPE_SECRET_KEY) {
+    const error = new Error("Stripe is not configured.");
+    error.status = 503;
+    error.code = "STRIPE_NOT_CONFIGURED";
+    throw error;
+  }
+
+  if (!process.env.STRIPE_WEBHOOK_SECRET) {
+    const error = new Error("Stripe webhook secret is not configured.");
+    error.status = 503;
+    error.code = "STRIPE_WEBHOOK_NOT_CONFIGURED";
+    throw error;
+  }
+}
+
+async function getInvoiceForActor(invoiceId, user, executor = pool, { forUpdate = false } = {}) {
   const params = [invoiceId, user.school_id];
   let query = `
-    SELECT i.*, s.parent_id, s.user_id AS student_user_id, student_user.full_name AS student_name
+    SELECT i.invoice_id, i.student_id, i.school_id, i.title, i.amount, i.status, i.due_date, i.created_at,
+           s.parent_id, s.user_id AS student_user_id, student_user.full_name AS student_name
     FROM invoices i
-    JOIN students s ON i.student_id = s.student_id
-    JOIN users student_user ON s.user_id = student_user.user_id
+    JOIN students s ON i.student_id = s.student_id AND i.school_id = s.school_id
+    JOIN users student_user ON s.user_id = student_user.user_id AND student_user.school_id = i.school_id
     WHERE i.invoice_id = $1 AND i.school_id = $2
   `;
 
@@ -41,13 +64,34 @@ async function getInvoiceForActor(invoiceId, user) {
     return null;
   }
 
-  const result = await pool.query(query, params);
+  if (forUpdate) {
+    query += " FOR UPDATE";
+  }
+
+  const result = await executor.query(query, params);
+  return result.rows[0] || null;
+}
+
+async function getStudentBillingProfile(studentId, schoolId, executor = pool) {
+  const result = await executor.query(
+    `
+      SELECT s.student_id, s.parent_id, s.school_id,
+             student_user.full_name AS student_name,
+             student_user.email AS student_email,
+             parent_user.email AS parent_email,
+             parent_user.full_name AS parent_name
+      FROM students s
+      JOIN users student_user ON s.user_id = student_user.user_id AND student_user.school_id = s.school_id
+      LEFT JOIN users parent_user ON s.parent_id = parent_user.user_id AND parent_user.school_id = s.school_id
+      WHERE s.student_id = $1 AND s.school_id = $2
+    `,
+    [studentId, schoolId],
+  );
+
   return result.rows[0] || null;
 }
 
 router.post("/invoices", authorize, validate(createInvoiceSchema), async (req, res, next) => {
-  const client = await pool.connect();
-
   try {
     if (req.user.role !== "Admin") {
       return sendError(res, { status: 403, message: "Access Denied." });
@@ -55,83 +99,85 @@ router.post("/invoices", authorize, validate(createInvoiceSchema), async (req, r
 
     const { student_id, title, amount, due_date } = req.body;
 
-    await client.query("BEGIN");
+    const transactionResult = await withTransaction(async (client) => {
+      const student = await getStudentBillingProfile(student_id, req.user.school_id, client);
 
-    const studentQuery = await client.query(
-      `
-        SELECT s.student_id, s.parent_id, student_user.full_name AS student_name,
-               parent_user.email AS parent_email, parent_user.full_name AS parent_name
-        FROM students s
-        JOIN users student_user ON s.user_id = student_user.user_id
-        LEFT JOIN users parent_user ON s.parent_id = parent_user.user_id
-        WHERE s.student_id = $1 AND student_user.school_id = $2
-      `,
-      [student_id, req.user.school_id],
-    );
+      if (!student) {
+        const error = new Error("Student not found in your school.");
+        error.status = 404;
+        throw error;
+      }
 
-    if (studentQuery.rows.length === 0) {
-      await client.query("ROLLBACK");
-      return sendError(res, { status: 404, message: "Student not found in your school." });
-    }
+      const newInvoice = await client.query(
+        `
+          INSERT INTO invoices (student_id, title, amount, due_date, school_id)
+          VALUES ($1, $2, $3, $4, $5)
+          RETURNING invoice_id, student_id, school_id, title, amount, status, due_date, created_at
+        `,
+        [student_id, title.trim(), amount, due_date, req.user.school_id],
+      );
 
-    const student = studentQuery.rows[0];
+      await logAudit({
+        client,
+        userId: req.user.user_id,
+        action: "CREATE_INVOICE",
+        targetTable: "invoices",
+        recordId: newInvoice.rows[0].invoice_id,
+        newValue: newInvoice.rows[0],
+      });
 
-    const newInvoice = await client.query(
-      "INSERT INTO invoices (student_id, title, amount, due_date, school_id) VALUES ($1, $2, $3, $4, $5) RETURNING *",
-      [student_id, title, amount, due_date, req.user.school_id],
-    );
-
-    await logAudit({
-      client,
-      userId: req.user.user_id,
-      action: "CREATE_INVOICE",
-      targetTable: "invoices",
-      recordId: newInvoice.rows[0].invoice_id,
-      newValue: newInvoice.rows[0],
+      return {
+        invoice: newInvoice.rows[0],
+        student,
+      };
     });
 
-    await client.query("COMMIT");
-
-    if (student.parent_email) {
+    if (transactionResult.student.parent_email) {
       const emailHTML = `
         <div style="font-family: Arial; max-width: 500px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden;">
           <div style="background-color: #F59E0B; padding: 20px; text-align: center;">
             <h2 style="color: white; margin: 0;">New Invoice Issued</h2>
           </div>
           <div style="padding: 30px; background-color: #f9fafb;">
-            <h3>Dear ${escapeHtml(student.parent_name || "Parent")},</h3>
-            <p>A new invoice of <strong>₦${escapeHtml(amount)}</strong> for <strong>${escapeHtml(title)}</strong> has been issued for ${escapeHtml(student.student_name)}.</p>
-            <p>Please log in to your EduSync portal to view and pay this invoice by ${escapeHtml(new Date(due_date).toLocaleDateString())}.</p>
+            <h3>Dear ${escapeHtml(transactionResult.student.parent_name || "Parent")},</h3>
+            <p>A new invoice of <strong>₦${escapeHtml(formatCurrencyAmount(transactionResult.invoice.amount))}</strong> for <strong>${escapeHtml(transactionResult.invoice.title)}</strong> has been issued for ${escapeHtml(transactionResult.student.student_name)}.</p>
+            <p>Please log in to your EduSync portal to view and pay this invoice by ${escapeHtml(new Date(transactionResult.invoice.due_date).toLocaleDateString())}.</p>
           </div>
         </div>
       `;
-      await emailQueue.add("invoice-email", {
-        to: student.parent_email,
-        subject: `New Invoice: ${title}`,
-        html: emailHTML,
-      });
+
+      try {
+        await emailQueue.add("invoice-email", {
+          to: transactionResult.student.parent_email,
+          subject: `New Invoice: ${transactionResult.invoice.title}`,
+          html: emailHTML,
+        });
+      } catch (queueError) {
+        console.error("Invoice email queue failed:", queueError.message);
+      }
     }
 
     return sendSuccess(res, {
       status: 201,
       message: "Invoice created successfully.",
-      data: newInvoice.rows[0],
+      data: transactionResult.invoice,
     });
   } catch (err) {
-    await client.query("ROLLBACK");
+    if (err.status) {
+      return sendError(res, { status: err.status, message: err.message, code: err.code });
+    }
     next(err);
-  } finally {
-    client.release();
   }
 });
 
 router.get("/invoices", authorize, async (req, res, next) => {
   try {
     let query = `
-      SELECT i.*, u.full_name AS student_name, s.class_grade
+      SELECT i.invoice_id, i.student_id, i.school_id, i.title, i.amount, i.status, i.due_date, i.created_at,
+             u.full_name AS student_name, s.class_grade
       FROM invoices i
-      JOIN students s ON i.student_id = s.student_id
-      JOIN users u ON s.user_id = u.user_id
+      JOIN students s ON i.student_id = s.student_id AND i.school_id = s.school_id
+      JOIN users u ON s.user_id = u.user_id AND u.school_id = i.school_id
       WHERE i.school_id = $1
       ORDER BY i.created_at DESC
     `;
@@ -139,20 +185,22 @@ router.get("/invoices", authorize, async (req, res, next) => {
 
     if (req.user.role === "Parent") {
       query = `
-        SELECT i.*, u.full_name AS student_name, s.class_grade
+        SELECT i.invoice_id, i.student_id, i.school_id, i.title, i.amount, i.status, i.due_date, i.created_at,
+               u.full_name AS student_name, s.class_grade
         FROM invoices i
-        JOIN students s ON i.student_id = s.student_id
-        JOIN users u ON s.user_id = u.user_id
+        JOIN students s ON i.student_id = s.student_id AND i.school_id = s.school_id
+        JOIN users u ON s.user_id = u.user_id AND u.school_id = i.school_id
         WHERE s.parent_id = $1 AND i.school_id = $2
         ORDER BY i.created_at DESC
       `;
       queryParams = [req.user.user_id, req.user.school_id];
     } else if (req.user.role === "Student") {
       query = `
-        SELECT i.*, u.full_name AS student_name, s.class_grade
+        SELECT i.invoice_id, i.student_id, i.school_id, i.title, i.amount, i.status, i.due_date, i.created_at,
+               u.full_name AS student_name, s.class_grade
         FROM invoices i
-        JOIN students s ON i.student_id = s.student_id
-        JOIN users u ON s.user_id = u.user_id
+        JOIN students s ON i.student_id = s.student_id AND i.school_id = s.school_id
+        JOIN users u ON s.user_id = u.user_id AND u.school_id = i.school_id
         WHERE s.user_id = $1 AND i.school_id = $2
         ORDER BY i.created_at DESC
       `;
@@ -174,40 +222,66 @@ router.post("/invoices/:id/checkout", authorize, async (req, res, next) => {
     const invoice = await getInvoiceForActor(id, req.user);
 
     if (!invoice) {
-      return sendError(res, { status: 404, message: "Invoice not found or not accessible." });
+      return sendError(res, {
+        status: 404,
+        message: "Invoice not found or not accessible.",
+      });
+    }
+
+    if (!process.env.STRIPE_SECRET_KEY) {
+      return sendError(res, {
+        status: 503,
+        message: "Stripe is not configured.",
+        code: "STRIPE_NOT_CONFIGURED",
+      });
     }
 
     if (invoice.status === "Paid") {
-      return sendError(res, { status: 400, message: "Invoice is already paid." });
+      return sendError(res, {
+        status: 400,
+        message: "Invoice is already paid.",
+      });
     }
 
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
-      line_items: [
-        {
-          price_data: {
-            currency: "ngn",
-            product_data: {
-              name: invoice.title,
-              description: `EduSync Academic Invoice for ${invoice.student_name}`,
+    const session = await stripe.checkout.sessions.create(
+      {
+        payment_method_types: ["card"],
+        line_items: [
+          {
+            price_data: {
+              currency: "ngn",
+              product_data: {
+                name: invoice.title,
+                description: `EduSync Academic Invoice for ${invoice.student_name}`,
+              },
+              unit_amount: Math.round(Number(invoice.amount) * 100),
             },
-            unit_amount: Math.round(Number(invoice.amount) * 100),
+            quantity: 1,
           },
-          quantity: 1,
+        ],
+        mode: "payment",
+        metadata: {
+          invoice_id: String(invoice.invoice_id),
+          school_id: String(req.user.school_id),
+          paid_by_user_id: String(req.user.user_id),
         },
-      ],
-      mode: "payment",
-      metadata: {
-        invoice_id: String(invoice.invoice_id),
-        school_id: String(req.user.school_id),
-        paid_by_user_id: String(req.user.user_id),
+        success_url: `${CLIENT_URL}/dashboard?payment_success=true`,
+        cancel_url: `${CLIENT_URL}/dashboard?payment_canceled=true`,
       },
-      success_url: `${CLIENT_URL}/dashboard?payment_success=true`,
-      cancel_url: `${CLIENT_URL}/dashboard?payment_canceled=true`,
-    });
+      {
+        idempotencyKey: `invoice-checkout-${invoice.invoice_id}-user-${req.user.user_id}`,
+      },
+    );
 
     return sendSuccess(res, { data: { url: session.url } });
   } catch (err) {
+    if (err.status) {
+      return sendError(res, {
+        status: err.status,
+        message: err.message,
+        code: err.code,
+      });
+    }
     next(err);
   }
 });
@@ -217,6 +291,7 @@ router.post("/webhook", async (req, res) => {
   let event;
 
   try {
+    ensureStripeWebhookConfigured();
     event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
   } catch (err) {
     console.error(`❌ Webhook Signature Error: ${err.message}`);
@@ -225,65 +300,76 @@ router.post("/webhook", async (req, res) => {
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
-    const invoiceId = session.metadata.invoice_id;
-    const schoolId = session.metadata.school_id;
+    const invoiceId = Number(session.metadata.invoice_id);
+    const schoolId = Number(session.metadata.school_id);
     const paidByUserId = session.metadata.paid_by_user_id
       ? Number(session.metadata.paid_by_user_id)
       : null;
 
-    const client = await pool.connect();
-
     try {
-      await client.query("BEGIN");
+      const transactionResult = await withTransaction(async (client) => {
+        const invoiceCheck = await client.query(
+          `
+            SELECT invoice_id, student_id, school_id, title, amount, status, due_date, created_at
+            FROM invoices
+            WHERE invoice_id = $1 AND school_id = $2
+            FOR UPDATE
+          `,
+          [invoiceId, schoolId],
+        );
 
-      const invoiceCheck = await client.query(
-        "SELECT * FROM invoices WHERE invoice_id = $1 AND school_id = $2 FOR UPDATE",
-        [invoiceId, schoolId],
-      );
+        if (invoiceCheck.rows.length === 0) {
+          return { kind: "missing" };
+        }
 
-      if (invoiceCheck.rows.length === 0) {
-        await client.query("ROLLBACK");
-        return sendSuccess(res, { message: "Invoice not found", data: { received: true } });
-      }
+        const currentInvoice = invoiceCheck.rows[0];
 
-      if (invoiceCheck.rows[0].status === "Paid") {
-        await client.query("ROLLBACK");
-        return sendSuccess(res, { message: "Invoice already processed", data: { received: true } });
-      }
+        if (currentInvoice.status === "Paid") {
+          return { kind: "already_paid" };
+        }
 
-      const updatedInvoice = await client.query(
-        "UPDATE invoices SET status = 'Paid' WHERE invoice_id = $1 AND school_id = $2 RETURNING *",
-        [invoiceId, schoolId],
-      );
+        const updatedInvoice = await client.query(
+          `
+            UPDATE invoices
+            SET status = 'Paid'
+            WHERE invoice_id = $1 AND school_id = $2
+            RETURNING invoice_id, student_id, school_id, title, amount, status, due_date, created_at
+          `,
+          [invoiceId, schoolId],
+        );
 
-      await logAudit({
-        client,
-        userId: paidByUserId,
-        action: "PAY_INVOICE",
-        targetTable: "invoices",
-        recordId: Number(invoiceId),
-        oldValue: invoiceCheck.rows[0],
-        newValue: updatedInvoice.rows[0],
+        await logAudit({
+          client,
+          userId: paidByUserId,
+          action: "PAY_INVOICE",
+          targetTable: "invoices",
+          recordId: invoiceId,
+          oldValue: currentInvoice,
+          newValue: updatedInvoice.rows[0],
+        });
+
+        const invoiceDetails = await client.query(
+          `
+            SELECT i.title, i.amount,
+                   COALESCE(parent_user.email, student_user.email) AS email,
+                   COALESCE(parent_user.full_name, student_user.full_name) AS full_name
+            FROM invoices i
+            JOIN students s ON i.student_id = s.student_id AND i.school_id = s.school_id
+            JOIN users student_user ON s.user_id = student_user.user_id AND student_user.school_id = i.school_id
+            LEFT JOIN users parent_user ON s.parent_id = parent_user.user_id AND parent_user.school_id = i.school_id
+            WHERE i.invoice_id = $1 AND i.school_id = $2
+          `,
+          [invoiceId, schoolId],
+        );
+
+        return {
+          kind: "paid",
+          receiptRecipient: invoiceDetails.rows[0] || null,
+        };
       });
 
-      await client.query("COMMIT");
-
-      const invoiceDetails = await pool.query(
-        `
-          SELECT i.title, i.amount,
-                 COALESCE(parent_user.email, student_user.email) AS email,
-                 COALESCE(parent_user.full_name, student_user.full_name) AS full_name
-          FROM invoices i
-          JOIN students s ON i.student_id = s.student_id
-          JOIN users student_user ON s.user_id = student_user.user_id
-          LEFT JOIN users parent_user ON s.parent_id = parent_user.user_id
-          WHERE i.invoice_id = $1 AND i.school_id = $2
-        `,
-        [invoiceId, schoolId],
-      );
-
-      if (invoiceDetails.rows.length > 0) {
-        const details = invoiceDetails.rows[0];
+      if (transactionResult.kind === "paid" && transactionResult.receiptRecipient?.email) {
+        const details = transactionResult.receiptRecipient;
         const emailHTML = `
           <div style="font-family: Arial; max-width: 500px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden;">
             <div style="background-color: #10B981; padding: 20px; text-align: center;">
@@ -291,22 +377,25 @@ router.post("/webhook", async (req, res) => {
             </div>
             <div style="padding: 30px; background-color: #f9fafb;">
               <h3>Thank you, ${escapeHtml(details.full_name)}!</h3>
-              <p>We have successfully received your secure payment of <strong>₦${escapeHtml(details.amount)}</strong> for <strong>${escapeHtml(details.title)}</strong>.</p>
+              <p>We have successfully received your secure payment of <strong>₦${escapeHtml(formatCurrencyAmount(details.amount))}</strong> for <strong>${escapeHtml(details.title)}</strong>.</p>
               <p style="color: green; font-weight: bold;">Status: PAID ✅</p>
             </div>
           </div>
         `;
-        await emailQueue.add("payment-receipt", {
-          to: details.email,
-          subject: `Payment Receipt: ${details.title}`,
-          html: emailHTML,
-        });
+
+        try {
+          await emailQueue.add("payment-receipt", {
+            to: details.email,
+            subject: `Payment Receipt: ${details.title}`,
+            html: emailHTML,
+          });
+        } catch (queueError) {
+          console.error("Payment receipt queue failed:", queueError.message);
+        }
       }
     } catch (dbErr) {
-      await client.query("ROLLBACK");
       console.error(`❌ Webhook Database Error: ${dbErr.message}`);
-    } finally {
-      client.release();
+      return sendError(res, { status: 500, message: "Webhook processing failed.", code: "WEBHOOK_DB_ERROR" });
     }
   }
 

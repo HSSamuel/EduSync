@@ -11,6 +11,7 @@ const validate = require('../middleware/validate');
 const rateLimit = require('express-rate-limit');
 const { OAuth2Client } = require('google-auth-library');
 const { ACCESS_TOKEN_SECRET } = require('../utils/tokenConfig');
+const { generateInviteCode } = require('../utils/inviteCode');
 const {
   REFRESH_COOKIE_NAME,
   createSession,
@@ -162,7 +163,7 @@ router.post('/register', registerLimiter, validate(registerSchema), async (req, 
         });
       }
 
-      const newInviteCode = crypto.randomBytes(4).toString('hex').toUpperCase();
+      const newInviteCode = generateInviteCode();
       const newSchool = await client.query(
         `
           INSERT INTO schools (school_name, contact_email, invite_code)
@@ -450,7 +451,7 @@ router.post('/google', validate(googleAuthSchema), async (req, res, next) => {
       }
 
       if (role === 'Admin') {
-        const newInviteCode = crypto.randomBytes(4).toString('hex').toUpperCase();
+        const newInviteCode = generateInviteCode();
         const newSchool = await client.query(
           `
             INSERT INTO schools (school_name, contact_email, invite_code)

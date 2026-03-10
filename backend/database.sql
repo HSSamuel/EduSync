@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS schools (
     school_id SERIAL PRIMARY KEY,
     school_name VARCHAR(255) NOT NULL,
     contact_email VARCHAR(255),
-    invite_code VARCHAR(50) UNIQUE NOT NULL,
+    invite_code VARCHAR(64) UNIQUE NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS students (
     student_id SERIAL PRIMARY KEY,
     user_id INT UNIQUE REFERENCES users(user_id) ON DELETE CASCADE,
     parent_id INT REFERENCES users(user_id) ON DELETE SET NULL,
+    school_id INT REFERENCES schools(school_id) ON DELETE CASCADE,
     class_grade VARCHAR(50) NOT NULL,
     enrollment_date DATE DEFAULT CURRENT_DATE
 );
@@ -122,9 +123,11 @@ CREATE TABLE IF NOT EXISTS cbt_results (
     result_id SERIAL PRIMARY KEY,
     quiz_id INT REFERENCES quizzes(quiz_id) ON DELETE CASCADE,
     student_id INT REFERENCES students(student_id) ON DELETE CASCADE,
+    school_id INT REFERENCES schools(school_id) ON DELETE CASCADE,
     score INT NOT NULL,
     total_questions INT NOT NULL,
-    submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT unique_quiz_submission_per_student UNIQUE (quiz_id, student_id, school_id)
 );
 
 CREATE TABLE IF NOT EXISTS invoices (
@@ -175,12 +178,14 @@ CREATE TABLE IF NOT EXISTS extracurriculars (
     activity_id SERIAL PRIMARY KEY,
     activity_name VARCHAR(100) NOT NULL,
     description TEXT,
+    school_id INT REFERENCES schools(school_id) ON DELETE CASCADE,
     coordinator_id INT REFERENCES users(user_id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS student_activities (
     student_id INT REFERENCES students(student_id) ON DELETE CASCADE,
     activity_id INT REFERENCES extracurriculars(activity_id) ON DELETE CASCADE,
+    school_id INT REFERENCES schools(school_id) ON DELETE CASCADE,
     role VARCHAR(50) DEFAULT 'Member',
     PRIMARY KEY (student_id, activity_id)
 );
@@ -222,3 +227,212 @@ CREATE INDEX IF NOT EXISTS idx_messages_room_school ON messages(room, school_id)
 
 CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_sessions_session_id ON user_sessions(session_id);
+
+
+
+ALTER TABLE students
+    ADD COLUMN IF NOT EXISTS school_id INT REFERENCES schools(school_id) ON DELETE CASCADE;
+
+UPDATE students s
+SET school_id = u.school_id
+FROM users u
+WHERE s.user_id = u.user_id
+  AND (s.school_id IS NULL OR s.school_id <> u.school_id);
+
+ALTER TABLE cbt_results
+    ADD COLUMN IF NOT EXISTS school_id INT REFERENCES schools(school_id) ON DELETE CASCADE;
+
+UPDATE cbt_results cr
+SET school_id = q.school_id
+FROM quizzes q
+WHERE cr.quiz_id = q.quiz_id
+  AND (cr.school_id IS NULL OR cr.school_id <> q.school_id);
+
+ALTER TABLE extracurriculars
+    ADD COLUMN IF NOT EXISTS school_id INT REFERENCES schools(school_id) ON DELETE CASCADE;
+
+ALTER TABLE student_activities
+    ADD COLUMN IF NOT EXISTS school_id INT REFERENCES schools(school_id) ON DELETE CASCADE;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_user_school_unique ON users(user_id, school_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_students_student_school_unique ON students(student_id, school_id);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'unique_student_user_school'
+    ) THEN
+        ALTER TABLE students
+            ADD CONSTRAINT unique_student_user_school UNIQUE (user_id, school_id);
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'unique_subject_teacher_school'
+    ) THEN
+        ALTER TABLE subjects
+            ADD CONSTRAINT unique_subject_teacher_school UNIQUE (subject_id, school_id, teacher_id);
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'unique_quiz_school'
+    ) THEN
+        ALTER TABLE quizzes
+            ADD CONSTRAINT unique_quiz_school UNIQUE (quiz_id, school_id);
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'unique_cbt_result_scope'
+    ) THEN
+        ALTER TABLE cbt_results
+            ADD CONSTRAINT unique_cbt_result_scope UNIQUE (result_id, school_id);
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'unique_activity_school'
+    ) THEN
+        ALTER TABLE extracurriculars
+            ADD CONSTRAINT unique_activity_school UNIQUE (activity_id, school_id);
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'fk_students_user_same_school'
+    ) THEN
+        ALTER TABLE students
+            ADD CONSTRAINT fk_students_user_same_school
+            FOREIGN KEY (user_id, school_id) REFERENCES users(user_id, school_id) ON DELETE CASCADE;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'fk_students_parent_same_school'
+    ) THEN
+        ALTER TABLE students
+            ADD CONSTRAINT fk_students_parent_same_school
+            FOREIGN KEY (parent_id, school_id) REFERENCES users(user_id, school_id) ON DELETE SET NULL;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'fk_subjects_teacher_same_school'
+    ) THEN
+        ALTER TABLE subjects
+            ADD CONSTRAINT fk_subjects_teacher_same_school
+            FOREIGN KEY (teacher_id, school_id) REFERENCES users(user_id, school_id) ON DELETE SET NULL;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'fk_cbt_quiz_same_school'
+    ) THEN
+        ALTER TABLE cbt_results
+            ADD CONSTRAINT fk_cbt_quiz_same_school
+            FOREIGN KEY (quiz_id, school_id) REFERENCES quizzes(quiz_id, school_id) ON DELETE CASCADE;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'fk_student_activities_activity_same_school'
+    ) THEN
+        ALTER TABLE student_activities
+            ADD CONSTRAINT fk_student_activities_activity_same_school
+            FOREIGN KEY (activity_id, school_id) REFERENCES extracurriculars(activity_id, school_id) ON DELETE CASCADE;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'fk_student_activities_student_same_school'
+    ) THEN
+        ALTER TABLE student_activities
+            ADD CONSTRAINT fk_student_activities_student_same_school
+            FOREIGN KEY (student_id, school_id) REFERENCES students(student_id, school_id) ON DELETE CASCADE;
+    END IF;
+END $$;
+
+CREATE OR REPLACE FUNCTION enforce_school_scoped_role_integrity()
+RETURNS TRIGGER AS $$
+DECLARE
+    linked_role users.role%TYPE;
+    linked_school_id users.school_id%TYPE;
+BEGIN
+    IF TG_TABLE_NAME = 'students' THEN
+        IF NEW.user_id IS NOT NULL THEN
+            SELECT role, school_id INTO linked_role, linked_school_id FROM users WHERE user_id = NEW.user_id;
+            IF linked_role IS DISTINCT FROM 'Student' THEN
+                RAISE EXCEPTION 'students.user_id must reference a Student user';
+            END IF;
+            IF NEW.school_id IS DISTINCT FROM linked_school_id THEN
+                RAISE EXCEPTION 'students.user_id must belong to the same school';
+            END IF;
+        END IF;
+
+        IF NEW.parent_id IS NOT NULL THEN
+            SELECT role, school_id INTO linked_role, linked_school_id FROM users WHERE user_id = NEW.parent_id;
+            IF linked_role IS DISTINCT FROM 'Parent' THEN
+                RAISE EXCEPTION 'students.parent_id must reference a Parent user';
+            END IF;
+            IF NEW.school_id IS DISTINCT FROM linked_school_id THEN
+                RAISE EXCEPTION 'students.parent_id must belong to the same school';
+            END IF;
+        END IF;
+    ELSIF TG_TABLE_NAME = 'subjects' AND NEW.teacher_id IS NOT NULL THEN
+        SELECT role, school_id INTO linked_role, linked_school_id FROM users WHERE user_id = NEW.teacher_id;
+        IF linked_role IS DISTINCT FROM 'Teacher' THEN
+            RAISE EXCEPTION 'subjects.teacher_id must reference a Teacher user';
+        END IF;
+        IF NEW.school_id IS DISTINCT FROM linked_school_id THEN
+            RAISE EXCEPTION 'subjects.teacher_id must belong to the same school';
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS enforce_students_role_integrity ON students;
+CREATE TRIGGER enforce_students_role_integrity
+BEFORE INSERT OR UPDATE ON students
+FOR EACH ROW
+EXECUTE PROCEDURE enforce_school_scoped_role_integrity();
+
+DROP TRIGGER IF EXISTS enforce_subjects_role_integrity ON subjects;
+CREATE TRIGGER enforce_subjects_role_integrity
+BEFORE INSERT OR UPDATE ON subjects
+FOR EACH ROW
+EXECUTE PROCEDURE enforce_school_scoped_role_integrity();
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cbt_results_quiz_student_school ON cbt_results(quiz_id, student_id, school_id);
+CREATE INDEX IF NOT EXISTS idx_students_school_id ON students(school_id);
+CREATE INDEX IF NOT EXISTS idx_subjects_school_teacher ON subjects(school_id, teacher_id);
+CREATE INDEX IF NOT EXISTS idx_cbt_results_school_id ON cbt_results(school_id);
+CREATE INDEX IF NOT EXISTS idx_extracurriculars_school_id ON extracurriculars(school_id);
+CREATE INDEX IF NOT EXISTS idx_student_activities_school_id ON student_activities(school_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_subjects_subject_school_unique ON subjects(subject_id, school_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_invoice_school_unique ON invoices(invoice_id, school_id);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'fk_results_student_same_school'
+    ) THEN
+        ALTER TABLE results
+            ADD CONSTRAINT fk_results_student_same_school
+            FOREIGN KEY (student_id, school_id) REFERENCES students(student_id, school_id) ON DELETE CASCADE;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'fk_results_subject_same_school'
+    ) THEN
+        ALTER TABLE results
+            ADD CONSTRAINT fk_results_subject_same_school
+            FOREIGN KEY (subject_id, school_id) REFERENCES subjects(subject_id, school_id) ON DELETE CASCADE;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'fk_invoices_student_same_school'
+    ) THEN
+        ALTER TABLE invoices
+            ADD CONSTRAINT fk_invoices_student_same_school
+            FOREIGN KEY (student_id, school_id) REFERENCES students(student_id, school_id) ON DELETE CASCADE;
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_results_student_subject_term_school
+    ON results(student_id, subject_id, academic_term, school_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_school_status_due_date
+    ON invoices(school_id, status, due_date);

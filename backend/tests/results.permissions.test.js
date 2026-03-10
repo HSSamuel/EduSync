@@ -17,33 +17,36 @@ test('teacher cannot update grades for a subject not assigned to them', async ()
   const poolMock = {
     connect: async () => ({
       query: async (sql) => {
-        if (sql.includes('FROM results r')) {
+        if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") {
+          return {};
+        }
+
+        if (sql.includes("FROM results r")) {
           return {
-            rows: [{
-              result_id: 41,
-              subject_id: 9,
-              school_id: 10,
-              student_id: 5,
-              academic_term: 'First Term',
-              test_score: 10,
-              exam_score: 40,
-              total_score: 50,
-              subject_name: 'Chemistry',
-            }],
+            rows: [
+              {
+                result_id: 41,
+                subject_id: 9,
+                school_id: 10,
+                student_id: 5,
+                academic_term: "First Term",
+                test_score: 10,
+                exam_score: 40,
+                total_score: 50,
+                subject_name: "Chemistry",
+              },
+            ],
           };
         }
 
-        throw new Error('Unexpected query');
+        if (sql.includes("FROM subjects")) {
+          return { rows: [] };
+        }
+
+        throw new Error(`Unexpected query: ${sql}`);
       },
       release() {},
     }),
-    query: async (sql) => {
-      if (sql.includes('FROM subjects')) {
-        return { rows: [] };
-      }
-
-      throw new Error(`Unexpected pool query: ${sql}`);
-    },
   };
 
   const authMock = (req, res, next) => {

@@ -2,7 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 require('dotenv').config();
-const { sendError } = require('./utils/response');
+const { sendError, sendSuccess } = require('./utils/response');
+const { getServiceHealthSummary } = require('./utils/healthCheck');
 
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || CLIENT_URL)
@@ -24,6 +25,7 @@ function createApp() {
   };
 
   app.disable('x-powered-by');
+  app.set('trust proxy', process.env.TRUST_PROXY || 'loopback');
   app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
@@ -47,6 +49,20 @@ function createApp() {
     res.send('Welcome to the EduSync API! The server is alive.');
   });
 
+  app.get('/api/health', async (req, res, next) => {
+    try {
+      const summary = await getServiceHealthSummary();
+      const status = summary.status === 'fail' ? 503 : 200;
+      return sendSuccess(res, {
+        status,
+        message: summary.status === 'ok' ? 'All monitored services are healthy.' : 'Service health check completed.',
+        data: summary,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
   app.use('/api/auth', require('./routes/auth'));
   app.use('/api/dashboard', require('./routes/dashboard'));
   app.use('/api/subjects', require('./routes/subjects'));
@@ -57,12 +73,9 @@ function createApp() {
   app.use('/api/cbt', require('./routes/cbt'));
   app.use('/api/timetable', require('./routes/timetable'));
   app.use('/api/chat', require('./routes/chat'));
-
-  if (process.env.NODE_ENV !== 'test') {
-    app.use('/api/results', require('./routes/results'));
-    app.use('/api/school', require('./routes/school'));
-    app.use('/api/finance', require('./routes/finance'));
-  }
+  app.use('/api/results', require('./routes/results'));
+  app.use('/api/school', require('./routes/school'));
+  app.use('/api/finance', require('./routes/finance'));
 
   app.use((err, req, res, next) => {
     console.error('🔥 Global Error Handler Caught:', err.message);

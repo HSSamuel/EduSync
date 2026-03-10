@@ -44,9 +44,21 @@ function clearRefreshCookie(res) {
   });
 }
 
+function getRequestIp(req) {
+  if (!req) return null;
+  if (req.ip) return req.ip;
+
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string' && forwarded.trim()) {
+    return forwarded.split(',')[0].trim();
+  }
+
+  return null;
+}
+
 function getRequestMetadata(req) {
   return {
-    ip_address: req.ip || req.headers['x-forwarded-for'] || null,
+    ip_address: getRequestIp(req),
     user_agent: req.get('user-agent') || 'unknown',
   };
 }

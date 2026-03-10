@@ -25,6 +25,8 @@ const upload = multer({
 });
 
 router.post('/documents', authorize, upload.single('document_file'), async (req, res, next) => {
+  const client = await pool.connect();
+
   try {
     if (req.user.role !== 'Admin') return sendError(res, { status: 403, message: 'Access Denied.' });
 
@@ -43,8 +45,12 @@ router.post('/documents', authorize, upload.single('document_file'), async (req,
     const file_url = req.file.path;
     const { title } = parsed.data;
 
-    const newDoc = await pool.query(
-      'INSERT INTO school_documents (title, file_url, file_public_id, file_resource_type, uploaded_by, school_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+    await client.query('BEGIN');
+
+    const newDoc = await client.query(
+      `INSERT INTO school_documents (title, file_url, file_public_id, file_resource_type, uploaded_by, school_id)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING doc_id, title, file_url, file_public_id, file_resource_type, uploaded_by, school_id, uploaded_at`,
       [
         title,
         file_url,
@@ -56,6 +62,7 @@ router.post('/documents', authorize, upload.single('document_file'), async (req,
     );
 
     await logAudit({
+      client,
       userId: req.user.user_id,
       action: 'UPLOAD_DOCUMENT',
       targetTable: 'school_documents',
@@ -68,20 +75,26 @@ router.post('/documents', authorize, upload.single('document_file'), async (req,
       },
     });
 
+    await client.query('COMMIT');
+
     return sendSuccess(res, {
       status: 201,
       message: 'Document uploaded successfully.',
       data: newDoc.rows[0],
     });
   } catch (err) {
+    await client.query('ROLLBACK');
     return next(err);
+  } finally {
+    client.release();
   }
 });
 
 router.get('/documents', authorize, async (req, res, next) => {
   try {
     const docs = await pool.query(
-      'SELECT * FROM school_documents WHERE school_id = $1 ORDER BY uploaded_at DESC',
+      `SELECT doc_id, title, file_url, file_public_id, file_resource_type, uploaded_by, school_id, uploaded_at
+       FROM school_documents WHERE school_id = $1 ORDER BY uploaded_at DESC`,
       [req.user.school_id],
     );
     return sendSuccess(res, { data: docs.rows });
@@ -91,28 +104,30 @@ router.get('/documents', authorize, async (req, res, next) => {
 });
 
 router.delete('/documents/:id', authorize, async (req, res, next) => {
+  const client = await pool.connect();
+
   try {
     if (req.user.role !== 'Admin') return sendError(res, { status: 403, message: 'Access Denied.' });
 
-    const docQuery = await pool.query(
-      'SELECT doc_id, title, file_url, file_public_id, file_resource_type FROM school_documents WHERE doc_id = $1 AND school_id = $2',
+    await client.query('BEGIN');
+
+    const docQuery = await client.query(
+      `SELECT doc_id, title, file_url, file_public_id, file_resource_type
+       FROM school_documents WHERE doc_id = $1 AND school_id = $2 FOR UPDATE`,
       [req.params.id, req.user.school_id],
     );
 
-    if (docQuery.rows.length === 0) return sendError(res, { status: 404, message: 'Document not found' });
+    if (docQuery.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return sendError(res, { status: 404, message: 'Document not found' });
+    }
 
     const doc = docQuery.rows[0];
 
-    if (doc.file_public_id) {
-      await cloudinary.uploader.destroy(doc.file_public_id, {
-        resource_type: doc.file_resource_type || 'raw',
-        invalidate: true,
-      });
-    }
-
-    await pool.query('DELETE FROM school_documents WHERE doc_id = $1 AND school_id = $2', [req.params.id, req.user.school_id]);
+    await client.query('DELETE FROM school_documents WHERE doc_id = $1 AND school_id = $2', [req.params.id, req.user.school_id]);
 
     await logAudit({
+      client,
       userId: req.user.user_id,
       action: 'DELETE_DOCUMENT',
       targetTable: 'school_documents',
@@ -125,9 +140,21 @@ router.delete('/documents/:id', authorize, async (req, res, next) => {
       },
     });
 
+    await client.query('COMMIT');
+
+    if (doc.file_public_id) {
+      await cloudinary.uploader.destroy(doc.file_public_id, {
+        resource_type: doc.file_resource_type || 'raw',
+        invalidate: true,
+      });
+    }
+
     return sendSuccess(res, { message: 'Document deleted successfully from DB and Cloudinary!' });
   } catch (err) {
+    await client.query('ROLLBACK');
     return next(err);
+  } finally {
+    client.release();
   }
 });
 
@@ -197,7 +224,7 @@ router.post('/broadcast', authorize, validate(broadcastSchema), async (req, res,
 router.get('/events', authorize, async (req, res, next) => {
   try {
     const events = await pool.query(
-      'SELECT * FROM events WHERE school_id = $1 ORDER BY event_date ASC',
+      'SELECT event_id, title, event_date, event_type, school_id, created_by FROM events WHERE school_id = $1 ORDER BY event_date ASC',
       [req.user.school_id],
     );
     return sendSuccess(res, { data: events.rows });
@@ -207,17 +234,24 @@ router.get('/events', authorize, async (req, res, next) => {
 });
 
 router.post('/events', authorize, validate(eventSchema), async (req, res, next) => {
+  const client = await pool.connect();
+
   try {
     if (req.user.role !== 'Admin') return sendError(res, { status: 403, message: 'Access Denied.' });
 
     const { title, event_date, event_type } = req.body;
 
-    const newEvent = await pool.query(
-      'INSERT INTO events (title, event_date, event_type, created_by, school_id) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+    await client.query('BEGIN');
+
+    const newEvent = await client.query(
+      `INSERT INTO events (title, event_date, event_type, created_by, school_id)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING event_id, title, event_date, event_type, created_by, school_id`,
       [title, event_date, event_type, req.user.user_id, req.user.school_id],
     );
 
     await logAudit({
+      client,
       userId: req.user.user_id,
       action: 'CREATE_EVENT',
       targetTable: 'events',
@@ -229,32 +263,43 @@ router.post('/events', authorize, validate(eventSchema), async (req, res, next) 
       },
     });
 
+    await client.query('COMMIT');
+
     return sendSuccess(res, {
       status: 201,
       message: 'Event created successfully.',
       data: newEvent.rows[0],
     });
   } catch (err) {
+    await client.query('ROLLBACK');
     return next(err);
+  } finally {
+    client.release();
   }
 });
 
 router.delete('/events/:id', authorize, async (req, res, next) => {
+  const client = await pool.connect();
+
   try {
     if (req.user.role !== 'Admin') return sendError(res, { status: 403, message: 'Access Denied.' });
 
-    const existing = await pool.query(
-      'SELECT event_id, title, event_date, event_type FROM events WHERE event_id = $1 AND school_id = $2',
+    await client.query('BEGIN');
+
+    const existing = await client.query(
+      'SELECT event_id, title, event_date, event_type FROM events WHERE event_id = $1 AND school_id = $2 FOR UPDATE',
       [req.params.id, req.user.school_id],
     );
 
     if (existing.rows.length === 0) {
+      await client.query('ROLLBACK');
       return sendError(res, { status: 404, message: 'Event not found.' });
     }
 
-    await pool.query('DELETE FROM events WHERE event_id = $1 AND school_id = $2', [req.params.id, req.user.school_id]);
+    await client.query('DELETE FROM events WHERE event_id = $1 AND school_id = $2', [req.params.id, req.user.school_id]);
 
     await logAudit({
+      client,
       userId: req.user.user_id,
       action: 'DELETE_EVENT',
       targetTable: 'events',
@@ -262,9 +307,14 @@ router.delete('/events/:id', authorize, async (req, res, next) => {
       oldValue: existing.rows[0],
     });
 
+    await client.query('COMMIT');
+
     return sendSuccess(res, { message: 'Event deleted!' });
   } catch (err) {
+    await client.query('ROLLBACK');
     return next(err);
+  } finally {
+    client.release();
   }
 });
 

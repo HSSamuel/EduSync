@@ -101,3 +101,35 @@ test('refresh rotates the session and returns a new access token', async () => {
     await server.close();
   }
 });
+
+
+test('access token in cookie is rejected when Authorization header is missing', async () => {
+  const originalQuery = db.query;
+  db.query = async (text) => {
+    if (text.includes('SELECT 1')) {
+      return { rows: [{ '?column?': 1 }] };
+    }
+    throw new Error(`Unexpected query: ${text}`);
+  };
+
+  const token = jwt.sign({ user_id: 5, role: 'Admin', school_id: 2 }, process.env.ACCESS_TOKEN_SECRET, {
+    expiresIn: '15m',
+  });
+
+  const app = createApp();
+  const server = await startTestServer(app);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/users/teachers`, {
+      headers: { Cookie: `access_token=${token}` },
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 403);
+    assert.equal(payload.success, false);
+    assert.equal(payload.code, 'NO_ACCESS_TOKEN');
+  } finally {
+    db.query = originalQuery;
+    await server.close();
+  }
+});
