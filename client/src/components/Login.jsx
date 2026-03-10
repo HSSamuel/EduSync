@@ -3,6 +3,7 @@ import { useNavigate, Link, useLocation } from "react-router-dom";
 import { Mail, Lock, LogIn, ShieldCheck, Eye, EyeOff } from "lucide-react";
 import { GoogleLogin } from "@react-oauth/google";
 import { apiFetchOrThrow, setAccessToken } from "../utils/api";
+import { useAppContext } from "../context/AppContext";
 
 const GOOGLE_AUTH_ENABLED = Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID);
 
@@ -12,16 +13,24 @@ const Login = () => {
   const [statusMessage, setStatusMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const { refreshData } = useAppContext();
 
   const navigate = useNavigate();
   const location = useLocation();
   const redirectPath = location.state?.from?.pathname || "/dashboard";
   const isSuccess = statusMessage.includes("✅");
 
-  const handleAuthSuccess = (token, message = "✅ Login successful.") => {
-    setAccessToken(token);
-    setStatusMessage(message);
-    navigate(redirectPath, { replace: true });
+  const handleAuthSuccess = async (token, message = "✅ Login successful.") => {
+    try {
+      setAccessToken(token);
+      setStatusMessage(message);
+      await refreshData();
+      navigate(redirectPath, { replace: true });
+    } catch (err) {
+      setStatusMessage(`❌ ${err.message || "Unable to complete login."}`);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const onSubmitForm = async (e) => {

@@ -436,3 +436,31 @@ CREATE INDEX IF NOT EXISTS idx_results_student_subject_term_school
     ON results(student_id, subject_id, academic_term, school_id);
 CREATE INDEX IF NOT EXISTS idx_invoices_school_status_due_date
     ON invoices(school_id, status, due_date);
+
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS avatar_url TEXT,
+ADD COLUMN IF NOT EXISTS avatar_public_id TEXT;
+
+ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS phone_number VARCHAR(30),
+    ADD COLUMN IF NOT EXISTS gender VARCHAR(20),
+    ADD COLUMN IF NOT EXISTS date_of_birth DATE,
+    ADD COLUMN IF NOT EXISTS address TEXT,
+    ADD COLUMN IF NOT EXISTS bio TEXT,
+    ADD COLUMN IF NOT EXISTS avatar_url TEXT,
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
+CREATE OR REPLACE FUNCTION update_users_modified_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+DROP TRIGGER IF EXISTS update_users_modtime ON users;
+CREATE TRIGGER update_users_modtime
+BEFORE UPDATE ON users
+FOR EACH ROW
+EXECUTE PROCEDURE update_users_modified_column();

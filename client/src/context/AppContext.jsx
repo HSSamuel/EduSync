@@ -70,6 +70,37 @@ export const AppProvider = ({ children }) => {
     return profile;
   }, []);
 
+  const fetchDetailedProfile = useCallback(async () => {
+    const profilePayload = await apiFetchOrThrow(
+      "/users/me",
+      { method: "GET" },
+      "Unable to load your profile.",
+    );
+
+    const profile = extractResponseData(profilePayload, null);
+    return profile;
+  }, []);
+
+  const updateProfile = useCallback(async (payload) => {
+    const result = await apiFetchOrThrow(
+      "/users/me",
+      {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      },
+      "Unable to update profile.",
+    );
+
+    const updatedProfile = extractResponseData(result, null);
+
+    setUserData((prev) => ({
+      ...prev,
+      ...(updatedProfile || {}),
+    }));
+
+    return updatedProfile;
+  }, []);
+
   const loadSubjects = useCallback(
     async ({ force = false } = {}) => {
       if (
@@ -207,6 +238,8 @@ export const AppProvider = ({ children }) => {
         loading,
         logout,
         refreshData: fetchGlobalData,
+        fetchDetailedProfile,
+        updateProfile,
       }}
     >
       <SchoolContext.Provider

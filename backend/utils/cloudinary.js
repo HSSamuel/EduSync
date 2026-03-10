@@ -1,9 +1,10 @@
-const cloudinary = require("cloudinary").v2;
+const { v2: cloudinary } = require("cloudinary");
 const multerCloudinary = require("multer-storage-cloudinary");
 require("dotenv").config();
 const { getAllowedExtensions } = require("./uploadConfig");
 
-const CloudinaryStorage = multerCloudinary.CloudinaryStorage || multerCloudinary;
+const CloudinaryStorage =
+  multerCloudinary.CloudinaryStorage || multerCloudinary;
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -11,7 +12,7 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-const storage = new CloudinaryStorage({
+const documentStorage = new CloudinaryStorage({
   cloudinary,
   params: {
     folder: "edusync_vault",
@@ -20,4 +21,7 @@ const storage = new CloudinaryStorage({
   },
 });
 
-module.exports = { cloudinary, storage };
+module.exports = {
+  cloudinary,
+  documentStorage,
+};

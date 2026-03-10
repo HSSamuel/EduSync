@@ -9,6 +9,7 @@ import DashboardSidebar from "./dashboard/DashboardSidebar";
 import DashboardHeader from "./dashboard/DashboardHeader";
 import DashboardHero from "./dashboard/DashboardHero";
 import DashboardContent from "./dashboard/DashboardContent";
+import ProfileModal from "./dashboard/ProfileModal";
 import {
   getDashboardRoleFlags,
   getDashboardNavItems,
@@ -30,10 +31,15 @@ const Dashboard = () => {
     loadStudents,
   } = useAppContext();
 
-  const [activeTab, setActiveTab] = useState(() => getDefaultDashboardTab(getDashboardRoleFlags(userData)));
+  const [activeTab, setActiveTab] = useState(() =>
+    getDefaultDashboardTab(getDashboardRoleFlags(userData)),
+  );
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isUtilityOpen, setIsUtilityOpen] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [profileModalMode, setProfileModalMode] = useState("view");
   const [isDark, setIsDark] = useState(
     document.documentElement.classList.contains("dark"),
   );
@@ -79,6 +85,10 @@ const Dashboard = () => {
     mainContentRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const openProfileModal = (mode = "view") => {
+    setProfileModalMode(mode);
+    setIsProfileModalOpen(true);
+  };
 
   useEffect(() => {
     if (!userData) return;
@@ -134,7 +144,7 @@ const Dashboard = () => {
         setIsMobileMenuOpen={setIsMobileMenuOpen}
       />
 
-      <div className="flex-1 flex flex-col overflow-hidden relative min-w-0">
+      <div className="flex-1 flex flex-col relative min-w-0">
         <AnimatePresence>
           {showTopBtn && (
             <motion.button
@@ -171,6 +181,9 @@ const Dashboard = () => {
           role={role}
           userInitial={userInitial}
           logout={logout}
+          isProfileMenuOpen={isProfileMenuOpen}
+          setIsProfileMenuOpen={setIsProfileMenuOpen}
+          openProfileModal={openProfileModal}
         />
 
         <div className="flex flex-1 overflow-hidden bg-transparent min-w-0">
@@ -183,7 +196,9 @@ const Dashboard = () => {
               <DashboardHero
                 title={currentTab?.label || "Dashboard"}
                 description={getTabDescription(activeTab, flags)}
-                inviteCode={userData?.role === "Admin" ? userData?.invite_code : null}
+                inviteCode={
+                  userData?.role === "Admin" ? userData?.invite_code : null
+                }
                 schoolName={userData?.school_name}
               />
 
@@ -207,6 +222,13 @@ const Dashboard = () => {
           )}
         </div>
       </div>
+
+      <ProfileModal
+        key={profileModalMode}
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        initialMode={profileModalMode}
+      />
     </div>
   );
 };
