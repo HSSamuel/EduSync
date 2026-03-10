@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const pool = require("../db");
 const authorize = require("../middleware/authorize");
-const { sendSuccess } = require("../utils/response");
+const { sendError, sendSuccess } = require("../utils/response");
 
 router.get("/history/:room", authorize, async (req, res, next) => {
   try {
@@ -10,9 +10,10 @@ router.get("/history/:room", authorize, async (req, res, next) => {
     const schoolId = req.user?.school_id;
 
     if (!schoolId) {
-      return res.status(403).json({
-        success: false,
+      return sendError(res, {
+        status: 403,
         message: "Access denied. Missing school context.",
+        code: "FORBIDDEN",
       });
     }
 

@@ -87,18 +87,23 @@ test('teacher listing is limited to students in assigned subjects only', async (
   const token = createAccessToken({ user_id: 21, role: 'Teacher', school_id: 5 });
 
   db.query = async (text, params) => {
-    if (text.includes('SELECT subject_id FROM subjects')) {
+    if (text.includes('SELECT subject_id, subject_name FROM subjects')) {
       assert.deepEqual(params, [21, 5]);
-      return { rows: [{ subject_id: 301 }, { subject_id: 302 }] };
+      return { rows: [{ subject_id: 301, subject_name: 'Physics' }, { subject_id: 302, subject_name: 'Chemistry' }] };
+    }
+
+    if (text.includes('SELECT DISTINCT t.class_grade')) {
+      assert.deepEqual(params, [5, ['Physics', 'Chemistry']]);
+      return { rows: [{ class_grade: 'SS 1' }] };
     }
 
     if (text.includes('SELECT COUNT(*)')) {
-      assert.deepEqual(params, [5, [301, 302]]);
+      assert.deepEqual(params, [5, ['SS 1']]);
       return { rows: [{ count: '2' }] };
     }
 
     if (text.includes('SELECT') && text.includes('FROM students s')) {
-      assert.deepEqual(params, [5, [301, 302], 10, 0]);
+      assert.deepEqual(params, [5, ['SS 1'], 10, 0]);
       return {
         rows: [
           {

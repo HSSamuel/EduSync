@@ -69,6 +69,24 @@ export function getDashboardNavItems(flags) {
   ];
 }
 
+export function getDefaultDashboardTab(flags) {
+  if (flags.isAdmin || flags.isStudent) return "overview";
+  if (flags.isTeacher) return "subjects";
+  if (flags.isParent) return "grades";
+  return "overview";
+}
+
+export function resolveDashboardTab(activeTab, flags) {
+  const navItems = getDashboardNavItems(flags).filter((item) => item.show);
+  const availableIds = new Set(navItems.map((item) => item.id));
+
+  if (activeTab && availableIds.has(activeTab)) {
+    return activeTab;
+  }
+
+  return getDefaultDashboardTab(flags);
+}
+
 export const NAV_CATEGORIES = {
   Academics: ["overview", "subjects", "timetable", "cbt", "grades"],
   Administration: ["students", "attendance", "finance"],

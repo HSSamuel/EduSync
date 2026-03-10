@@ -16,15 +16,12 @@ const {
 const { logAudit } = require('../utils/auditLogger');
 const { sendError, sendSuccess } = require('../utils/response');
 
+const { FILE_UPLOAD_RULES, createFileFilter } = require('../utils/uploadConfig');
+
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    if (!allowedDocumentMimeTypes.includes(file.mimetype)) {
-      return cb(new Error('Unsupported file type. Please upload PDF, Word, PowerPoint, PNG, or JPEG files only.'));
-    }
-    return cb(null, true);
-  },
+  limits: { fileSize: FILE_UPLOAD_RULES.documents.maxFileSize },
+  fileFilter: createFileFilter('documents'),
 });
 
 router.post('/documents', authorize, upload.single('document_file'), async (req, res, next) => {

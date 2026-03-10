@@ -220,7 +220,7 @@ router.post("/webhook", async (req, res) => {
     event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
   } catch (err) {
     console.error(`❌ Webhook Signature Error: ${err.message}`);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
+    return sendError(res, { status: 400, message: `Webhook Error: ${err.message}`, code: "WEBHOOK_SIGNATURE_ERROR" });
   }
 
   if (event.type === "checkout.session.completed") {
@@ -243,12 +243,12 @@ router.post("/webhook", async (req, res) => {
 
       if (invoiceCheck.rows.length === 0) {
         await client.query("ROLLBACK");
-        return res.status(200).json({ received: true, message: "Invoice not found" });
+        return sendSuccess(res, { message: "Invoice not found", data: { received: true } });
       }
 
       if (invoiceCheck.rows[0].status === "Paid") {
         await client.query("ROLLBACK");
-        return res.status(200).json({ received: true, message: "Invoice already processed" });
+        return sendSuccess(res, { message: "Invoice already processed", data: { received: true } });
       }
 
       const updatedInvoice = await client.query(
@@ -310,7 +310,7 @@ router.post("/webhook", async (req, res) => {
     }
   }
 
-  res.status(200).json({ received: true });
+  return sendSuccess(res, { data: { received: true } });
 });
 
 module.exports = router;

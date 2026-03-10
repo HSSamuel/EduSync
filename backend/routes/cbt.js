@@ -4,6 +4,7 @@ const pool = require("../db");
 const authorize = require("../middleware/authorize");
 const { z } = require("zod");
 const validate = require("../middleware/validate");
+const { sendError, sendSuccess } = require("../utils/response");
 
 const createQuizSchema = z.object({
   subject_id: z.coerce.number().positive(),
@@ -19,11 +20,10 @@ const createQuizSchema = z.object({
     .min(1, "At least one question is required"),
 });
 
-// 1. CREATE A QUIZ (Teacher/Admin Only)
-router.post("/", authorize, validate(createQuizSchema), async (req, res) => {
+router.post("/", authorize, validate(createQuizSchema), async (req, res, next) => {
   try {
     if (req.user.role !== "Teacher" && req.user.role !== "Admin") {
-      return res.status(403).json({ error: "Access Denied." });
+      return sendError(res, { status: 403, message: "Access Denied.", code: "FORBIDDEN" });
     }
 
     const { subject_id, title, questions } = req.body;
@@ -39,15 +39,17 @@ router.post("/", authorize, validate(createQuizSchema), async (req, res) => {
       ],
     );
 
-    res.json({ message: "Quiz successfully created!", quiz: newQuiz.rows[0] });
+    return sendSuccess(res, {
+      status: 201,
+      message: "Quiz successfully created!",
+      data: newQuiz.rows[0],
+    });
   } catch (err) {
-    console.error(err.message);
-    res.status(500).json({ error: "Internal Server Error" });
+    return next(err);
   }
 });
 
-// 2. GET ALL QUIZZES
-router.get("/", authorize, async (req, res) => {
+router.get("/", authorize, async (req, res, next) => {
   try {
     const quizzes = await pool.query(
       `
@@ -59,45 +61,42 @@ router.get("/", authorize, async (req, res) => {
     `,
       [req.user.school_id],
     );
-    res.json(quizzes.rows);
+    return sendSuccess(res, { data: quizzes.rows });
   } catch (err) {
-    console.error(err.message);
-    res.status(500).json({ error: "Internal Server Error" });
+    return next(err);
   }
 });
 
-// 3. GET A SPECIFIC QUIZ (To take it)
-router.get("/:id", authorize, async (req, res) => {
+router.get("/:id", authorize, async (req, res, next) => {
   try {
     const quiz = await pool.query(
       "SELECT * FROM quizzes WHERE quiz_id = $1 AND school_id = $2",
       [req.params.id, req.user.school_id],
     );
 
-    if (quiz.rows.length === 0)
-      return res.status(404).json({ error: "Quiz not found" });
+    if (quiz.rows.length === 0) {
+      return sendError(res, { status: 404, message: "Quiz not found", code: "QUIZ_NOT_FOUND" });
+    }
 
-    // Security: If the user is a Student, do NOT send the correct answers to the frontend!
     if (req.user.role === "Student") {
       const sanitizedQuestions = quiz.rows[0].questions.map((q) => ({
         text: q.text,
         options: q.options,
       }));
-      return res.json({ ...quiz.rows[0], questions: sanitizedQuestions });
+      return sendSuccess(res, { data: { ...quiz.rows[0], questions: sanitizedQuestions } });
     }
 
-    res.json(quiz.rows[0]);
+    return sendSuccess(res, { data: quiz.rows[0] });
   } catch (err) {
-    console.error(err.message);
-    res.status(500).json({ error: "Internal Server Error" });
+    return next(err);
   }
 });
 
-// 4. AUTO-GRADE A QUIZ SUBMISSION (Student Only)
-router.post("/:id/submit", authorize, async (req, res) => {
+router.post("/:id/submit", authorize, async (req, res, next) => {
   try {
-    if (req.user.role !== "Student")
-      return res.status(403).json({ error: "Only students can take quizzes." });
+    if (req.user.role !== "Student") {
+      return sendError(res, { status: 403, message: "Only students can take quizzes.", code: "FORBIDDEN" });
+    }
 
     const quiz_id = req.params.id;
     const { student_answers } = req.body;
@@ -106,10 +105,13 @@ router.post("/:id/submit", authorize, async (req, res) => {
       "SELECT student_id FROM students WHERE user_id = $1",
       [req.user.user_id],
     );
-    
-    // 👈 FIX: Prevent fatal crash if student record is somehow missing
+
     if (studentQuery.rows.length === 0) {
-      return res.status(400).json({ error: "Valid student academic record not found." });
+      return sendError(res, {
+        status: 400,
+        message: "Valid student academic record not found.",
+        code: "STUDENT_RECORD_NOT_FOUND",
+      });
     }
     const student_id = studentQuery.rows[0].student_id;
 
@@ -117,20 +119,19 @@ router.post("/:id/submit", authorize, async (req, res) => {
       "SELECT questions FROM quizzes WHERE quiz_id = $1 AND school_id = $2",
       [quiz_id, req.user.school_id],
     );
-    if (quiz.rows.length === 0)
-      return res.status(404).json({ error: "Quiz not found" });
+    if (quiz.rows.length === 0) {
+      return sendError(res, { status: 404, message: "Quiz not found", code: "QUIZ_NOT_FOUND" });
+    }
 
     const realQuestions = quiz.rows[0].questions;
 
-    // Security Fix - Prevent array out-of-bounds manipulation
     if (
       !Array.isArray(student_answers) ||
       student_answers.length !== realQuestions.length
     ) {
-      return res.status(400).json({ error: "Invalid submission payload." });
+      return sendError(res, { status: 400, message: "Invalid submission payload.", code: "INVALID_PAYLOAD" });
     }
 
-    // The Auto-Grading Engine
     let score = 0;
     for (let i = 0; i < realQuestions.length; i++) {
       if (student_answers[i] === realQuestions[i].answer) {
@@ -143,14 +144,15 @@ router.post("/:id/submit", authorize, async (req, res) => {
       [quiz_id, student_id, score, realQuestions.length],
     );
 
-    res.json({
+    return sendSuccess(res, {
       message: "Quiz auto-graded successfully!",
-      score,
-      total: realQuestions.length,
+      data: {
+        score,
+        total: realQuestions.length,
+      },
     });
   } catch (err) {
-    console.error(err.message);
-    res.status(500).json({ error: "Internal Server Error" });
+    return next(err);
   }
 });
 

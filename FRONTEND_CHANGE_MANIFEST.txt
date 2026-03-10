@@ -1,0 +1,15 @@
+Frontend files intentionally changed in this minimal package:
+1. client/src/components/Dashboard.jsx
+2. client/src/utils/dashboardConfig.js
+3. client/package.json
+4. client/scripts/verify-build.mjs
+5. client/DEPLOYMENT_SMOKE_CHECKLIST.md
+
+Auth UI/layout files intentionally left untouched:
+- client/src/components/Login.jsx
+- client/src/components/Register.jsx
+- client/src/components/ForgotPassword.jsx
+- client/src/components/ResetPassword.jsx
+- client/public/images/*
+- client/src/App.jsx
+- any auth page styling/layout assets

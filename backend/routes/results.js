@@ -7,6 +7,7 @@ const { logAudit } = require("../utils/auditLogger");
 const { escapeHtml } = require("../utils/html");
 const { z } = require("zod");
 const validate = require("../middleware/validate");
+const { sendError, sendSuccess } = require("../utils/response");
 
 const createGradeSchema = z.object({
   student_id: z.coerce.number().positive(),
@@ -159,12 +160,12 @@ async function getReadableReportCard(studentId, user) {
   return { status: 200, data: reportCard.rows };
 }
 
-router.post("/", authorize, validate(createGradeSchema), async (req, res) => {
+router.post("/", authorize, validate(createGradeSchema), async (req, res, next) => {
   const client = await pool.connect();
 
   try {
     if (req.user.role !== "Admin" && req.user.role !== "Teacher") {
-      return res.status(403).json({ error: "Access Denied." });
+      return sendError(res, { status: 403, message: "Access Denied.", code: "FORBIDDEN" });
     }
 
     const { student_id, subject_id, academic_term, test_score, exam_score } = req.body;
@@ -175,11 +176,11 @@ router.post("/", authorize, validate(createGradeSchema), async (req, res) => {
     ]);
 
     if (!student) {
-      return res.status(404).json({ error: "Student not found in your school." });
+      return sendError(res, { status: 404, message: "Student not found in your school.", code: "STUDENT_NOT_FOUND" });
     }
 
     if (!subject) {
-      return res.status(404).json({ error: "Subject not found or not assigned to you." });
+      return sendError(res, { status: 404, message: "Subject not found or not assigned to you.", code: "SUBJECT_NOT_FOUND" });
     }
 
     await client.query("BEGIN");
@@ -259,39 +260,40 @@ router.post("/", authorize, validate(createGradeSchema), async (req, res) => {
       isUpdate: operation === "updated",
     });
 
-    res.json({
+    return sendSuccess(res, {
       message:
         operation === "updated"
           ? "Grade already existed for this term, so it was updated successfully."
           : "Grade saved successfully!",
-      operation,
-      result: savedResult,
+      data: {
+        operation,
+        result: savedResult,
+      },
     });
   } catch (err) {
     await client.query("ROLLBACK");
-    console.error(err.message);
-    res.status(500).json({ error: "Server Error." });
+    return next(err);
   } finally {
     client.release();
   }
 });
 
-router.get("/student/:student_id", authorize, async (req, res) => {
+router.get("/student/:student_id", authorize, async (req, res, next) => {
   try {
     const { student_id } = req.params;
     const outcome = await getReadableReportCard(student_id, req.user);
 
     if (outcome.error) {
-      return res.status(outcome.status).json({ error: outcome.error });
+      return sendError(res, { status: outcome.status, message: outcome.error });
     }
 
-    return res.json(outcome.data);
+    return sendSuccess(res, { data: outcome.data });
   } catch (err) {
-    res.status(500).json({ error: "Internal Server Error" });
+    return next(err);
   }
 });
 
-router.get("/me", authorize, async (req, res) => {
+router.get("/me", authorize, async (req, res, next) => {
   try {
     const myGrades = await pool.query(
       `
@@ -304,18 +306,18 @@ router.get("/me", authorize, async (req, res) => {
       `,
       [req.user.user_id, req.user.school_id],
     );
-    res.json(myGrades.rows);
+    return sendSuccess(res, { data: myGrades.rows });
   } catch (err) {
-    res.status(500).json({ error: "Internal Server Error" });
+    return next(err);
   }
 });
 
-router.put("/:id", authorize, validate(updateGradeSchema), async (req, res) => {
+router.put("/:id", authorize, validate(updateGradeSchema), async (req, res, next) => {
   const client = await pool.connect();
 
   try {
     if (req.user.role !== "Admin" && req.user.role !== "Teacher") {
-      return res.status(403).json({ error: "Access Denied." });
+      return sendError(res, { status: 403, message: "Access Denied.", code: "FORBIDDEN" });
     }
 
     const { id } = req.params;
@@ -332,7 +334,7 @@ router.put("/:id", authorize, validate(updateGradeSchema), async (req, res) => {
     );
 
     if (oldRecordQuery.rows.length === 0) {
-      return res.status(404).json({ error: "Result not found" });
+      return sendError(res, { status: 404, message: "Result not found", code: "RESULT_NOT_FOUND" });
     }
 
     const oldRecord = oldRecordQuery.rows[0];
@@ -340,7 +342,11 @@ router.put("/:id", authorize, validate(updateGradeSchema), async (req, res) => {
     if (req.user.role === "Teacher") {
       const subject = await getAccessibleSubject(oldRecord.subject_id, req.user);
       if (!subject) {
-        return res.status(403).json({ error: "You can only update grades for your assigned subjects." });
+        return sendError(res, {
+          status: 403,
+          message: "You can only update grades for your assigned subjects.",
+          code: "FORBIDDEN",
+        });
       }
     }
 
@@ -388,14 +394,15 @@ router.put("/:id", authorize, validate(updateGradeSchema), async (req, res) => {
       });
     }
 
-    res.json({
+    return sendSuccess(res, {
       message: "Grade updated successfully!",
-      result: resultData,
+      data: {
+        result: resultData,
+      },
     });
   } catch (err) {
     await client.query("ROLLBACK");
-    console.error(err.message);
-    res.status(500).json({ error: "Internal Server Error" });
+    return next(err);
   } finally {
     client.release();
   }

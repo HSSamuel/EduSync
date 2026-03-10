@@ -1,4 +1,5 @@
 const { z } = require("zod");
+const { getAllowedMimeTypes } = require("./uploadConfig");
 
 const allowedWeekdays = [
   "Monday",
@@ -10,15 +11,8 @@ const allowedWeekdays = [
 const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const isoDateRegex = /^\d{4}-\d{2}-\d{2}$/;
 
-const allowedDocumentMimeTypes = [
-  "application/pdf",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.ms-powerpoint",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  "image/png",
-  "image/jpeg",
-];
+const allowedDocumentMimeTypes = getAllowedMimeTypes("documents");
+const allowedModuleMimeTypes = getAllowedMimeTypes("modules");
 
 const scheduleItemSchema = z
   .object({
@@ -118,6 +112,7 @@ const eventSchema = z.object({
 
 module.exports = {
   allowedDocumentMimeTypes,
+  allowedModuleMimeTypes,
   allowedWeekdays,
   timetableSchema,
   documentTitleSchema,

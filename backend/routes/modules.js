@@ -5,42 +5,11 @@ const authorize = require("../middleware/authorize");
 const { cloudinary } = require("../utils/cloudinary");
 const { z } = require("zod");
 const validate = require("../middleware/validate");
-const multer = require("multer");
 const { Readable } = require("stream");
+const { createMemoryUpload } = require("../utils/uploadConfig");
+const { sendError, sendSuccess } = require("../utils/response");
 
-const MAX_MODULE_FILE_SIZE = 10 * 1024 * 1024;
-const ALLOWED_MODULE_MIME_TYPES = new Set([
-  "application/pdf",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.ms-powerpoint",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  "application/vnd.ms-excel",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "text/plain",
-  "text/csv",
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-]);
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: MAX_MODULE_FILE_SIZE,
-  },
-  fileFilter: (req, file, cb) => {
-    if (!ALLOWED_MODULE_MIME_TYPES.has(file.mimetype)) {
-      return cb(
-        new Error(
-          "Unsupported file type. Upload a PDF, Office document, text file, CSV, or image.",
-        ),
-      );
-    }
-
-    cb(null, true);
-  },
-});
+const upload = createMemoryUpload("modules");
 
 const createModuleSchema = z.object({
   subject_id: z.coerce.number().int().positive("A valid subject is required"),
@@ -59,11 +28,11 @@ router.post(
   async (req, res, next) => {
     try {
       if (req.user.role !== "Admin" && req.user.role !== "Teacher") {
-        return res.status(403).json({ error: "Access Denied." });
+        return sendError(res, { status: 403, message: "Access Denied.", code: "FORBIDDEN" });
       }
 
       if (!req.file) {
-        return res.status(400).json({ error: "A file upload is required." });
+        return sendError(res, { status: 400, message: "A file upload is required.", code: "FILE_REQUIRED" });
       }
 
       const { subject_id, title } = req.body;
@@ -78,17 +47,17 @@ router.post(
       );
 
       if (subjectQuery.rows.length === 0) {
-        return res
-          .status(404)
-          .json({ error: "Subject not found in your school." });
+        return sendError(res, { status: 404, message: "Subject not found in your school.", code: "SUBJECT_NOT_FOUND" });
       }
 
       if (
         req.user.role === "Teacher" &&
         subjectQuery.rows[0].teacher_id !== req.user.user_id
       ) {
-        return res.status(403).json({
-          error: "You can only upload modules for subjects assigned to you.",
+        return sendError(res, {
+          status: 403,
+          message: "You can only upload modules for subjects assigned to you.",
+          code: "FORBIDDEN",
         });
       }
 
@@ -136,14 +105,18 @@ router.post(
         ],
       );
 
-      return res.json(newModule.rows[0]);
+      return sendSuccess(res, {
+        status: 201,
+        message: "Module uploaded successfully.",
+        data: newModule.rows[0],
+      });
     } catch (err) {
       return next(err);
     }
   },
 );
 
-router.get("/", authorize, async (req, res) => {
+router.get("/", authorize, async (req, res, next) => {
   try {
     let query = `
       SELECT m.*, s.subject_name
@@ -162,10 +135,9 @@ router.get("/", authorize, async (req, res) => {
 
     const modules = await pool.query(query, params);
 
-    return res.json(modules.rows);
+    return sendSuccess(res, { data: modules.rows });
   } catch (err) {
-    console.error(err.message);
-    return res.status(500).json({ error: "Internal Server Error" });
+    return next(err);
   }
 });
 

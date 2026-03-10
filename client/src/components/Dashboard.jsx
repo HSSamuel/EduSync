@@ -12,6 +12,8 @@ import DashboardContent from "./dashboard/DashboardContent";
 import {
   getDashboardRoleFlags,
   getDashboardNavItems,
+  getDefaultDashboardTab,
+  resolveDashboardTab,
   NAV_CATEGORIES,
   getTabDescription,
 } from "../utils/dashboardConfig";
@@ -28,7 +30,7 @@ const Dashboard = () => {
     loadStudents,
   } = useAppContext();
 
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState(() => getDefaultDashboardTab(getDashboardRoleFlags(userData)));
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isUtilityOpen, setIsUtilityOpen] = useState(false);
@@ -76,6 +78,14 @@ const Dashboard = () => {
   const scrollToTop = () => {
     mainContentRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   };
+
+
+  useEffect(() => {
+    if (!userData) return;
+
+    const nextFlags = getDashboardRoleFlags(userData);
+    setActiveTab((currentTab) => resolveDashboardTab(currentTab, nextFlags));
+  }, [userData]);
 
   useEffect(() => {
     if (!userData) return;

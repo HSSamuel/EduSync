@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "verify:build": "node scripts/verify-build.mjs",
+    "verify": "npm run lint && npm run verify:build"
   },
   "dependencies": {
     "@react-oauth/google": "^0.13.4",
