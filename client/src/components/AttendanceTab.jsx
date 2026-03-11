@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import PremiumEmptyState from "./PremiumEmptyState";
 import { apiFetch } from "../utils/api";
+import { useAppContext } from "../context/AppContext";
 
 const AttendanceTab = ({ students = [] }) => {
   const [selectedClass, setSelectedClass] = useState("");
@@ -96,17 +97,17 @@ const AttendanceTab = ({ students = [] }) => {
     e.preventDefault();
 
     if (!selectedClass) {
-      alert("Please select a class first.");
+      notifyInfo("Please select a class first.", "Missing class");
       return;
     }
 
     if (!selectedDate) {
-      alert("Please select a date.");
+      notifyInfo("Please select a date.", "Missing date");
       return;
     }
 
     if (filteredStudents.length === 0) {
-      alert("No students found for the selected class.");
+      notifyInfo("No students found for the selected class.", "No students found");
       return;
     }
 
@@ -128,11 +129,11 @@ const AttendanceTab = ({ students = [] }) => {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        alert(data.error || "Failed to submit attendance.");
+        notifyError(data.error || "Failed to submit attendance.");
         return;
       }
 
-      alert(data.message || "✅ Attendance submitted successfully.");
+      notifySuccess(data.message || "Attendance submitted successfully.");
 
       setHistoryClass(selectedClass);
       setHistoryDate(selectedDate);
@@ -140,7 +141,7 @@ const AttendanceTab = ({ students = [] }) => {
       await fetchHistory();
     } catch (error) {
       console.error("Attendance submit error:", error);
-      alert("❌ Something went wrong while submitting attendance.");
+      notifyError("Something went wrong while submitting attendance.");
     } finally {
       setSubmitting(false);
     }

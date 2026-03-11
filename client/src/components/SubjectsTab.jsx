@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import PremiumEmptyState from "./PremiumEmptyState";
 import { apiFetch } from "../utils/api";
+import { useAppContext } from "../context/AppContext";
 
 const SubjectsTab = ({ isAdmin, isTeacher }) => {
   const [subjects, setSubjects] = useState([]);
@@ -105,7 +106,7 @@ const SubjectsTab = ({ isAdmin, isTeacher }) => {
     e.preventDefault();
 
     if (!subjectName.trim()) {
-      alert("Please enter a subject name.");
+      notifyInfo("Please enter a subject name.", "Missing details");
       return;
     }
 
@@ -122,16 +123,16 @@ const SubjectsTab = ({ isAdmin, isTeacher }) => {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        alert(data.error || "Failed to create subject.");
+        notifyError(data.error || "Failed to create subject.");
         return;
       }
 
-      alert("✅ Subject created successfully.");
+      notifySuccess("Subject created successfully.");
       setSubjectName("");
       await fetchSubjects();
     } catch (error) {
       console.error("Create subject error:", error);
-      alert("❌ Something went wrong while creating the subject.");
+      notifyError("Something went wrong while creating the subject.");
     } finally {
       setCreatingSubject(false);
     }
@@ -141,17 +142,17 @@ const SubjectsTab = ({ isAdmin, isTeacher }) => {
     e.preventDefault();
 
     if (!selectedSubjectId) {
-      alert("Please select a subject.");
+      notifyInfo("Please select a subject.", "Missing details");
       return;
     }
 
     if (!moduleTitle.trim()) {
-      alert("Please enter a module title.");
+      notifyInfo("Please enter a module title.", "Missing details");
       return;
     }
 
     if (!moduleFile) {
-      alert("Please choose a file to upload.");
+      notifyInfo("Please choose a file to upload.", "Missing file");
       return;
     }
 
@@ -171,11 +172,11 @@ const SubjectsTab = ({ isAdmin, isTeacher }) => {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        alert(data.error || "Failed to upload module.");
+        notifyError(data.error || "Failed to upload module.");
         return;
       }
 
-      alert("✅ Module uploaded successfully.");
+      notifySuccess("Module uploaded successfully.");
       setModuleTitle("");
       setModuleFile(null);
 
@@ -185,16 +186,20 @@ const SubjectsTab = ({ isAdmin, isTeacher }) => {
       await fetchModulesForSubject(selectedSubjectId);
     } catch (error) {
       console.error("Module upload error:", error);
-      alert("❌ Something went wrong while uploading the module.");
+      notifyError("Something went wrong while uploading the module.");
     } finally {
       setUploadingModule(false);
     }
   };
 
   const handleDeleteSubject = async (subjectId) => {
-    const confirmed = window.confirm(
-      "Are you sure you want to delete this subject?",
-    );
+    const confirmed = await confirm({
+      title: "Delete subject",
+      message: "Are you sure you want to delete this subject? This action cannot be undone.",
+      confirmText: "Delete subject",
+      cancelText: "Keep subject",
+      tone: "danger",
+    });
     if (!confirmed) return;
 
     try {
@@ -207,24 +212,28 @@ const SubjectsTab = ({ isAdmin, isTeacher }) => {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        alert(data.error || "Failed to delete subject.");
+        notifyError(data.error || "Failed to delete subject.");
         return;
       }
 
-      alert(data.message || "✅ Subject deleted successfully.");
+      notifySuccess(data.message || "Subject deleted successfully.");
       await fetchSubjects();
     } catch (error) {
       console.error("Delete subject error:", error);
-      alert("❌ Something went wrong while deleting the subject.");
+      notifyError("Something went wrong while deleting the subject.");
     } finally {
       setDeletingId(null);
     }
   };
 
   const handleDeleteModule = async (moduleId, subjectId) => {
-    const confirmed = window.confirm(
-      "Are you sure you want to delete this module?",
-    );
+    const confirmed = await confirm({
+      title: "Delete module",
+      message: "Are you sure you want to delete this module? This action cannot be undone.",
+      confirmText: "Delete module",
+      cancelText: "Keep module",
+      tone: "danger",
+    });
     if (!confirmed) return;
 
     try {
@@ -237,15 +246,15 @@ const SubjectsTab = ({ isAdmin, isTeacher }) => {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        alert(data.error || "Failed to delete module.");
+        notifyError(data.error || "Failed to delete module.");
         return;
       }
 
-      alert(data.message || "✅ Module deleted successfully.");
+      notifySuccess(data.message || "Module deleted successfully.");
       await fetchModulesForSubject(subjectId);
     } catch (error) {
       console.error("Delete module error:", error);
-      alert("❌ Something went wrong while deleting the module.");
+      notifyError("Something went wrong while deleting the module.");
     } finally {
       setDeletingModuleId(null);
     }

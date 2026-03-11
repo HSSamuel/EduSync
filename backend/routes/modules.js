@@ -6,7 +6,7 @@ const { cloudinary } = require("../utils/cloudinary");
 const { z } = require("zod");
 const validate = require("../middleware/validate");
 const { Readable } = require("stream");
-const { createMemoryUpload } = require("../utils/uploadConfig");
+const { createMemoryUpload, validateUploadedFile } = require("../utils/uploadConfig");
 const { sendError, sendSuccess } = require("../utils/response");
 
 const upload = createMemoryUpload("modules");
@@ -24,6 +24,7 @@ router.post(
   "/",
   authorize,
   upload.single("file"),
+  validateUploadedFile("modules"),
   validate(createModuleSchema),
   async (req, res, next) => {
     try {

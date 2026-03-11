@@ -1,6 +1,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { FILE_UPLOAD_RULES, createFileFilter, getAllowedExtensions } = require('../utils/uploadConfig');
+const {
+  FILE_UPLOAD_RULES,
+  createFileFilter,
+  getAllowedExtensions,
+  validateUploadedFile,
+} = require('../utils/uploadConfig');
 
 test('document and module upload rules stay aligned for shared formats', () => {
   const docTypes = new Set(FILE_UPLOAD_RULES.documents.allowedMimeTypes);
@@ -18,7 +23,7 @@ test('centralized file filter rejects unsupported mime types', async () => {
 
   await assert.rejects(
     async () => new Promise((resolve, reject) => {
-      filter({}, { mimetype: 'application/xml' }, (err, accepted) => {
+      filter({}, { mimetype: 'application/xml', originalname: 'payload.xml' }, (err, accepted) => {
         if (err) {
           reject(err);
           return;
@@ -28,5 +33,31 @@ test('centralized file filter rejects unsupported mime types', async () => {
       });
     }),
     /Unsupported file type/i,
+  );
+});
+
+test('post-upload validator rejects mismatched file signatures', async () => {
+  const middleware = validateUploadedFile('modules');
+
+  await assert.rejects(
+    async () => new Promise((resolve, reject) => {
+      middleware(
+        {
+          file: {
+            originalname: 'fake.pdf',
+            buffer: Buffer.from('not a pdf'),
+          },
+        },
+        {},
+        (err) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+          resolve();
+        },
+      );
+    }),
+    /content does not match/i,
   );
 });

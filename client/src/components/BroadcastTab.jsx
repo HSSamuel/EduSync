@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Megaphone, Send, Loader2, Users } from "lucide-react";
 import PremiumEmptyState from "./PremiumEmptyState";
 import { apiFetch } from "../utils/api";
+import { useAppContext } from "../context/AppContext";
 
 const BroadcastTab = ({ isAdmin, isTeacher }) => {
   const [title, setTitle] = useState("");
@@ -11,12 +12,13 @@ const BroadcastTab = ({ isAdmin, isTeacher }) => {
   const [lastSent, setLastSent] = useState(null);
 
   const canBroadcast = isAdmin || isTeacher;
+  const { notifySuccess, notifyError, notifyInfo } = useAppContext();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!title.trim() || !message.trim()) {
-      alert("Please provide both title and message.");
+      notifyInfo("Please provide both title and message.", "Missing details");
       return;
     }
 
@@ -34,11 +36,11 @@ const BroadcastTab = ({ isAdmin, isTeacher }) => {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        alert(data.error || "Failed to send broadcast.");
+        notifyError(data.error || "Failed to send broadcast.");
         return;
       }
 
-      alert(data.message || "✅ Broadcast sent successfully.");
+      notifySuccess(data.message || "Broadcast sent successfully.");
 
       setLastSent({
         title: title.trim(),
@@ -52,7 +54,7 @@ const BroadcastTab = ({ isAdmin, isTeacher }) => {
       setAudience("All");
     } catch (err) {
       console.error("Broadcast send error:", err);
-      alert("❌ Something went wrong while sending the broadcast.");
+      notifyError("Something went wrong while sending the broadcast.");
     } finally {
       setSending(false);
     }

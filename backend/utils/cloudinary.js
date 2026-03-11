@@ -1,10 +1,8 @@
-const { v2: cloudinary } = require("cloudinary");
-const multerCloudinary = require("multer-storage-cloudinary");
-require("dotenv").config();
-const { getAllowedExtensions } = require("./uploadConfig");
+const { v2: cloudinary } = require('cloudinary');
+const multerCloudinary = require('multer-storage-cloudinary');
+const { getAllowedExtensions } = require('./uploadConfig');
 
-const CloudinaryStorage =
-  multerCloudinary.CloudinaryStorage || multerCloudinary;
+const CloudinaryStorage = multerCloudinary.CloudinaryStorage || multerCloudinary;
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -12,16 +10,25 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+const allowedDocumentFormats = getAllowedExtensions('documents');
+
 const documentStorage = new CloudinaryStorage({
   cloudinary,
-  params: {
-    folder: "edusync_vault",
-    resource_type: "auto",
-    allowed_formats: getAllowedExtensions("documents"),
-  },
+  params: async (req, file) => ({
+    folder: 'edusync_vault',
+    resource_type: 'auto',
+    allowed_formats: allowedDocumentFormats,
+    use_filename: true,
+    unique_filename: true,
+    filename_override: String(file.originalname || 'document')
+      .replace(/\.[^.]+$/, '')
+      .replace(/[^a-zA-Z0-9_-]+/g, '_')
+      .slice(0, 80),
+  }),
 });
 
 module.exports = {
   cloudinary,
+  storage: documentStorage,
   documentStorage,
 };

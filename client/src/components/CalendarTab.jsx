@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import PremiumEmptyState from "./PremiumEmptyState";
 import { apiFetch } from "../utils/api";
+import { useAppContext } from "../context/AppContext";
 
 const CalendarTab = ({ isAdmin }) => {
   const [events, setEvents] = useState([]);
@@ -20,6 +21,7 @@ const CalendarTab = ({ isAdmin }) => {
   });
 
   const canManage = isAdmin;
+  const { notifySuccess, notifyError, notifyInfo } = useAppContext();
 
   const fetchEvents = async () => {
     setLoading(true);
@@ -52,7 +54,7 @@ const CalendarTab = ({ isAdmin }) => {
     e.preventDefault();
 
     if (!formData.title.trim() || !formData.event_date) {
-      alert("Please provide at least the event title and date.");
+      notifyInfo("Please provide at least the event title and date.", "Missing details");
       return;
     }
 
@@ -70,11 +72,11 @@ const CalendarTab = ({ isAdmin }) => {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        alert(data.error || "Failed to create event.");
+        notifyError(data.error || "Failed to create event.");
         return;
       }
 
-      alert(data.message || "✅ Event created successfully.");
+      notifySuccess(data.message || "Event created successfully.");
       setFormData({
         title: "",
         event_date: "",
@@ -83,7 +85,7 @@ const CalendarTab = ({ isAdmin }) => {
       await fetchEvents();
     } catch (err) {
       console.error("Calendar create error:", err);
-      alert("❌ Something went wrong while creating the event.");
+      notifyError("Something went wrong while creating the event.");
     } finally {
       setCreating(false);
     }

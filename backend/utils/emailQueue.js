@@ -1,5 +1,3 @@
-require('dotenv').config();
-
 if (process.env.NODE_ENV === 'test') {
   const noopQueue = {
     add: async () => ({}),

@@ -12,6 +12,7 @@ import {
   LayoutList,
   List,
 } from "lucide-react";
+import { useAppContext } from "../context/AppContext";
 
 const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
   const [invoices, setInvoices] = useState([]);
@@ -24,14 +25,15 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isCompactView, setIsCompactView] = useState(false); // 👈 Density Toggle State
+  const [isCompactView, setIsCompactView] = useState(false);
+  const { notifySuccess, notifyError } = useAppContext();
 
   useEffect(() => {
     fetchInvoices();
 
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get("payment_success") === "true") {
-      alert("🎉 Payment Successful! Your receipt is being processed securely.");
+      notifySuccess("Payment successful. Your receipt is being processed securely.");
       window.history.replaceState(null, "", window.location.pathname);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -60,16 +62,16 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
       });
 
       if (res.ok) {
-        alert("✅ Invoice generated and emailed!");
+        notifySuccess("Invoice generated and emailed.");
         setFormData({ student_id: "", title: "", amount: "", due_date: "" });
         fetchInvoices();
       } else {
         const data = await res.json().catch(() => ({}));
-        alert("❌ " + (data.error || "Failed to generate invoice."));
+        notifyError(data.error || "Failed to generate invoice.");
       }
     } catch (err) {
       console.error(err);
-      alert("❌ Something went wrong.");
+      notifyError("Something went wrong while generating the invoice.");
     } finally {
       setIsGenerating(false);
     }
@@ -88,12 +90,12 @@ const FinanceTab = ({ isAdmin, isParent, isStudent, students }) => {
       if (res.ok && checkoutUrl) {
         window.location.href = checkoutUrl;
       } else {
-        alert("❌ " + (data.error || "Failed to initialize payment gateway."));
+        notifyError(data.error || "Failed to initialize payment gateway.");
         setIsProcessing(false);
       }
     } catch (err) {
       console.error(err);
-      alert("❌ Something went wrong while initializing payment.");
+      notifyError("Something went wrong while initializing payment.");
       setIsProcessing(false);
     }
   };

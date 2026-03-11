@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import PremiumEmptyState from "./PremiumEmptyState";
 import { apiFetch } from "../utils/api";
+import { useAppContext } from "../context/AppContext";
 
 const DEFAULT_CLASS_ORDER = ["JSS 1", "JSS 2", "JSS 3", "SS 1", "SS 2", "SS 3"];
 
@@ -190,14 +191,14 @@ const StudentsTab = ({ isAdmin }) => {
         setStudentEmail("");
         setStudentGrade("");
 
-        alert("✅ " + parseRes.message);
+        notifySuccess(parseRes.message || "Student registered successfully.");
         await refreshStudents();
       } else {
-        alert("❌ " + (parseRes.error || "Failed to register student."));
+        notifyError(parseRes.error || "Failed to register student.");
       }
     } catch (err) {
       console.error(err.message);
-      alert("❌ Something went wrong while registering the student.");
+      notifyError("Something went wrong while registering the student.");
     } finally {
       setIsSubmitting(false);
     }
@@ -206,7 +207,8 @@ const StudentsTab = ({ isAdmin }) => {
   const linkParent = async (student_id) => {
     const parent_id = selectedParents[student_id];
     if (!parent_id) {
-      return alert("Please select a parent from the dropdown first!");
+      notifyInfo("Please select a parent from the dropdown first.", "Parent required");
+      return;
     }
 
     try {
@@ -218,13 +220,13 @@ const StudentsTab = ({ isAdmin }) => {
       const data = await response.json().catch(() => ({}));
 
       if (response.ok) {
-        alert(data.message || "✅ Parent successfully linked to this student!");
+        notifySuccess(data.message || "Parent successfully linked to this student.");
       } else {
-        alert(data.error || "❌ Failed to link parent.");
+        notifyError(data.error || "Failed to link parent.");
       }
     } catch (err) {
       console.error(err);
-      alert("❌ Something went wrong while linking parent.");
+      notifyError("Something went wrong while linking parent.");
     }
   };
 
@@ -288,9 +290,13 @@ const StudentsTab = ({ isAdmin }) => {
   };
 
   const deleteSingleStudent = async (student) => {
-    const confirmed = window.confirm(
-      `Delete ${student.full_name}? This action cannot be undone.`,
-    );
+    const confirmed = await confirm({
+      title: "Delete student",
+      message: `Delete ${student.full_name}? This action cannot be undone.`,
+      confirmText: "Delete student",
+      cancelText: "Keep student",
+      tone: "danger",
+    });
 
     if (!confirmed) return;
 
@@ -307,14 +313,14 @@ const StudentsTab = ({ isAdmin }) => {
         setSelectedStudentIds((prev) =>
           prev.filter((id) => id !== student.student_id),
         );
-        alert(data.message || "✅ Student deleted successfully.");
+        notifySuccess(data.message || "Student deleted successfully.");
         await refreshStudents();
       } else {
-        alert(data.error || "❌ Failed to delete student.");
+        notifyError(data.error || "Failed to delete student.");
       }
     } catch (err) {
       console.error(err);
-      alert("❌ Something went wrong while deleting the student.");
+      notifyError("Something went wrong while deleting the student.");
     } finally {
       setIsDeleting(false);
     }
@@ -322,12 +328,17 @@ const StudentsTab = ({ isAdmin }) => {
 
   const deleteSelectedStudents = async () => {
     if (selectedStudentIds.length === 0) {
-      return alert("Please select at least one student.");
+      notifyInfo("Please select at least one student.", "Selection required");
+      return;
     }
 
-    const confirmed = window.confirm(
-      `Delete ${selectedStudentIds.length} selected student(s)? This action cannot be undone.`,
-    );
+    const confirmed = await confirm({
+      title: "Delete selected students",
+      message: `Delete ${selectedStudentIds.length} selected student(s)? This action cannot be undone.`,
+      confirmText: "Delete students",
+      cancelText: "Keep students",
+      tone: "danger",
+    });
 
     if (!confirmed) return;
 
@@ -343,14 +354,14 @@ const StudentsTab = ({ isAdmin }) => {
 
       if (response.ok) {
         setSelectedStudentIds([]);
-        alert(data.message || "✅ Selected students deleted successfully.");
+        notifySuccess(data.message || "Selected students deleted successfully.");
         await refreshStudents();
       } else {
-        alert(data.error || "❌ Failed to delete selected students.");
+        notifyError(data.error || "Failed to delete selected students.");
       }
     } catch (err) {
       console.error(err);
-      alert("❌ Something went wrong while deleting selected students.");
+      notifyError("Something went wrong while deleting selected students.");
     } finally {
       setIsDeleting(false);
     }

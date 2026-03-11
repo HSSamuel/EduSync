@@ -12,8 +12,10 @@ import {
   Loader2,
 } from "lucide-react";
 import { apiFetchOrThrow } from "../utils/api";
+import { useAppContext } from "../context/AppContext";
 
 const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
+  const { notifyError } = useAppContext();
   const [gradeForm, setGradeForm] = useState({
     student_id: "",
     subject_id: "",
@@ -159,7 +161,7 @@ const GradesTab = ({ isAdmin, isTeacher, isParent, students, subjects }) => {
       setEditingId(null);
       fetchAdminReportCard(selectedReportStudent);
     } catch (err) {
-      alert(`❌ ${err.message}`);
+      notifyError(err.message || "Unable to update grade.");
       console.error(err.message);
     }
   };

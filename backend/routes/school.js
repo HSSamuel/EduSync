@@ -16,7 +16,7 @@ const {
 const { logAudit } = require('../utils/auditLogger');
 const { sendError, sendSuccess } = require('../utils/response');
 
-const { FILE_UPLOAD_RULES, createFileFilter } = require('../utils/uploadConfig');
+const { FILE_UPLOAD_RULES, createFileFilter, validateUploadedFile } = require('../utils/uploadConfig');
 
 const upload = multer({
   storage,
@@ -24,7 +24,7 @@ const upload = multer({
   fileFilter: createFileFilter('documents'),
 });
 
-router.post('/documents', authorize, upload.single('document_file'), async (req, res, next) => {
+router.post('/documents', authorize, upload.single('document_file'), validateUploadedFile('documents'), async (req, res, next) => {
   const client = await pool.connect();
 
   try {

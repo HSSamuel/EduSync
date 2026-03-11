@@ -22,7 +22,6 @@ const {
   clearRefreshCookie,
 } = require('../utils/sessionManager');
 const { sendError, sendSuccess } = require('../utils/response');
-require('dotenv').config();
 
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);

@@ -2,11 +2,13 @@ import React, { useState, useEffect } from "react";
 import { FolderLock, Loader2, UploadCloud } from "lucide-react";
 import PremiumEmptyState from "./PremiumEmptyState";
 import { apiFetch } from "../utils/api";
+import { useAppContext } from "../context/AppContext";
 
 const SchoolVaultTab = ({ isAdmin }) => {
   const [documents, setDocuments] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isLoadingDocs, setIsLoadingDocs] = useState(false);
+  const { notifySuccess, notifyError, notifyInfo, confirm } = useAppContext();
 
   const fetchDocs = async () => {
     setIsLoadingDocs(true);
@@ -49,7 +51,7 @@ const SchoolVaultTab = ({ isAdmin }) => {
       if (response.ok) {
         const payload = await response.json().catch(() => null);
         const newDoc = payload?.data || null;
-        alert("✅ Document Uploaded to Vault!");
+        notifySuccess("Document uploaded to the vault.");
         e.target.reset();
 
         if (newDoc) {
@@ -60,19 +62,26 @@ const SchoolVaultTab = ({ isAdmin }) => {
         }
       } else {
         const err = await response.json().catch(() => ({}));
-        alert("❌ " + (err.error || "Upload Failed."));
+        notifyError(err.error || "Upload failed.");
       }
     } catch (err) {
       console.error(err);
-      alert("❌ Something went wrong during upload.");
+      notifyError("Something went wrong during upload.");
     } finally {
       setIsUploading(false);
     }
   };
 
   const deleteDocument = async (id) => {
-    if (!window.confirm("Are you sure you want to delete this document?"))
-      return;
+    const confirmed = await confirm({
+      title: "Delete document",
+      message: "Are you sure you want to delete this document? This action cannot be undone.",
+      confirmText: "Delete document",
+      cancelText: "Keep document",
+      tone: "danger",
+    });
+
+    if (!confirmed) return;
 
     try {
       const response = await apiFetch(`/school/documents/${id}`, {
@@ -81,19 +90,23 @@ const SchoolVaultTab = ({ isAdmin }) => {
 
       if (response.ok) {
         setDocuments((prev) => prev.filter((d) => d.doc_id !== id));
+        notifySuccess("Document deleted successfully.");
       } else {
         const err = await response.json().catch(() => ({}));
-        alert("❌ " + (err.error || "Delete failed."));
+        notifyError(err.error || "Delete failed.");
       }
     } catch (err) {
       console.error(err);
-      alert("❌ Something went wrong while deleting.");
+      notifyError("Something went wrong while deleting the document.");
     }
   };
 
   const handleSecureDownload = (e, fileUrl) => {
     e.preventDefault();
-    if (!fileUrl) return alert("File URL is missing.");
+    if (!fileUrl) {
+      notifyInfo("File URL is missing.", "Unable to open file");
+      return;
+    }
 
     let downloadUrl = fileUrl;
 

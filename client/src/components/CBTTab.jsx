@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import PremiumEmptyState from "./PremiumEmptyState";
 import { apiFetch } from "../utils/api";
+import { useAppContext } from "../context/AppContext";
 
 const emptyQuestion = () => ({
   question_text: "",
@@ -122,13 +123,13 @@ const CBTTab = ({ isAdmin, isTeacher }) => {
       !formData.subject_id ||
       !formData.duration_minutes
     ) {
-      alert("Please complete all required test fields.");
+      notifyInfo("Please complete all required test fields.", "Missing details");
       return;
     }
 
     const questionError = validateQuestions();
     if (questionError) {
-      alert(questionError);
+      notifyInfo(questionError, "Question validation");
       return;
     }
 
@@ -157,11 +158,11 @@ const CBTTab = ({ isAdmin, isTeacher }) => {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        alert(data.error || "Failed to create CBT test.");
+        notifyError(data.error || "Failed to create CBT test.");
         return;
       }
 
-      alert(data.message || "✅ CBT test created successfully.");
+      notifySuccess(data.message || "CBT test created successfully.");
       setFormData({
         title: "",
         subject_id: "",
@@ -172,7 +173,7 @@ const CBTTab = ({ isAdmin, isTeacher }) => {
       await fetchTests();
     } catch (err) {
       console.error("CBT create error:", err);
-      alert("❌ Something went wrong while creating the test.");
+      notifyError("Something went wrong while creating the test.");
     } finally {
       setCreating(false);
     }

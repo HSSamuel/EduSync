@@ -1,4 +1,3 @@
-require('dotenv').config();
 const sendEmail = require('./utils/sendEmail');
 
 async function main() {
