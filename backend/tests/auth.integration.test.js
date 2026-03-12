@@ -133,3 +133,28 @@ test('access token in cookie is rejected when Authorization header is missing', 
     await server.close();
   }
 });
+
+
+test('google registration rejects non-admin join without invite code', async () => {
+  const app = createApp();
+  const server = await startTestServer(app);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/auth/google`, {
+      method: 'POST',
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        token: 'fake-google-token',
+        type: 'register',
+        role: 'Teacher',
+      }),
+    });
+
+    const payload = await response.json();
+    assert.equal(response.status, 400);
+    assert.equal(payload.success, false);
+    assert.match(payload.error, /invite code is required/i);
+  } finally {
+    await server.close();
+  }
+});

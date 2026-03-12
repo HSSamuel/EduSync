@@ -12,9 +12,14 @@ CREATE TABLE IF NOT EXISTS schools (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-INSERT INTO schools (school_name, contact_email, invite_code)
-VALUES ('EduSync Alpha Academy', 'admin@edusync.com', 'ALPHA-0001')
-ON CONFLICT (invite_code) DO NOTHING;
+DO $$
+BEGIN
+    IF COALESCE(current_setting('app.seed_demo_data', true), 'false') = 'true' THEN
+        INSERT INTO schools (school_name, contact_email, invite_code)
+        VALUES ('EduSync Alpha Academy', 'admin@edusync.com', 'ALPHA-0001')
+        ON CONFLICT (invite_code) DO NOTHING;
+    END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS users (
     user_id SERIAL PRIMARY KEY,
@@ -439,16 +444,13 @@ CREATE INDEX IF NOT EXISTS idx_invoices_school_status_due_date
 
 
 ALTER TABLE users
-ADD COLUMN IF NOT EXISTS avatar_url TEXT,
-ADD COLUMN IF NOT EXISTS avatar_public_id TEXT;
-
-ALTER TABLE users
     ADD COLUMN IF NOT EXISTS phone_number VARCHAR(30),
     ADD COLUMN IF NOT EXISTS gender VARCHAR(20),
     ADD COLUMN IF NOT EXISTS date_of_birth DATE,
     ADD COLUMN IF NOT EXISTS address TEXT,
     ADD COLUMN IF NOT EXISTS bio TEXT,
     ADD COLUMN IF NOT EXISTS avatar_url TEXT,
+    ADD COLUMN IF NOT EXISTS avatar_public_id TEXT,
     ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 
 CREATE OR REPLACE FUNCTION update_users_modified_column()

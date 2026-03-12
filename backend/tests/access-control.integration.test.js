@@ -150,3 +150,68 @@ test('teacher listing is limited to students in assigned subjects only', async (
     await server.close();
   }
 });
+
+
+test('teacher listing fallback is limited to result-linked students only', async () => {
+  const originalQuery = db.query;
+  const token = createAccessToken({ user_id: 22, role: 'Teacher', school_id: 6 });
+
+  db.query = async (text, params) => {
+    if (text.includes('SELECT subject_id, subject_name FROM subjects')) {
+      assert.deepEqual(params, [22, 6]);
+      return { rows: [{ subject_id: 401, subject_name: 'Biology' }] };
+    }
+
+    if (text.includes('SELECT DISTINCT t.class_grade')) {
+      assert.deepEqual(params, [6, ['Biology']]);
+      return { rows: [] };
+    }
+
+    if (text.includes('SELECT COUNT(*)')) {
+      assert.match(text, /WHERE u\.school_id = \$1 AND s\.student_id IN/);
+      assert.ok(!text.includes('FROM attendance a'));
+      assert.deepEqual(params, [6, [401]]);
+      return { rows: [{ count: '1' }] };
+    }
+
+    if (text.includes('SELECT') && text.includes('FROM students s')) {
+      assert.match(text, /WHERE u\.school_id = \$1 AND s\.student_id IN/);
+      assert.ok(!text.includes('FROM attendance a'));
+      assert.deepEqual(params, [6, [401], 10, 0]);
+      return {
+        rows: [
+          {
+            student_id: 10,
+            user_id: 110,
+            parent_id: null,
+            full_name: 'Scope Safe Student',
+            email: null,
+            class_grade: 'SS 2',
+            enrollment_date: '2026-01-15',
+          },
+        ],
+      };
+    }
+
+    throw new Error(`Unexpected query: ${text}`);
+  };
+
+  const app = createApp();
+  const server = await startTestServer(app);
+
+  try {
+    const response = await fetch(`${server.baseUrl}/api/students`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.success, true);
+    assert.equal(payload.data.length, 1);
+    assert.equal(payload.data[0].full_name, 'Scope Safe Student');
+    assert.equal(payload.meta.pagination.total, 1);
+  } finally {
+    db.query = originalQuery;
+    await server.close();
+  }
+});

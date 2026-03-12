@@ -92,7 +92,6 @@ const googleAuthSchema = z
     role: z.enum(['Admin', 'Teacher', 'Student', 'Parent']).optional(),
     school_name: z.string().trim().min(2).optional(),
     invite_code: z.string().trim().min(1).optional(),
-    school_id: z.coerce.number().int().positive().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.type === 'register') {
@@ -112,11 +111,11 @@ const googleAuthSchema = z
         });
       }
 
-      if (data.role && data.role !== 'Admin' && !data.invite_code && !data.school_id) {
+      if (data.role && data.role !== 'Admin' && !data.invite_code) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['invite_code'],
-          message: 'Invite code or school ID is required to join an existing school',
+          message: 'Invite code is required to join an existing school',
         });
       }
     }
@@ -416,7 +415,7 @@ router.post('/google', validate(googleAuthSchema), async (req, res, next) => {
   const client = await pool.connect();
 
   try {
-    const { token, type, role, school_name, invite_code, school_id } = req.body;
+    const { token, type, role, school_name, invite_code } = req.body;
 
     const ticket = await googleClient.verifyIdToken({
       idToken: token,
@@ -461,7 +460,7 @@ router.post('/google', validate(googleAuthSchema), async (req, res, next) => {
         );
         final_school_id = newSchool.rows[0].school_id;
         req.registrationSchool = newSchool.rows[0];
-      } else if (invite_code) {
+      } else {
         const schoolLookup = await client.query('SELECT school_id FROM schools WHERE invite_code = $1', [
           invite_code,
         ]);
@@ -472,8 +471,6 @@ router.post('/google', validate(googleAuthSchema), async (req, res, next) => {
         }
 
         final_school_id = schoolLookup.rows[0].school_id;
-      } else {
-        final_school_id = school_id;
       }
 
       final_role = role;

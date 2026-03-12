@@ -66,10 +66,6 @@ async function resolveTeacherStudentScope(pool, user) {
       SELECT DISTINCT r.student_id
       FROM results r
       WHERE r.school_id = $1 AND r.subject_id = ANY($2::int[])
-      UNION
-      SELECT DISTINCT a.student_id
-      FROM attendance a
-      WHERE a.school_id = $1
     )`,
     params: [user.school_id, subjectIds],
   };
