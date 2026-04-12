@@ -10,6 +10,7 @@ import DashboardHeader from "./dashboard/DashboardHeader";
 import DashboardHero from "./dashboard/DashboardHero";
 import DashboardContent from "./dashboard/DashboardContent";
 import ProfileModal from "./dashboard/ProfileModal";
+import ErrorBoundary from "./ErrorBoundary"; // 1. Imported the Error Boundary
 import {
   getDashboardRoleFlags,
   getDashboardNavItems,
@@ -167,6 +168,7 @@ const Dashboard = () => {
           toggleTheme={toggleTheme}
           isDark={isDark}
           logout={logout}
+          setActiveTab={setActiveTab}
         />
 
         <DashboardHeader
@@ -202,14 +204,17 @@ const Dashboard = () => {
                 schoolName={userData?.school_name}
               />
 
-              <DashboardContent
-                activeTab={activeTab}
-                flags={flags}
-                userData={userData}
-                subjects={subjects}
-                setSubjects={setSubjects}
-                students={students}
-              />
+              {/* 2. Wrapped DashboardContent and added key={activeTab} for auto-reset */}
+              <ErrorBoundary key={activeTab}>
+                <DashboardContent
+                  activeTab={activeTab}
+                  flags={flags}
+                  userData={userData}
+                  subjects={subjects}
+                  setSubjects={setSubjects}
+                  students={students}
+                />
+              </ErrorBoundary>
             </div>
           </main>
 

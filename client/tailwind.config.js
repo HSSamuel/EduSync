@@ -5,8 +5,10 @@ export default {
   theme: {
     extend: {
       fontFamily: {
+        // Inter for the App UI
         sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
-        serif: ["Inter", "ui-serif", "Georgia", "serif"],
+        // Playfair Display for prestigious/academic headings
+        serif: ["Playfair Display", "ui-serif", "Georgia", "serif"],
       },
       animation: {
         "fade-in": "fadeIn 0.45s ease-out",

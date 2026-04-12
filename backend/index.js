@@ -1,6 +1,8 @@
 require("dotenv").config({ quiet: true });
 const http = require("http");
 const { Server } = require("socket.io");
+const { createAdapter } = require("@socket.io/redis-adapter");
+const Redis = require("ioredis");
 const jwt = require("jsonwebtoken");
 const pool = require("./db");
 const createApp = require("./app");
@@ -50,6 +52,21 @@ const io = new Server(server, {
   },
 });
 
+// --- REDIS ADAPTER SETUP ---
+const pubClient = new Redis(process.env.REDIS_URL);
+const subClient = pubClient.duplicate();
+
+// ioredis auto-connects, so we just listen for the 'ready' event!
+pubClient.on('ready', () => {
+  io.adapter(createAdapter(pubClient, subClient));
+  logger.info("🔌 Socket.io Redis Adapter connected for horizontal scaling");
+});
+
+pubClient.on('error', (err) => {
+  logger.error("❌ Redis Adapter connection error", { error: err.message });
+});
+// ---------------------------
+
 io.use(async (socket, next) => {
   try {
     const token = socket.handshake.auth.token;
@@ -60,12 +77,12 @@ io.use(async (socket, next) => {
 
     const payload = jwt.verify(token, ACCESS_TOKEN_SECRET);
     const userQuery = await pool.query(
-      `SELECT full_name, role FROM users WHERE user_id = $1`,
+      `SELECT full_name, role FROM users WHERE user_id = $1 AND deleted_at IS NULL`,
       [payload.user_id],
     );
 
     if (userQuery.rows.length === 0) {
-      return next(new Error("User not found"));
+      return next(new Error("User not found or has been deactivated"));
     }
 
     socket.user = {

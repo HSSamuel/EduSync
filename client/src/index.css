@@ -1,12 +1,10 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap");
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   html {
-    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+    /* Let Tailwind's sans font apply automatically, just add anti-aliasing */
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
@@ -25,22 +23,8 @@
   h4,
   h5,
   h6 {
-    @apply font-sans font-bold tracking-tight text-gray-900 dark:text-white;
+    @apply font-bold tracking-tight text-gray-900 dark:text-white;
     letter-spacing: -0.02em;
-  }
-
-  p,
-  label,
-  span,
-  a,
-  li,
-  input,
-  textarea,
-  select,
-  button,
-  th,
-  td {
-    @apply font-sans;
   }
 
   * {

@@ -1,7 +1,31 @@
 -- ==========================================
--- EduSync database bootstrap (safe for repeat runs)
--- This script avoids destructive DROP TABLE statements.
--- Seed data is optional and uses ON CONFLICT DO NOTHING.
+-- EduSync database bootstrap (Production Ready)
+-- Incorporates: ENUMs, Soft Deletes, and RLS
+-- ==========================================
+
+-- ==========================================
+-- 1. NATIVE ENUM TYPES
+-- ==========================================
+DO $$ BEGIN
+    CREATE TYPE user_role AS ENUM ('Admin', 'Teacher', 'Student', 'Parent');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE attendance_status AS ENUM ('Present', 'Absent', 'Late', 'Excused');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    CREATE TYPE invoice_status AS ENUM ('Pending', 'Paid', 'Overdue', 'Cancelled');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
+-- ==========================================
+-- 2. CORE TABLES
 -- ==========================================
 
 CREATE TABLE IF NOT EXISTS schools (
@@ -9,7 +33,8 @@ CREATE TABLE IF NOT EXISTS schools (
     school_name VARCHAR(255) NOT NULL,
     contact_email VARCHAR(255),
     invite_code VARCHAR(64) UNIQUE NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP DEFAULT NULL -- Soft Delete
 );
 
 DO $$
@@ -26,12 +51,20 @@ CREATE TABLE IF NOT EXISTS users (
     full_name VARCHAR(255) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
-    role VARCHAR(50) NOT NULL CHECK (role IN ('Admin', 'Teacher', 'Student', 'Parent')),
+    role user_role NOT NULL, -- Replaced VARCHAR constraint
     auth_provider VARCHAR(50) DEFAULT 'local',
     school_id INT REFERENCES schools(school_id) ON DELETE CASCADE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    phone_number VARCHAR(30),
+    gender VARCHAR(20),
+    date_of_birth DATE,
+    address TEXT,
+    bio TEXT,
+    avatar_url TEXT,
+    avatar_public_id TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP DEFAULT NULL -- Soft Delete
 );
-
 
 CREATE TABLE IF NOT EXISTS user_sessions (
     session_id SERIAL PRIMARY KEY,
@@ -53,7 +86,8 @@ CREATE TABLE IF NOT EXISTS students (
     parent_id INT REFERENCES users(user_id) ON DELETE SET NULL,
     school_id INT REFERENCES schools(school_id) ON DELETE CASCADE,
     class_grade VARCHAR(50) NOT NULL,
-    enrollment_date DATE DEFAULT CURRENT_DATE
+    enrollment_date DATE DEFAULT CURRENT_DATE,
+    deleted_at TIMESTAMP DEFAULT NULL -- Soft Delete
 );
 
 CREATE TABLE IF NOT EXISTS subjects (
@@ -91,7 +125,7 @@ CREATE TABLE IF NOT EXISTS attendance (
     student_id INT REFERENCES students(student_id) ON DELETE CASCADE,
     school_id INT REFERENCES schools(school_id) ON DELETE CASCADE,
     date DATE NOT NULL,
-    status VARCHAR(20) CHECK (status IN ('Present', 'Absent', 'Late', 'Excused')),
+    status attendance_status, -- Replaced VARCHAR constraint
     CONSTRAINT unique_attendance_per_day UNIQUE (student_id, date, school_id)
 );
 
@@ -141,7 +175,7 @@ CREATE TABLE IF NOT EXISTS invoices (
     school_id INT REFERENCES schools(school_id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
     amount DECIMAL(10, 2) NOT NULL CHECK (amount >= 0),
-    status VARCHAR(50) DEFAULT 'Pending' CHECK (status IN ('Pending', 'Paid', 'Overdue', 'Cancelled')),
+    status invoice_status DEFAULT 'Pending', -- Replaced VARCHAR constraint
     due_date DATE NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -195,16 +229,9 @@ CREATE TABLE IF NOT EXISTS student_activities (
     PRIMARY KEY (student_id, activity_id)
 );
 
-ALTER TABLE messages
-    ADD COLUMN IF NOT EXISTS sender_user_id INT REFERENCES users(user_id) ON DELETE SET NULL;
-
-ALTER TABLE modules
-    ADD COLUMN IF NOT EXISTS file_public_id TEXT,
-    ADD COLUMN IF NOT EXISTS file_resource_type VARCHAR(50);
-
-ALTER TABLE school_documents
-    ADD COLUMN IF NOT EXISTS file_public_id TEXT,
-    ADD COLUMN IF NOT EXISTS file_resource_type VARCHAR(50);
+-- ==========================================
+-- 3. TRIGGERS & FUNCTIONS
+-- ==========================================
 
 CREATE OR REPLACE FUNCTION update_modified_column()
 RETURNS TRIGGER AS $$
@@ -220,133 +247,11 @@ BEFORE UPDATE ON timetables
 FOR EACH ROW
 EXECUTE PROCEDURE update_modified_column();
 
-CREATE INDEX IF NOT EXISTS idx_users_school_id ON users(school_id);
-CREATE INDEX IF NOT EXISTS idx_students_user_id ON students(user_id);
-CREATE INDEX IF NOT EXISTS idx_students_parent_id ON students(parent_id);
-CREATE INDEX IF NOT EXISTS idx_results_student_id ON results(student_id);
-CREATE INDEX IF NOT EXISTS idx_results_school_id ON results(school_id);
-CREATE INDEX IF NOT EXISTS idx_attendance_student_id ON attendance(student_id);
-CREATE INDEX IF NOT EXISTS idx_invoices_student_id ON invoices(student_id);
-CREATE INDEX IF NOT EXISTS idx_modules_subject_id ON modules(subject_id);
-CREATE INDEX IF NOT EXISTS idx_messages_room_school ON messages(room, school_id);
-
-CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_sessions_session_id ON user_sessions(session_id);
-
-
-
-ALTER TABLE students
-    ADD COLUMN IF NOT EXISTS school_id INT REFERENCES schools(school_id) ON DELETE CASCADE;
-
-UPDATE students s
-SET school_id = u.school_id
-FROM users u
-WHERE s.user_id = u.user_id
-  AND (s.school_id IS NULL OR s.school_id <> u.school_id);
-
-ALTER TABLE cbt_results
-    ADD COLUMN IF NOT EXISTS school_id INT REFERENCES schools(school_id) ON DELETE CASCADE;
-
-UPDATE cbt_results cr
-SET school_id = q.school_id
-FROM quizzes q
-WHERE cr.quiz_id = q.quiz_id
-  AND (cr.school_id IS NULL OR cr.school_id <> q.school_id);
-
-ALTER TABLE extracurriculars
-    ADD COLUMN IF NOT EXISTS school_id INT REFERENCES schools(school_id) ON DELETE CASCADE;
-
-ALTER TABLE student_activities
-    ADD COLUMN IF NOT EXISTS school_id INT REFERENCES schools(school_id) ON DELETE CASCADE;
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_users_user_school_unique ON users(user_id, school_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_students_student_school_unique ON students(student_id, school_id);
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'unique_student_user_school'
-    ) THEN
-        ALTER TABLE students
-            ADD CONSTRAINT unique_student_user_school UNIQUE (user_id, school_id);
-    END IF;
-
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'unique_subject_teacher_school'
-    ) THEN
-        ALTER TABLE subjects
-            ADD CONSTRAINT unique_subject_teacher_school UNIQUE (subject_id, school_id, teacher_id);
-    END IF;
-
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'unique_quiz_school'
-    ) THEN
-        ALTER TABLE quizzes
-            ADD CONSTRAINT unique_quiz_school UNIQUE (quiz_id, school_id);
-    END IF;
-
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'unique_cbt_result_scope'
-    ) THEN
-        ALTER TABLE cbt_results
-            ADD CONSTRAINT unique_cbt_result_scope UNIQUE (result_id, school_id);
-    END IF;
-
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'unique_activity_school'
-    ) THEN
-        ALTER TABLE extracurriculars
-            ADD CONSTRAINT unique_activity_school UNIQUE (activity_id, school_id);
-    END IF;
-
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'fk_students_user_same_school'
-    ) THEN
-        ALTER TABLE students
-            ADD CONSTRAINT fk_students_user_same_school
-            FOREIGN KEY (user_id, school_id) REFERENCES users(user_id, school_id) ON DELETE CASCADE;
-    END IF;
-
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'fk_students_parent_same_school'
-    ) THEN
-        ALTER TABLE students
-            ADD CONSTRAINT fk_students_parent_same_school
-            FOREIGN KEY (parent_id, school_id) REFERENCES users(user_id, school_id) ON DELETE SET NULL;
-    END IF;
-
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'fk_subjects_teacher_same_school'
-    ) THEN
-        ALTER TABLE subjects
-            ADD CONSTRAINT fk_subjects_teacher_same_school
-            FOREIGN KEY (teacher_id, school_id) REFERENCES users(user_id, school_id) ON DELETE SET NULL;
-    END IF;
-
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'fk_cbt_quiz_same_school'
-    ) THEN
-        ALTER TABLE cbt_results
-            ADD CONSTRAINT fk_cbt_quiz_same_school
-            FOREIGN KEY (quiz_id, school_id) REFERENCES quizzes(quiz_id, school_id) ON DELETE CASCADE;
-    END IF;
-
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'fk_student_activities_activity_same_school'
-    ) THEN
-        ALTER TABLE student_activities
-            ADD CONSTRAINT fk_student_activities_activity_same_school
-            FOREIGN KEY (activity_id, school_id) REFERENCES extracurriculars(activity_id, school_id) ON DELETE CASCADE;
-    END IF;
-
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'fk_student_activities_student_same_school'
-    ) THEN
-        ALTER TABLE student_activities
-            ADD CONSTRAINT fk_student_activities_student_same_school
-            FOREIGN KEY (student_id, school_id) REFERENCES students(student_id, school_id) ON DELETE CASCADE;
-    END IF;
-END $$;
+DROP TRIGGER IF EXISTS update_users_modtime ON users;
+CREATE TRIGGER update_users_modtime
+BEFORE UPDATE ON users
+FOR EACH ROW
+EXECUTE PROCEDURE update_modified_column();
 
 CREATE OR REPLACE FUNCTION enforce_school_scoped_role_integrity()
 RETURNS TRIGGER AS $$
@@ -400,69 +305,100 @@ BEFORE INSERT OR UPDATE ON subjects
 FOR EACH ROW
 EXECUTE PROCEDURE enforce_school_scoped_role_integrity();
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_cbt_results_quiz_student_school ON cbt_results(quiz_id, student_id, school_id);
+
+-- ==========================================
+-- 4. CONSTRAINTS & INDEXES
+-- ==========================================
+
+-- Standard Data Access Indexes
+CREATE INDEX IF NOT EXISTS idx_users_school_id ON users(school_id);
+CREATE INDEX IF NOT EXISTS idx_students_user_id ON students(user_id);
+CREATE INDEX IF NOT EXISTS idx_students_parent_id ON students(parent_id);
+CREATE INDEX IF NOT EXISTS idx_results_student_id ON results(student_id);
+CREATE INDEX IF NOT EXISTS idx_results_school_id ON results(school_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_student_id ON attendance(student_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_student_id ON invoices(student_id);
+CREATE INDEX IF NOT EXISTS idx_modules_subject_id ON modules(subject_id);
+CREATE INDEX IF NOT EXISTS idx_messages_room_school ON messages(room, school_id);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_session_id ON user_sessions(session_id);
 CREATE INDEX IF NOT EXISTS idx_students_school_id ON students(school_id);
 CREATE INDEX IF NOT EXISTS idx_subjects_school_teacher ON subjects(school_id, teacher_id);
 CREATE INDEX IF NOT EXISTS idx_cbt_results_school_id ON cbt_results(school_id);
 CREATE INDEX IF NOT EXISTS idx_extracurriculars_school_id ON extracurriculars(school_id);
 CREATE INDEX IF NOT EXISTS idx_student_activities_school_id ON student_activities(school_id);
+CREATE INDEX IF NOT EXISTS idx_results_student_subject_term_school ON results(student_id, subject_id, academic_term, school_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_school_status_due_date ON invoices(school_id, status, due_date);
 
+-- Soft Delete Active Indexes
+CREATE INDEX IF NOT EXISTS idx_users_active ON users(school_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_students_active ON students(school_id) WHERE deleted_at IS NULL;
+
+-- Unique Indexes
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_user_school_unique ON users(user_id, school_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_students_student_school_unique ON students(student_id, school_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cbt_results_quiz_student_school ON cbt_results(quiz_id, student_id, school_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_subjects_subject_school_unique ON subjects(subject_id, school_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_invoices_invoice_school_unique ON invoices(invoice_id, school_id);
 
 DO $$
 BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'fk_results_student_same_school'
-    ) THEN
-        ALTER TABLE results
-            ADD CONSTRAINT fk_results_student_same_school
-            FOREIGN KEY (student_id, school_id) REFERENCES students(student_id, school_id) ON DELETE CASCADE;
+    -- Foreign Key Configurations
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'unique_student_user_school') THEN
+        ALTER TABLE students ADD CONSTRAINT unique_student_user_school UNIQUE (user_id, school_id);
     END IF;
 
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'fk_results_subject_same_school'
-    ) THEN
-        ALTER TABLE results
-            ADD CONSTRAINT fk_results_subject_same_school
-            FOREIGN KEY (subject_id, school_id) REFERENCES subjects(subject_id, school_id) ON DELETE CASCADE;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'unique_subject_teacher_school') THEN
+        ALTER TABLE subjects ADD CONSTRAINT unique_subject_teacher_school UNIQUE (subject_id, school_id, teacher_id);
     END IF;
 
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'fk_invoices_student_same_school'
-    ) THEN
-        ALTER TABLE invoices
-            ADD CONSTRAINT fk_invoices_student_same_school
-            FOREIGN KEY (student_id, school_id) REFERENCES students(student_id, school_id) ON DELETE CASCADE;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_students_user_same_school') THEN
+        ALTER TABLE students ADD CONSTRAINT fk_students_user_same_school FOREIGN KEY (user_id, school_id) REFERENCES users(user_id, school_id) ON DELETE CASCADE;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_students_parent_same_school') THEN
+        ALTER TABLE students ADD CONSTRAINT fk_students_parent_same_school FOREIGN KEY (parent_id, school_id) REFERENCES users(user_id, school_id) ON DELETE SET NULL;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_subjects_teacher_same_school') THEN
+        ALTER TABLE subjects ADD CONSTRAINT fk_subjects_teacher_same_school FOREIGN KEY (teacher_id, school_id) REFERENCES users(user_id, school_id) ON DELETE SET NULL;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_results_student_same_school') THEN
+        ALTER TABLE results ADD CONSTRAINT fk_results_student_same_school FOREIGN KEY (student_id, school_id) REFERENCES students(student_id, school_id) ON DELETE CASCADE;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_results_subject_same_school') THEN
+        ALTER TABLE results ADD CONSTRAINT fk_results_subject_same_school FOREIGN KEY (subject_id, school_id) REFERENCES subjects(subject_id, school_id) ON DELETE CASCADE;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_invoices_student_same_school') THEN
+        ALTER TABLE invoices ADD CONSTRAINT fk_invoices_student_same_school FOREIGN KEY (student_id, school_id) REFERENCES students(student_id, school_id) ON DELETE CASCADE;
     END IF;
 END $$;
 
-CREATE INDEX IF NOT EXISTS idx_results_student_subject_term_school
-    ON results(student_id, subject_id, academic_term, school_id);
-CREATE INDEX IF NOT EXISTS idx_invoices_school_status_due_date
-    ON invoices(school_id, status, due_date);
 
+-- ==========================================
+-- 5. ROW LEVEL SECURITY (MULTI-TENANCY)
+-- ==========================================
 
-ALTER TABLE users
-    ADD COLUMN IF NOT EXISTS phone_number VARCHAR(30),
-    ADD COLUMN IF NOT EXISTS gender VARCHAR(20),
-    ADD COLUMN IF NOT EXISTS date_of_birth DATE,
-    ADD COLUMN IF NOT EXISTS address TEXT,
-    ADD COLUMN IF NOT EXISTS bio TEXT,
-    ADD COLUMN IF NOT EXISTS avatar_url TEXT,
-    ADD COLUMN IF NOT EXISTS avatar_public_id TEXT,
-    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE students ENABLE ROW LEVEL SECURITY;
+ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE results ENABLE ROW LEVEL SECURITY;
 
-CREATE OR REPLACE FUNCTION update_users_modified_column()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = now();
-    RETURN NEW;
-END;
-$$ language 'plpgsql';
+DROP POLICY IF EXISTS tenant_isolation_students ON students;
+CREATE POLICY tenant_isolation_students ON students
+    USING (school_id = NULLIF(current_setting('app.current_tenant_id', TRUE), '')::INT);
 
-DROP TRIGGER IF EXISTS update_users_modtime ON users;
-CREATE TRIGGER update_users_modtime
-BEFORE UPDATE ON users
-FOR EACH ROW
-EXECUTE PROCEDURE update_users_modified_column();
+DROP POLICY IF EXISTS tenant_isolation_invoices ON invoices;
+CREATE POLICY tenant_isolation_invoices ON invoices
+    USING (school_id = NULLIF(current_setting('app.current_tenant_id', TRUE), '')::INT);
+
+DROP POLICY IF EXISTS tenant_isolation_results ON results;
+CREATE POLICY tenant_isolation_results ON results
+    USING (school_id = NULLIF(current_setting('app.current_tenant_id', TRUE), '')::INT);
+
+-- Force RLS even for DB admins
+ALTER TABLE students FORCE ROW LEVEL SECURITY;
+ALTER TABLE invoices FORCE ROW LEVEL SECURITY;
+ALTER TABLE results FORCE ROW LEVEL SECURITY;

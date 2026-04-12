@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Menu,
   Search,
@@ -9,6 +9,8 @@ import {
   User,
   Pencil,
   ChevronDown,
+  Copy,
+  Check,
 } from "lucide-react";
 
 export default function DashboardHeader({
@@ -28,6 +30,7 @@ export default function DashboardHeader({
   openProfileModal,
 }) {
   const menuRef = useRef(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -51,6 +54,18 @@ export default function DashboardHeader({
     };
   }, [setIsProfileMenuOpen]);
 
+  const handleCopyCode = async (e) => {
+    e.stopPropagation();
+    if (!userData?.invite_code) return;
+    try {
+      await navigator.clipboard.writeText(userData.invite_code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy:", err);
+    }
+  };
+
   return (
     <header className="relative h-16 shrink-0 bg-white/95 md:bg-white/80 dark:bg-gray-900/95 md:dark:bg-gray-900/80 md:backdrop-blur-xl border-b border-gray-200/60 dark:border-gray-800 flex items-center justify-between px-4 sm:px-6 z-[120]">
       <div className="flex items-center gap-4 flex-1 min-w-0">
@@ -70,9 +85,7 @@ export default function DashboardHeader({
 
         <button
           onClick={() =>
-            document.dispatchEvent(
-              new KeyboardEvent("keydown", { key: "k", metaKey: true }),
-            )
+            window.dispatchEvent(new CustomEvent("open-command-palette"))
           }
           aria-label="Open Command Palette"
           className="hidden sm:flex items-center justify-between w-full max-w-md px-4 py-2.5 text-sm text-gray-500 bg-gray-100/90 dark:bg-gray-800 border border-transparent hover:border-gray-200 dark:hover:border-gray-700 rounded-full transition-all group"
@@ -165,6 +178,33 @@ export default function DashboardHeader({
                 </p>
               </div>
 
+              {/* NEW: Admin Invite Code Quick Access Row */}
+              {role === "Admin" && userData?.invite_code && (
+                <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800 bg-blue-50/50 dark:bg-blue-900/10">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                        School Invite Code
+                      </p>
+                      <p className="text-sm font-mono font-bold text-gray-900 dark:text-white mt-0.5">
+                        {userData.invite_code}
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleCopyCode}
+                      className="p-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all shadow-sm active:scale-95"
+                      title="Copy Invite Code"
+                    >
+                      {copied ? (
+                        <Check size={16} className="text-emerald-500" />
+                      ) : (
+                        <Copy size={16} />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="p-2">
                 <button
                   type="button"
@@ -202,14 +242,6 @@ export default function DashboardHeader({
             </div>
           )}
         </div>
-
-        <button
-          onClick={logout}
-          aria-label="Log out"
-          className="ml-2 p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors hidden sm:block"
-        >
-          <LogOut size={20} />
-        </button>
       </div>
     </header>
   );

@@ -10,6 +10,8 @@ import {
   Camera,
   Shield,
   Building2,
+  Copy,
+  Check,
 } from "lucide-react";
 import { useAppContext } from "../../context/AppContext";
 import { apiFetchOrThrow, extractResponseData } from "../../utils/api";
@@ -27,18 +29,43 @@ const EMPTY_FORM = {
   avatar_url: "",
 };
 
+// FIX: Safely parse dates to prevent Timezone shift bugs
 const formatDateInput = (value) => {
   if (!value) return "";
-  return String(value).slice(0, 10);
+  if (typeof value === "string") {
+    if (value.match(/^\d{4}-\d{2}-\d{2}$/)) return value;
+    if (value.match(/^\d{4}-\d{2}-\d{2}T/)) return value.split("T")[0];
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 };
 
 const formatDateDisplay = (value) => {
-  if (!value) return "Not added";
-  const date = new Date(value);
+  if (!value) return null;
+  let date;
+  if (typeof value === "string") {
+    // Force local timezone parsing by splitting the string
+    if (value.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      const [y, m, d] = value.split("-");
+      date = new Date(y, m - 1, d);
+    } else if (value.match(/^\d{4}-\d{2}-\d{2}T/)) {
+      const [y, m, d] = value.split("T")[0].split("-");
+      date = new Date(y, m - 1, d);
+    } else {
+      date = new Date(value);
+    }
+  } else {
+    date = new Date(value);
+  }
+
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString(undefined, {
     day: "numeric",
-    month: "short",
+    month: "long",
     year: "numeric",
   });
 };
@@ -68,6 +95,7 @@ export default function ProfileModal({
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
+  const [copiedCode, setCopiedCode] = useState(false);
 
   const [formData, setFormData] = useState(EMPTY_FORM);
 
@@ -150,16 +178,7 @@ export default function ProfileModal({
           setStatusMessage("");
           setFormData((prev) => ({
             ...prev,
-            full_name: compactProfile.full_name,
-            email: compactProfile.email,
-            role: compactProfile.role,
-            school_name: compactProfile.school_name,
-            phone_number: compactProfile.phone_number,
-            gender: compactProfile.gender,
-            date_of_birth: compactProfile.date_of_birth,
-            address: compactProfile.address,
-            bio: compactProfile.bio,
-            avatar_url: prev.avatar_url || compactProfile.avatar_url,
+            ...compactProfile,
           }));
         } else {
           onClose?.();
@@ -197,11 +216,7 @@ export default function ProfileModal({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (
-      !["image/jpeg", "image/jpg", "image/png", "image/webp"].includes(
-        file.type,
-      )
-    ) {
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
       setStatusMessage("❌ Only JPG, PNG, and WEBP images are allowed.");
       e.target.value = "";
       return;
@@ -231,11 +246,7 @@ export default function ProfileModal({
 
       const updatedUser = extractResponseData(payload, {});
 
-      setUserData((prev) => ({
-        ...prev,
-        ...updatedUser,
-      }));
-
+      setUserData((prev) => ({ ...prev, ...updatedUser }));
       setFormData((prev) => ({
         ...prev,
         avatar_url: updatedUser.avatar_url || prev.avatar_url,
@@ -288,21 +299,16 @@ export default function ProfileModal({
   };
 
   const cancelEdit = () => {
-    setFormData((prev) => ({
-      ...prev,
-      full_name: compactProfile.full_name,
-      email: compactProfile.email,
-      role: compactProfile.role,
-      school_name: compactProfile.school_name,
-      phone_number: compactProfile.phone_number,
-      gender: compactProfile.gender,
-      date_of_birth: compactProfile.date_of_birth,
-      address: compactProfile.address,
-      bio: compactProfile.bio,
-      avatar_url: prev.avatar_url || compactProfile.avatar_url,
-    }));
+    setFormData((prev) => ({ ...prev, ...compactProfile }));
     setStatusMessage("");
     setMode("view");
+  };
+
+  const copyInviteCode = async () => {
+    if (!userData?.invite_code) return;
+    await navigator.clipboard.writeText(userData.invite_code);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2000);
   };
 
   if (!isOpen) return null;
@@ -450,6 +456,42 @@ export default function ProfileModal({
                       </div>
 
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        {formData.role === "Admin" && userData?.invite_code && (
+                          <InfoCard
+                            icon={
+                              <Shield size={14} className="text-blue-500" />
+                            }
+                            label="School Invite Code"
+                            fullWidth
+                            value={
+                              <div className="flex items-center justify-between bg-blue-50/50 dark:bg-blue-900/10 px-3 py-2 rounded-xl border border-blue-100 dark:border-blue-900/30 mt-1">
+                                <span className="font-mono font-bold text-gray-900 dark:text-white tracking-wider text-sm">
+                                  {userData.invite_code}
+                                </span>
+                                <button
+                                  onClick={copyInviteCode}
+                                  className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-blue-600 hover:text-blue-700 dark:text-blue-400 transition-colors"
+                                  title="Copy Code"
+                                >
+                                  {copiedCode ? (
+                                    <>
+                                      <Check
+                                        size={14}
+                                        className="text-emerald-500"
+                                      />{" "}
+                                      Copied
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Copy size={14} /> Copy
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            }
+                          />
+                        )}
+
                         <InfoCard
                           icon={<User size={14} />}
                           label="Full Name"
@@ -644,9 +686,9 @@ function InfoCard({ icon, label, value, fullWidth = false }) {
         {icon}
         <span>{label}</span>
       </div>
-      <p className="break-words text-xs leading-5 text-gray-600 dark:text-gray-300 sm:text-sm">
+      <div className="break-words text-xs leading-5 text-gray-600 dark:text-gray-300 sm:text-sm">
         {value || "Not added"}
-      </p>
+      </div>
     </div>
   );
 }
