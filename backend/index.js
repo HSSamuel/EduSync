@@ -53,18 +53,18 @@ const io = new Server(server, {
 });
 
 // --- REDIS ADAPTER SETUP ---
-const pubClient = new Redis(process.env.REDIS_URL);
-const subClient = pubClient.duplicate();
+// const pubClient = new Redis(process.env.REDIS_URL);
+// const subClient = pubClient.duplicate();
 
-// ioredis auto-connects, so we just listen for the 'ready' event!
-pubClient.on('ready', () => {
-  io.adapter(createAdapter(pubClient, subClient));
-  logger.info("🔌 Socket.io Redis Adapter connected for horizontal scaling");
-});
+// // ioredis auto-connects, so we just listen for the 'ready' event!
+// pubClient.on('ready', () => {
+//   io.adapter(createAdapter(pubClient, subClient));
+//   logger.info("🔌 Socket.io Redis Adapter connected for horizontal scaling");
+// });
 
-pubClient.on('error', (err) => {
-  logger.error("❌ Redis Adapter connection error", { error: err.message });
-});
+// pubClient.on('error', (err) => {
+//   logger.error("❌ Redis Adapter connection error", { error: err.message });
+// });
 // ---------------------------
 
 io.use(async (socket, next) => {

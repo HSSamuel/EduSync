@@ -5,9 +5,9 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        // Inter for the App UI
-        sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
-        // Playfair Display for prestigious/academic headings
+        // The new structural, cool UI font
+        sans: ["Plus Jakarta Sans", "ui-sans-serif", "system-ui", "sans-serif"],
+        // Retained for premium/academic headings or document generation
         serif: ["Playfair Display", "ui-serif", "Georgia", "serif"],
       },
       animation: {
