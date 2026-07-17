@@ -25,6 +25,7 @@ const AnalyticsCards = ({ onNavigate }) => {
   const [stats, setStats] = useState({
     totalStudents: 0,
     totalTeachers: 0,
+    totalParents: 0,
     totalSubjects: 0,
     totalDocuments: 0,
   });
@@ -42,6 +43,7 @@ const AnalyticsCards = ({ onNavigate }) => {
             payload?.data || {
               totalStudents: 0,
               totalTeachers: 0,
+              totalParents: 0,
               totalSubjects: 0,
               totalDocuments: 0,
             },
@@ -104,30 +106,30 @@ const AnalyticsCards = ({ onNavigate }) => {
   ];
 
   const enrollmentData = [
-    { name: "Jan", students: 120 },
-    { name: "Feb", students: 132 },
-    { name: "Mar", students: 145 },
-    { name: "Apr", students: 160 },
-    { name: "May", students: 175 },
-    { name: "Jun", students: 190 },
+    { name: "Jan", students: 12 },
+    { name: "Feb", students: 30 },
+    { name: "Mar", students: 45 },
+    { name: "Apr", students: 80 },
+    { name: "May", students: parseInt(stats.totalStudents, 10) - 10 || 0 },
+    { name: "Jun", students: parseInt(stats.totalStudents, 10) || 0 },
   ];
 
   const demographicData = [
     {
       name: "Students",
-      value: parseInt(stats.totalStudents, 10) || 150,
+      value: parseInt(stats.totalStudents, 10) || 0,
       color: "#3B82F6",
       tabId: "students",
     },
     {
       name: "Teachers",
-      value: parseInt(stats.totalTeachers, 10) || 15,
+      value: parseInt(stats.totalTeachers, 10) || 0,
       color: "#8B5CF6",
       tabId: "attendance",
     },
     {
       name: "Parents",
-      value: 80,
+      value: parseInt(stats.totalParents, 10) || 0,
       color: "#10B981",
       tabId: "grades",
     },

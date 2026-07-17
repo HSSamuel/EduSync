@@ -37,17 +37,13 @@ const legacyAttendanceSchema = z.object({
 function normalizeAttendancePayload(body) {
   const newShape = newAttendanceSchema.safeParse(body);
   if (newShape.success) {
-    return {
-      date: newShape.data.date,
-      records: newShape.data.records,
-    };
+    return { date: newShape.data.date, records: newShape.data.records };
   }
 
   const legacyShape = legacyAttendanceSchema.safeParse(body);
   if (legacyShape.success) {
     const attendanceList = legacyShape.data.attendanceList;
     const firstDate = attendanceList[0]?.date;
-
     const mixedDates = attendanceList.some((item) => item.date !== firstDate);
     if (mixedDates) {
       return {
@@ -60,7 +56,6 @@ function normalizeAttendancePayload(body) {
         ],
       };
     }
-
     return {
       date: firstDate,
       records: attendanceList.map(({ student_id, status }) => ({
@@ -74,7 +69,6 @@ function normalizeAttendancePayload(body) {
     ...(newShape.error?.issues || []),
     ...(legacyShape.error?.issues || []),
   ];
-
   return {
     error:
       issues[0]?.message ||
@@ -91,13 +85,7 @@ router.get("/", authorize, async (req, res) => {
     const { class_grade = "", date = "", status = "" } = req.query;
 
     let query = `
-      SELECT
-        a.attendance_id,
-        a.student_id,
-        u.full_name,
-        s.class_grade,
-        a.date,
-        a.status
+      SELECT a.attendance_id, a.student_id, u.full_name, s.class_grade, a.date, a.status
       FROM attendance a
       JOIN students s ON a.student_id = s.student_id
       JOIN users u ON s.user_id = u.user_id
@@ -108,21 +96,16 @@ router.get("/", authorize, async (req, res) => {
     let paramIndex = 2;
 
     if (class_grade) {
-      query += ` AND s.class_grade = $${paramIndex}`;
+      query += ` AND s.class_grade = $${paramIndex++}`;
       params.push(class_grade);
-      paramIndex += 1;
     }
-
     if (date) {
-      query += ` AND a.date = $${paramIndex}`;
+      query += ` AND a.date = $${paramIndex++}`;
       params.push(date);
-      paramIndex += 1;
     }
-
     if (status) {
-      query += ` AND a.status = $${paramIndex}`;
+      query += ` AND a.status = $${paramIndex++}`;
       params.push(status);
-      paramIndex += 1;
     }
 
     query += ` ORDER BY a.date DESC, s.class_grade ASC, u.full_name ASC`;
@@ -144,7 +127,6 @@ router.post("/", authorize, async (req, res) => {
     }
 
     const normalized = normalizeAttendancePayload(req.body);
-
     if (normalized.error) {
       return sendError(res, {
         status: 400,
@@ -156,35 +138,33 @@ router.post("/", authorize, async (req, res) => {
 
     const { date, records: attendanceList } = normalized;
     const studentIds = attendanceList.map((record) => record.student_id);
+    const statuses = attendanceList.map((record) => record.status);
 
     const studentScopeCheck = await client.query(
-      `
-        SELECT s.student_id
-        FROM students s
-        JOIN users u ON s.user_id = u.user_id
-        WHERE s.student_id = ANY($1::int[])
-          AND u.school_id = $2
-      `,
+      `SELECT s.student_id FROM students s JOIN users u ON s.user_id = u.user_id WHERE s.student_id = ANY($1::int[]) AND u.school_id = $2`,
       [studentIds, req.user.school_id],
     );
 
     if (studentScopeCheck.rows.length !== studentIds.length) {
-      return sendError(res, { status: 400, message: "One or more students do not belong to your school." });
+      return sendError(res, {
+        status: 400,
+        message: "One or more students do not belong to your school.",
+      });
     }
 
     await client.query("BEGIN");
 
-    for (const record of attendanceList) {
-      await client.query(
-        `
-          INSERT INTO attendance (student_id, date, status, school_id)
-          VALUES ($1, $2, $3, $4)
-          ON CONFLICT (student_id, date, school_id)
-          DO UPDATE SET status = EXCLUDED.status
-        `,
-        [record.student_id, date, record.status, req.user.school_id],
-      );
-    }
+    // Fix: Batch insert using UNNEST
+    await client.query(
+      `
+        INSERT INTO attendance (student_id, date, status, school_id)
+        SELECT u.student_id, $2::date, u.status, $3::int
+        FROM UNNEST($1::int[], $4::text[]) AS u(student_id, status)
+        ON CONFLICT (student_id, date, school_id)
+        DO UPDATE SET status = EXCLUDED.status
+      `,
+      [studentIds, date, req.user.school_id, statuses],
+    );
 
     const absentStudentIds = attendanceList
       .filter((record) => record.status === "Absent")
@@ -192,17 +172,11 @@ router.post("/", authorize, async (req, res) => {
 
     if (absentStudentIds.length > 0) {
       const parentQuery = await client.query(
-        `
-          SELECT
-            u.email,
-            u.full_name AS parent_name,
-            s_user.full_name AS student_name
-          FROM students s
-          JOIN users u ON s.parent_id = u.user_id
-          JOIN users s_user ON s.user_id = s_user.user_id
-          WHERE s.student_id = ANY($1::int[])
-            AND u.school_id = $2
-        `,
+        `SELECT u.email, u.full_name AS parent_name, s_user.full_name AS student_name
+         FROM students s
+         JOIN users u ON s.parent_id = u.user_id
+         JOIN users s_user ON s.user_id = s_user.user_id
+         WHERE s.student_id = ANY($1::int[]) AND u.school_id = $2`,
         [absentStudentIds, req.user.school_id],
       );
 
@@ -211,17 +185,10 @@ router.post("/", authorize, async (req, res) => {
         data: {
           to: parent.email,
           subject: `⚠️ Attendance Alert: ${parent.student_name} marked Absent`,
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden;">
-              <div style="background-color: #EF4444; padding: 20px; text-align: center;">
-                <h2 style="color: white; margin: 0;">Attendance Alert</h2>
-              </div>
-              <div style="padding: 30px; background-color: #f9fafb;">
-                <h3 style="color: #333;">Dear ${parent.parent_name},</h3>
-                <p>This is an automated notification from EduSync to inform you that <strong>${parent.student_name}</strong> was marked <strong>Absent</strong> for classes on <strong>${date}</strong>.</p>
-              </div>
-            </div>
-          `,
+          html: `<div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden;">
+                  <div style="background-color: #EF4444; padding: 20px; text-align: center;"><h2 style="color: white; margin: 0;">Attendance Alert</h2></div>
+                  <div style="padding: 30px; background-color: #f9fafb;"><h3 style="color: #333;">Dear ${parent.parent_name},</h3>
+                  <p>This is an automated notification from EduSync to inform you that <strong>${parent.student_name}</strong> was marked <strong>Absent</strong> for classes on <strong>${date}</strong>.</p></div></div>`,
         },
       }));
 
@@ -229,7 +196,9 @@ router.post("/", authorize, async (req, res) => {
     }
 
     await client.query("COMMIT");
-    return sendSuccess(res, { message: "Attendance saved and parent alerts dispatched!" });
+    return sendSuccess(res, {
+      message: "Attendance saved and parent alerts dispatched!",
+    });
   } catch (err) {
     await client.query("ROLLBACK");
     console.error(err.message);

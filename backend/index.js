@@ -1,8 +1,6 @@
 require("dotenv").config({ quiet: true });
 const http = require("http");
 const { Server } = require("socket.io");
-const { createAdapter } = require("@socket.io/redis-adapter");
-const Redis = require("ioredis");
 const jwt = require("jsonwebtoken");
 const pool = require("./db");
 const createApp = require("./app");
@@ -52,28 +50,11 @@ const io = new Server(server, {
   },
 });
 
-// --- REDIS ADAPTER SETUP ---
-// const pubClient = new Redis(process.env.REDIS_URL);
-// const subClient = pubClient.duplicate();
-
-// // ioredis auto-connects, so we just listen for the 'ready' event!
-// pubClient.on('ready', () => {
-//   io.adapter(createAdapter(pubClient, subClient));
-//   logger.info("🔌 Socket.io Redis Adapter connected for horizontal scaling");
-// });
-
-// pubClient.on('error', (err) => {
-//   logger.error("❌ Redis Adapter connection error", { error: err.message });
-// });
-// ---------------------------
-
 io.use(async (socket, next) => {
   try {
     const token = socket.handshake.auth.token;
-
-    if (!token) {
+    if (!token)
       return next(new Error("Authentication error: No token provided"));
-    }
 
     const payload = jwt.verify(token, ACCESS_TOKEN_SECRET);
     const userQuery = await pool.query(
@@ -81,9 +62,8 @@ io.use(async (socket, next) => {
       [payload.user_id],
     );
 
-    if (userQuery.rows.length === 0) {
-      return next(new Error("User not found or has been deactivated"));
-    }
+    if (userQuery.rows.length === 0)
+      return next(new Error("User not found or deactivated"));
 
     socket.user = {
       id: payload.user_id,
@@ -102,70 +82,41 @@ io.on("connection", (socket) => {
   logger.info("🟢 Socket client connected", {
     socketId: socket.id,
     userId: socket.user.id,
-    schoolId: socket.user.school_id,
-    role: socket.user.role,
+  });
+
+  const presenceRoom = getSecureRoomName(socket.user.school_id, "presence");
+  socket.join(presenceRoom);
+
+  // Broadcast Online Status
+  io.to(presenceRoom).emit("user_status_change", {
+    user_id: socket.user.id,
+    status: "Online",
   });
 
   socket.on("join_room", (room) => {
-    if (!isValidRoomName(room)) {
-      socket.emit("chat_error", { error: "Invalid room name." });
-      return;
-    }
-
-    const normalizedRoom = room.trim();
-    const secureRoom = getSecureRoomName(socket.user.school_id, normalizedRoom);
-    socket.join(secureRoom);
-    logger.debug("Socket room joined", {
-      socketId: socket.id,
-      userId: socket.user.id,
-      schoolId: socket.user.school_id,
-      room: normalizedRoom,
-    });
+    if (!isValidRoomName(room))
+      return socket.emit("chat_error", { error: "Invalid room name." });
+    socket.join(getSecureRoomName(socket.user.school_id, room.trim()));
   });
 
   socket.on("leave_room", (room) => {
     if (!isValidRoomName(room)) return;
-
-    const normalizedRoom = room.trim();
-    const secureRoom = getSecureRoomName(socket.user.school_id, normalizedRoom);
-    socket.leave(secureRoom);
-    logger.debug("Socket room left", {
-      socketId: socket.id,
-      userId: socket.user.id,
-      schoolId: socket.user.school_id,
-      room: normalizedRoom,
-    });
+    socket.leave(getSecureRoomName(socket.user.school_id, room.trim()));
   });
 
   socket.on("send_message", async (data = {}) => {
     const room = data.room;
     const rawMessage = data.message;
 
-    if (!isValidRoomName(room)) {
-      socket.emit("chat_error", { error: "Invalid room name." });
-      return;
-    }
-
-    if (!isValidMessage(rawMessage)) {
-      socket.emit("chat_error", {
-        error: `Message must be between 1 and ${MAX_CHAT_MESSAGE_LENGTH} characters.`,
-      });
-      return;
-    }
+    if (!isValidRoomName(room) || !isValidMessage(rawMessage)) return;
 
     const rateLimitKey = `${socket.user.school_id}:${socket.user.id}`;
     const rateLimitResult = chatRateLimiter.consume(rateLimitKey);
+
     if (!rateLimitResult.allowed) {
-      socket.emit("chat_error", {
-        error: `Message rate limit exceeded. Try again in ${Math.ceil(rateLimitResult.retryAfterMs / 1000)} second(s).`,
-        code: "CHAT_RATE_LIMITED",
+      return socket.emit("chat_error", {
+        error: `Rate limit exceeded. Try again in ${Math.ceil(rateLimitResult.retryAfterMs / 1000)}s.`,
       });
-      logger.warn("Socket chat rate limit triggered", {
-        userId: socket.user.id,
-        schoolId: socket.user.school_id,
-        retryAfterMs: rateLimitResult.retryAfterMs,
-      });
-      return;
     }
 
     const normalizedRoom = room.trim();
@@ -174,18 +125,8 @@ io.on("connection", (socket) => {
 
     try {
       const result = await pool.query(
-        `
-          INSERT INTO messages (
-            room,
-            message,
-            sender_name,
-            sender_role,
-            sender_user_id,
-            school_id
-          )
-          VALUES ($1, $2, $3, $4, $5, $6)
-          RETURNING message_id, sent_at
-        `,
+        `INSERT INTO messages (room, message, sender_name, sender_role, sender_user_id, school_id)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING message_id, sent_at`,
         [
           normalizedRoom,
           normalizedMessage,
@@ -196,25 +137,16 @@ io.on("connection", (socket) => {
         ],
       );
 
-      const persistedMessage = result.rows[0];
-      const outgoingMessage = {
-        id: persistedMessage.message_id,
+      io.to(secureRoom).emit("receive_message", {
+        id: result.rows[0].message_id,
         room: normalizedRoom,
         message: normalizedMessage,
-        time: formatChatTime(persistedMessage.sent_at),
+        time: formatChatTime(result.rows[0].sent_at),
         sender: socket.user.name,
         role: socket.user.role,
         sender_user_id: socket.user.id,
-      };
-
-      io.to(secureRoom).emit("receive_message", outgoingMessage);
-    } catch (err) {
-      logger.error("❌ Chat persistence failed", {
-        userId: socket.user.id,
-        schoolId: socket.user.school_id,
-        room: normalizedRoom,
-        error: err,
       });
+    } catch (err) {
       socket.emit("chat_error", {
         error: "❌ Unable to send message right now.",
       });
@@ -222,10 +154,10 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
-    logger.info("🔴 Socket client disconnected", {
-      socketId: socket.id,
-      userId: socket.user?.id,
-      schoolId: socket.user?.school_id,
+    // Broadcast Offline Status
+    io.to(presenceRoom).emit("user_status_change", {
+      user_id: socket.user.id,
+      status: "Offline",
     });
   });
 });
@@ -234,19 +166,12 @@ pool
   .connect()
   .then((client) => {
     client.release();
-    logger.info("📦 Successfully connected to PostgreSQL", {
-      host: process.env.DB_HOST,
-      database: process.env.DB_DATABASE,
-      port: Number(process.env.DB_PORT || 5432),
-    });
-
-    server.listen(PORT, () => {
-      logger.info(`🚀 HTTP and WebSocket are running on port ${PORT}`);
-    });
+    logger.info("📦 Successfully connected to PostgreSQL");
+    server.listen(PORT, () => logger.info(`🚀 Server running on port ${PORT}`));
   })
   .catch((err) => {
     logger.error("❌ Database connection failed during bootstrap", {
       error: err,
     });
-    process.exitCode = 1;
+    process.exit(1); // Force crash so process manager can restart
   });

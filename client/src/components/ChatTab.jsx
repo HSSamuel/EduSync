@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import io from "socket.io-client";
-import { Users, MessageSquare, Send, Loader2 } from "lucide-react";
+import { Users, MessageSquare, Send, Loader2, Phone } from "lucide-react";
 import { apiFetch, getAccessToken } from "../utils/api";
 
 const API_URL = import.meta.env.VITE_API_URL;
@@ -14,6 +14,7 @@ const ChatTab = ({ userData }) => {
   const [messageList, setMessageList] = useState([]);
   const [room, setRoom] = useState("Global Lounge");
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [onlineUsers, setOnlineUsers] = useState(new Set());
 
   const socketRef = useRef(null);
   const chatEndRef = useRef(null);
@@ -79,6 +80,7 @@ const ChatTab = ({ userData }) => {
           sender: data.sender || data.sender_name || "Unknown",
           role: data.role || data.sender_role || "User",
           message: data.message || "",
+          sender_user_id: data.sender_user_id || null,
           time:
             data.time ||
             new Date().toLocaleTimeString([], {
@@ -91,16 +93,27 @@ const ChatTab = ({ userData }) => {
       });
     };
 
+    const handleStatusChange = (data) => {
+      setOnlineUsers((prev) => {
+        const next = new Set(prev);
+        if (data.status === "Online") next.add(data.user_id);
+        else next.delete(data.user_id);
+        return next;
+      });
+    };
+
     socketInstance.on("connect", handleConnect);
     socketInstance.on("disconnect", handleDisconnect);
     socketInstance.on("connect_error", handleConnectError);
     socketInstance.on("receive_message", handleReceiveMessage);
+    socketInstance.on("user_status_change", handleStatusChange);
 
     return () => {
       socketInstance.off("connect", handleConnect);
       socketInstance.off("disconnect", handleDisconnect);
       socketInstance.off("connect_error", handleConnectError);
       socketInstance.off("receive_message", handleReceiveMessage);
+      socketInstance.off("user_status_change", handleStatusChange);
       socketInstance.close();
       socketRef.current = null;
       joinedRoomRef.current = null;
@@ -156,6 +169,7 @@ const ChatTab = ({ userData }) => {
             sender: msg.sender || msg.sender_name || "Unknown",
             role: msg.role || msg.sender_role || "User",
             message: msg.message || "",
+            sender_user_id: msg.sender_user_id || null,
             time: msg.time || "",
           }));
 
@@ -210,6 +224,13 @@ const ChatTab = ({ userData }) => {
     setCurrentMessage("");
   };
 
+  const handleToggleCall = (recipientId) => {
+    // TODO: Connect to Agora channel here.
+    // Ensure you invoke client.leave() and cleanup local/remote tracks
+    // when hanging up so it properly drops on the other end.
+    console.log(`Initiating call with user ${recipientId}`);
+  };
+
   return (
     <div className="animate-fade-in flex flex-col h-[600px] bg-white dark:bg-gray-800 rounded-xl shadow-md border dark:border-gray-700 overflow-hidden">
       <div className="bg-blue-600 p-4 text-white flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 z-10">
@@ -250,6 +271,7 @@ const ChatTab = ({ userData }) => {
             const senderName = msg.sender || "Unknown";
             const senderRole = msg.role || "User";
             const isMe = senderName === userName;
+            const isOnline = onlineUsers.has(msg.sender_user_id);
 
             return (
               <div
@@ -263,25 +285,45 @@ const ChatTab = ({ userData }) => {
                       : "bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-bl-none"
                   }`}
                 >
-                  <div className="flex justify-between items-baseline mb-1 gap-4">
-                    <span
-                      className={`text-xs font-bold ${
-                        isMe ? "text-blue-200" : "text-gray-500"
-                      }`}
-                    >
-                      {isMe ? "You" : senderName} ({senderRole})
-                    </span>
+                  <div className="flex justify-between items-center mb-1.5 gap-4">
+                    <div className="flex items-center gap-2">
+                      {!isMe && (
+                        <span
+                          className={`w-2 h-2 rounded-full ${
+                            isOnline ? "bg-emerald-500" : "bg-gray-400"
+                          }`}
+                          title={isOnline ? "Online" : "Offline"}
+                        />
+                      )}
+                      <span
+                        className={`text-xs font-bold ${
+                          isMe ? "text-blue-200" : "text-gray-500"
+                        }`}
+                      >
+                        {isMe ? "You" : senderName} ({senderRole})
+                      </span>
+                    </div>
 
-                    <span
-                      className={`text-[10px] ${
-                        isMe ? "text-blue-200" : "text-gray-400"
-                      }`}
-                    >
-                      {msg.time || "--:--"}
-                    </span>
+                    <div className="flex items-center gap-3">
+                      {!isMe && isOnline && msg.sender_user_id && (
+                        <button
+                          onClick={() => handleToggleCall(msg.sender_user_id)}
+                          className="flex items-center gap-1 text-[10px] font-bold bg-blue-50 dark:bg-gray-700 text-blue-600 dark:text-blue-400 px-2 py-1 rounded-md hover:bg-blue-100 dark:hover:bg-gray-600 transition-colors"
+                        >
+                          <Phone size={10} /> Call
+                        </button>
+                      )}
+                      <span
+                        className={`text-[10px] ${
+                          isMe ? "text-blue-200" : "text-gray-400"
+                        }`}
+                      >
+                        {msg.time || "--:--"}
+                      </span>
+                    </div>
                   </div>
 
-                  <p className="break-words text-sm md:text-base leading-relaxed">
+                  <p className="break-words text-sm md:text-base leading-relaxed mt-1">
                     {msg.message}
                   </p>
                 </div>

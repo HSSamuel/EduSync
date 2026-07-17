@@ -12,7 +12,9 @@ import PremiumEmptyState from "./PremiumEmptyState";
 import { apiFetch } from "../utils/api";
 import { useAppContext } from "../context/AppContext";
 
+// Fix: Bind a strict unique ID so deleting a question doesn't shift state mapping
 const emptyQuestion = () => ({
+  id: crypto.randomUUID(),
   question_text: "",
   option_a: "",
   option_b: "",
@@ -26,17 +28,16 @@ const CBTTab = ({ isAdmin, isTeacher }) => {
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [subjects, setSubjects] = useState([]);
-
   const [formData, setFormData] = useState({
     title: "",
     subject_id: "",
     duration_minutes: "",
     instructions: "",
   });
-
   const [questions, setQuestions] = useState([emptyQuestion()]);
 
   const canManage = isAdmin || isTeacher;
+  const { notifySuccess, notifyError, notifyInfo } = useAppContext();
 
   const fetchSubjects = async () => {
     try {
@@ -44,11 +45,8 @@ const CBTTab = ({ isAdmin, isTeacher }) => {
       if (res.ok) {
         const data = await res.json();
         setSubjects(Array.isArray(data) ? data : []);
-      } else {
-        setSubjects([]);
-      }
+      } else setSubjects([]);
     } catch (err) {
-      console.error("Failed to fetch subjects:", err);
       setSubjects([]);
     }
   };
@@ -60,13 +58,8 @@ const CBTTab = ({ isAdmin, isTeacher }) => {
       if (res.ok) {
         const data = await res.json();
         setTests(Array.isArray(data) ? data : []);
-      } else {
-        const err = await res.json().catch(() => ({}));
-        console.error("Failed to fetch CBT tests:", err);
-        setTests([]);
-      }
+      } else setTests([]);
     } catch (err) {
-      console.error("CBT fetch error:", err);
       setTests([]);
     } finally {
       setLoading(false);
@@ -84,9 +77,7 @@ const CBTTab = ({ isAdmin, isTeacher }) => {
     );
   };
 
-  const addQuestion = () => {
-    setQuestions((prev) => [...prev, emptyQuestion()]);
-  };
+  const addQuestion = () => setQuestions((prev) => [...prev, emptyQuestion()]);
 
   const removeQuestion = (index) => {
     setQuestions((prev) => {
@@ -97,7 +88,6 @@ const CBTTab = ({ isAdmin, isTeacher }) => {
 
   const validateQuestions = () => {
     if (questions.length === 0) return "Add at least one question.";
-
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
       if (
@@ -111,22 +101,22 @@ const CBTTab = ({ isAdmin, isTeacher }) => {
         return `Complete all fields for Question ${i + 1}.`;
       }
     }
-
     return null;
   };
 
   const handleCreate = async (e) => {
     e.preventDefault();
-
     if (
       !formData.title.trim() ||
       !formData.subject_id ||
       !formData.duration_minutes
     ) {
-      notifyInfo("Please complete all required test fields.", "Missing details");
+      notifyInfo(
+        "Please complete all required test fields.",
+        "Missing details",
+      );
       return;
     }
-
     const questionError = validateQuestions();
     if (questionError) {
       notifyInfo(questionError, "Question validation");
@@ -154,7 +144,6 @@ const CBTTab = ({ isAdmin, isTeacher }) => {
         method: "POST",
         body: JSON.stringify(payload),
       });
-
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
@@ -172,7 +161,6 @@ const CBTTab = ({ isAdmin, isTeacher }) => {
       setQuestions([emptyQuestion()]);
       await fetchTests();
     } catch (err) {
-      console.error("CBT create error:", err);
       notifyError("Something went wrong while creating the test.");
     } finally {
       setCreating(false);
@@ -209,7 +197,6 @@ const CBTTab = ({ isAdmin, isTeacher }) => {
               disabled={creating}
               required
             />
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <select
                 value={formData.subject_id}
@@ -227,24 +214,19 @@ const CBTTab = ({ isAdmin, isTeacher }) => {
                   </option>
                 ))}
               </select>
-
               <input
                 type="number"
                 min="1"
                 placeholder="Duration (minutes)"
                 value={formData.duration_minutes}
                 onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    duration_minutes: e.target.value,
-                  })
+                  setFormData({ ...formData, duration_minutes: e.target.value })
                 }
                 className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-sm outline-none focus:ring-2 focus:ring-violet-500"
                 disabled={creating}
                 required
               />
             </div>
-
             <textarea
               rows="4"
               placeholder="Instructions"
@@ -261,7 +243,6 @@ const CBTTab = ({ isAdmin, isTeacher }) => {
                 <h4 className="text-lg font-bold text-gray-900 dark:text-white">
                   Questions
                 </h4>
-
                 <button
                   type="button"
                   onClick={addQuestion}
@@ -274,14 +255,13 @@ const CBTTab = ({ isAdmin, isTeacher }) => {
 
               {questions.map((question, index) => (
                 <div
-                  key={index}
+                  key={question.id}
                   className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-5 space-y-4"
                 >
                   <div className="flex items-center justify-between gap-4">
                     <h5 className="font-bold text-gray-900 dark:text-white">
                       Question {index + 1}
                     </h5>
-
                     <button
                       type="button"
                       onClick={() => removeQuestion(index)}
@@ -292,7 +272,6 @@ const CBTTab = ({ isAdmin, isTeacher }) => {
                       Remove
                     </button>
                   </div>
-
                   <textarea
                     rows="3"
                     placeholder="Enter question text"
@@ -304,7 +283,6 @@ const CBTTab = ({ isAdmin, isTeacher }) => {
                     disabled={creating}
                     required
                   />
-
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <input
                       type="text"
@@ -317,7 +295,6 @@ const CBTTab = ({ isAdmin, isTeacher }) => {
                       disabled={creating}
                       required
                     />
-
                     <input
                       type="text"
                       placeholder="Option B"
@@ -329,7 +306,6 @@ const CBTTab = ({ isAdmin, isTeacher }) => {
                       disabled={creating}
                       required
                     />
-
                     <input
                       type="text"
                       placeholder="Option C"
@@ -341,7 +317,6 @@ const CBTTab = ({ isAdmin, isTeacher }) => {
                       disabled={creating}
                       required
                     />
-
                     <input
                       type="text"
                       placeholder="Option D"
@@ -354,7 +329,6 @@ const CBTTab = ({ isAdmin, isTeacher }) => {
                       required
                     />
                   </div>
-
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
                       Correct Option
@@ -436,24 +410,20 @@ const CBTTab = ({ isAdmin, isTeacher }) => {
                 <h4 className="font-bold text-lg text-gray-900 dark:text-white mb-3">
                   {test.title}
                 </h4>
-
                 <div className="flex flex-col md:flex-row gap-3 md:gap-6 text-sm text-gray-600 dark:text-gray-400 mb-3">
                   <span className="inline-flex items-center gap-2">
                     <BookOpen size={15} />
                     {test.subject_name || "Subject"}
                   </span>
-
                   <span className="inline-flex items-center gap-2">
                     <Clock3 size={15} />
                     {test.duration_minutes || 0} minutes
                   </span>
-
                   <span className="inline-flex items-center gap-2">
                     <ListChecks size={15} />
                     {test.question_count ?? 0} questions
                   </span>
                 </div>
-
                 {test.instructions && (
                   <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
                     {test.instructions}

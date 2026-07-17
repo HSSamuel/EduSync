@@ -29,15 +29,19 @@ const EMPTY_FORM = {
   avatar_url: "",
 };
 
-// FIX: Safely parse dates to prevent Timezone shift bugs
+// Fix: Safely parse dates using local timezone extraction to prevent the -1 day shift
 const formatDateInput = (value) => {
   if (!value) return "";
-  if (typeof value === "string") {
-    if (value.match(/^\d{4}-\d{2}-\d{2}$/)) return value;
-    if (value.match(/^\d{4}-\d{2}-\d{2}T/)) return value.split("T")[0];
+
+  // If it's already exactly YYYY-MM-DD, return it
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
   }
+
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
+
+  // Extract using the local timezone so 23:00:00 UTC correctly rolls forward to the next day
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
@@ -46,23 +50,17 @@ const formatDateInput = (value) => {
 
 const formatDateDisplay = (value) => {
   if (!value) return null;
+
   let date;
-  if (typeof value === "string") {
-    // Force local timezone parsing by splitting the string
-    if (value.match(/^\d{4}-\d{2}-\d{2}$/)) {
-      const [y, m, d] = value.split("-");
-      date = new Date(y, m - 1, d);
-    } else if (value.match(/^\d{4}-\d{2}-\d{2}T/)) {
-      const [y, m, d] = value.split("T")[0].split("-");
-      date = new Date(y, m - 1, d);
-    } else {
-      date = new Date(value);
-    }
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [y, m, d] = value.split("-");
+    date = new Date(y, m - 1, d);
   } else {
     date = new Date(value);
   }
 
   if (Number.isNaN(date.getTime())) return value;
+
   return date.toLocaleDateString(undefined, {
     day: "numeric",
     month: "long",
@@ -117,19 +115,14 @@ export default function ProfileModal({
 
   useEffect(() => {
     if (!isOpen) return;
-
     let isMounted = true;
-
     const loadProfile = async () => {
       try {
         setLoadingProfile(true);
         setStatusMessage("");
-
         const detailed = await fetchDetailedProfile();
         if (!isMounted || !detailed) return;
-
         setUserData((prev) => ({ ...prev, ...detailed }));
-
         setFormData({
           full_name: detailed.full_name || "",
           email: detailed.email || "",
@@ -148,9 +141,7 @@ export default function ProfileModal({
         if (isMounted) setLoadingProfile(false);
       }
     };
-
     loadProfile();
-
     return () => {
       isMounted = false;
     };
@@ -168,26 +159,19 @@ export default function ProfileModal({
 
   useEffect(() => {
     if (!isOpen) return;
-
     document.body.style.overflow = "hidden";
-
     const handleEscape = (e) => {
       if (e.key === "Escape") {
         if (mode === "edit") {
           setMode("view");
           setStatusMessage("");
-          setFormData((prev) => ({
-            ...prev,
-            ...compactProfile,
-          }));
+          setFormData((prev) => ({ ...prev, ...compactProfile }));
         } else {
           onClose?.();
         }
       }
     };
-
     document.addEventListener("keydown", handleEscape);
-
     return () => {
       document.body.style.overflow = "";
       document.removeEventListener("keydown", handleEscape);
@@ -234,7 +218,6 @@ export default function ProfileModal({
     try {
       setUploadingAvatar(true);
       setStatusMessage("");
-
       const payload = await apiFetchOrThrow(
         "/users/avatar",
         {
@@ -243,7 +226,6 @@ export default function ProfileModal({
         },
         "Avatar upload failed.",
       );
-
       const updatedUser = extractResponseData(payload, {});
 
       setUserData((prev) => ({ ...prev, ...updatedUser }));
@@ -251,7 +233,6 @@ export default function ProfileModal({
         ...prev,
         avatar_url: updatedUser.avatar_url || prev.avatar_url,
       }));
-
       setStatusMessage("✅ Avatar updated.");
     } catch (err) {
       setStatusMessage(`❌ ${err.message || "Unable to upload avatar."}`);
@@ -263,11 +244,9 @@ export default function ProfileModal({
 
   const handleSave = async (e) => {
     e.preventDefault();
-
     try {
       setSaving(true);
       setStatusMessage("");
-
       const payload = {
         full_name: formData.full_name,
         phone_number: formData.phone_number,
@@ -276,9 +255,7 @@ export default function ProfileModal({
         address: formData.address,
         bio: formData.bio,
       };
-
       const updated = await updateProfile(payload);
-
       setFormData((prev) => ({
         ...prev,
         full_name: updated?.full_name || prev.full_name,
@@ -288,7 +265,6 @@ export default function ProfileModal({
         address: updated?.address || "",
         bio: updated?.bio || "",
       }));
-
       setStatusMessage("✅ Profile updated.");
       setMode("view");
     } catch (err) {
@@ -319,7 +295,7 @@ export default function ProfileModal({
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-end justify-center bg-slate-950/50 p-0 backdrop-blur-[2px] sm:items-center sm:p-4"
+      className="fixed inset-0 z-[300] flex items-end justify-center bg-slate-950/50 p-0 backdrop-blur-[2px] sm:items-center sm:p-4"
       onMouseDown={handleBackdropClick}
     >
       <div
@@ -333,12 +309,10 @@ export default function ProfileModal({
               {title}
             </h2>
           </div>
-
           <button
             type="button"
             onClick={onClose}
             className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-gray-500 transition hover:bg-gray-100 dark:hover:bg-gray-800"
-            aria-label="Close modal"
           >
             <X size={18} />
           </button>
@@ -364,7 +338,7 @@ export default function ProfileModal({
                   <div className="relative mx-auto lg:mx-0">
                     {avatarUrl ? (
                       <img
-                        src={avatarUrl}
+                        src={`${avatarUrl}?t=${Date.now()}`}
                         alt={`${formData.full_name || "User"} avatar`}
                         className="h-16 w-16 rounded-2xl object-cover ring-2 ring-white shadow-md dark:ring-gray-900 sm:h-20 sm:w-20"
                       />
@@ -393,7 +367,6 @@ export default function ProfileModal({
                     <p className="truncate text-xs text-gray-500 dark:text-gray-400 sm:text-sm">
                       {formData.email || "No email"}
                     </p>
-
                     <div className="mt-2 flex flex-wrap gap-2">
                       {formData.role ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
@@ -401,7 +374,6 @@ export default function ProfileModal({
                           {formData.role}
                         </span>
                       ) : null}
-
                       {formData.school_name ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-[10px] font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300">
                           <Building2 size={11} />
@@ -411,7 +383,6 @@ export default function ProfileModal({
                         </span>
                       ) : null}
                     </div>
-
                     {uploadingAvatar && (
                       <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
                         Uploading avatar...
@@ -445,7 +416,6 @@ export default function ProfileModal({
                             Profile summary.
                           </p>
                         </div>
-
                         <button
                           type="button"
                           onClick={() => setMode("edit")}
@@ -464,14 +434,13 @@ export default function ProfileModal({
                             label="School Invite Code"
                             fullWidth
                             value={
-                              <div className="flex items-center justify-between bg-blue-50/50 dark:bg-blue-900/10 px-3 py-2 rounded-xl border border-blue-100 dark:border-blue-900/30 mt-1">
-                                <span className="font-mono font-bold text-gray-900 dark:text-white tracking-wider text-sm">
+                              <div className="mt-1 flex items-center justify-between rounded-xl border border-blue-100 bg-blue-50/50 px-3 py-2 dark:border-blue-900/30 dark:bg-blue-900/10">
+                                <span className="font-mono text-sm font-bold tracking-wider text-gray-900 dark:text-white">
                                   {userData.invite_code}
                                 </span>
                                 <button
                                   onClick={copyInviteCode}
-                                  className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-blue-600 hover:text-blue-700 dark:text-blue-400 transition-colors"
-                                  title="Copy Code"
+                                  className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-blue-600 transition-colors hover:text-blue-700 dark:text-blue-400"
                                 >
                                   {copiedCode ? (
                                     <>
@@ -491,7 +460,6 @@ export default function ProfileModal({
                             }
                           />
                         )}
-
                         <InfoCard
                           icon={<User size={14} />}
                           label="Full Name"
@@ -530,7 +498,6 @@ export default function ProfileModal({
                         />
                       </div>
                     </div>
-
                     <div className="border-t border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-950 sm:px-5">
                       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                         <button
@@ -560,11 +527,7 @@ export default function ProfileModal({
                         <h3 className="text-base font-semibold text-gray-900 dark:text-white sm:text-lg">
                           Edit Details
                         </h3>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 sm:text-sm">
-                          Short, responsive form for desktop and mobile.
-                        </p>
                       </div>
-
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <Field
                           ref={firstInputRef}
@@ -574,14 +537,12 @@ export default function ProfileModal({
                           onChange={handleChange}
                           required
                         />
-
                         <Field
                           label="Phone"
                           name="phone_number"
                           value={formData.phone_number}
                           onChange={handleChange}
                         />
-
                         <div>
                           <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300 sm:text-sm">
                             Gender
@@ -598,7 +559,6 @@ export default function ProfileModal({
                             <option value="Other">Other</option>
                           </select>
                         </div>
-
                         <Field
                           label="Date of Birth"
                           name="date_of_birth"
@@ -606,7 +566,6 @@ export default function ProfileModal({
                           value={formData.date_of_birth}
                           onChange={handleChange}
                         />
-
                         <div className="sm:col-span-2">
                           <Field
                             label="Address"
@@ -615,7 +574,6 @@ export default function ProfileModal({
                             onChange={handleChange}
                           />
                         </div>
-
                         <div className="sm:col-span-2">
                           <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300 sm:text-sm">
                             Bio
@@ -625,13 +583,11 @@ export default function ProfileModal({
                             value={formData.bio}
                             onChange={handleChange}
                             rows={4}
-                            placeholder="Tell us a bit about yourself"
                             className="w-full resize-none rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:ring-2 focus:ring-blue-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
                           />
                         </div>
                       </div>
                     </div>
-
                     <div className="border-t border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-950 sm:px-5">
                       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                         <button
@@ -641,11 +597,10 @@ export default function ProfileModal({
                         >
                           Cancel
                         </button>
-
                         <button
                           type="submit"
                           disabled={saving}
-                          className="rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
+                          className="rounded-xl bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60 sm:text-sm"
                         >
                           {saving ? "Saving..." : "Save Changes"}
                         </button>

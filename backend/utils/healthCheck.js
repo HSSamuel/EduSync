@@ -1,39 +1,49 @@
-const pool = require('../db');
-const { connection: redisConnection } = require('./emailQueue');
-const { verifyEmailTransport } = require('./sendEmail');
+const pool = require("../db");
+const { connection: redisConnection } = require("./emailQueue");
+const { verifyEmailTransport } = require("./sendEmail");
 
 async function checkDatabase() {
   try {
-    await pool.query('SELECT 1');
-    return { status: 'up' };
+    await pool.query("SELECT 1");
+    return { status: "up" };
   } catch (error) {
-    return { status: 'down', error: error.message };
+    return { status: "down", error: error.message };
   }
 }
 
 async function checkRedis() {
   if (!redisConnection) {
-    return { status: 'disabled' };
+    return { status: "disabled" };
   }
 
   try {
-    const result = await redisConnection.ping();
-    return { status: result === 'PONG' ? 'up' : 'degraded' };
+    // Fix: Force a 2-second timeout so the health check doesn't hang forever
+    const result = await Promise.race([
+      redisConnection.ping(),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Redis ping timed out")), 2000),
+      ),
+    ]);
+    return { status: result === "PONG" ? "up" : "degraded" };
   } catch (error) {
-    return { status: 'down', error: error.message };
+    return { status: "down", error: error.message };
   }
 }
 
 async function checkEmail() {
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS || (!process.env.EMAIL_HOST && !process.env.EMAIL_SERVICE)) {
-    return { status: 'disabled' };
+  if (
+    !process.env.EMAIL_USER ||
+    !process.env.EMAIL_PASS ||
+    (!process.env.EMAIL_HOST && !process.env.EMAIL_SERVICE)
+  ) {
+    return { status: "disabled" };
   }
 
   try {
     await verifyEmailTransport();
-    return { status: 'up' };
+    return { status: "up" };
   } catch (error) {
-    return { status: 'down', error: error.message };
+    return { status: "down", error: error.message };
   }
 }
 
@@ -45,11 +55,15 @@ async function getServiceHealthSummary() {
   ]);
 
   const services = { database, redis, email };
-  const criticalFailures = ['database'].some((name) => services[name].status === 'down');
-  const degraded = Object.values(services).some((service) => service.status === 'down');
+  const criticalFailures = ["database"].some(
+    (name) => services[name].status === "down",
+  );
+  const degraded = Object.values(services).some(
+    (service) => service.status === "down",
+  );
 
   return {
-    status: criticalFailures ? 'fail' : degraded ? 'degraded' : 'ok',
+    status: criticalFailures ? "fail" : degraded ? "degraded" : "ok",
     services,
   };
 }

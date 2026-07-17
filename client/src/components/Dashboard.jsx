@@ -208,6 +208,7 @@ const Dashboard = () => {
               <ErrorBoundary key={activeTab}>
                 <DashboardContent
                   activeTab={activeTab}
+                  setActiveTab={setActiveTab}
                   flags={flags}
                   userData={userData}
                   subjects={subjects}

@@ -326,46 +326,47 @@ const StudentsTab = ({ isAdmin }) => {
     }
   };
 
-  const deleteSelectedStudents = async () => {
-    if (selectedStudentIds.length === 0) {
-      notifyInfo("Please select at least one student.", "Selection required");
-      return;
-    }
+ const deleteSelectedStudents = async () => {
+   if (selectedStudentIds.length === 0) {
+     notifyInfo("Please select at least one student.", "Selection required");
+     return;
+   }
 
-    const confirmed = await confirm({
-      title: "Delete selected students",
-      message: `Delete ${selectedStudentIds.length} selected student(s)? This action cannot be undone.`,
-      confirmText: "Delete students",
-      cancelText: "Keep students",
-      tone: "danger",
-    });
+   const confirmed = await confirm({
+     title: "Delete selected students",
+     // Fix: Clarify the boundaries of the action to prevent accidental UX drops
+     message: `Delete ${selectedStudentIds.length} selected student(s)? Note: This only deletes the currently selected students on this page.`,
+     confirmText: "Delete students",
+     cancelText: "Keep students",
+     tone: "danger",
+   });
 
-    if (!confirmed) return;
+   if (!confirmed) return;
 
-    setIsDeleting(true);
+   setIsDeleting(true);
 
-    try {
-      const response = await apiFetch("/students/bulk-delete", {
-        method: "DELETE",
-        body: JSON.stringify({ student_ids: selectedStudentIds }),
-      });
+   try {
+     const response = await apiFetch("/students/bulk-delete", {
+       method: "DELETE",
+       body: JSON.stringify({ student_ids: selectedStudentIds }),
+     });
 
-      const data = await response.json().catch(() => ({}));
+     const data = await response.json().catch(() => ({}));
 
-      if (response.ok) {
-        setSelectedStudentIds([]);
-        notifySuccess(data.message || "Selected students deleted successfully.");
-        await refreshStudents();
-      } else {
-        notifyError(data.error || "Failed to delete selected students.");
-      }
-    } catch (err) {
-      console.error(err);
-      notifyError("Something went wrong while deleting selected students.");
-    } finally {
-      setIsDeleting(false);
-    }
-  };
+     if (response.ok) {
+       setSelectedStudentIds([]);
+       notifySuccess(data.message || "Selected students deleted successfully.");
+       await refreshStudents();
+     } else {
+       notifyError(data.error || "Failed to delete selected students.");
+     }
+   } catch (err) {
+     console.error(err);
+     notifyError("Something went wrong while deleting selected students.");
+   } finally {
+     setIsDeleting(false);
+   }
+ };
 
   if (!isAdmin) return null;
 

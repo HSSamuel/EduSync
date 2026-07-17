@@ -21,6 +21,7 @@ export default function DashboardContent({
   subjects,
   setSubjects,
   students,
+  setActiveTab,
 }) {
   const { isAdmin, isTeacher, isParent, isStudent } = flags;
 
@@ -34,8 +35,13 @@ export default function DashboardContent({
         transition={{ duration: 0.3, ease: "easeOut" }}
         className="w-full min-w-0"
       >
-        {activeTab === "overview" && isAdmin && <AnalyticsCards />}
-        {activeTab === "overview" && isStudent && <StudentBento userData={userData} />}
+        {/* Pass setActiveTab to AnalyticsCards */}
+        {activeTab === "overview" && isAdmin && (
+          <AnalyticsCards onNavigate={setActiveTab} />
+        )}
+        {activeTab === "overview" && isStudent && (
+          <StudentBento userData={userData} />
+        )}
 
         {activeTab === "subjects" && !isParent && (
           <SubjectsTab
@@ -46,7 +52,9 @@ export default function DashboardContent({
           />
         )}
 
-        {activeTab === "students" && isAdmin && <StudentsTab isAdmin={isAdmin} />}
+        {activeTab === "students" && isAdmin && (
+          <StudentsTab isAdmin={isAdmin} />
+        )}
 
         {activeTab === "attendance" && (isAdmin || isTeacher) && (
           <AttendanceTab students={students} />
@@ -71,8 +79,12 @@ export default function DashboardContent({
         )}
 
         {activeTab === "vault" && <SchoolVaultTab isAdmin={isAdmin} />}
-        {activeTab === "broadcast" && <BroadcastTab isAdmin={isAdmin} isTeacher={isTeacher} />}
-        {activeTab === "calendar" && <CalendarTab isAdmin={isAdmin} isTeacher={isTeacher} />}
+        {activeTab === "broadcast" && (
+          <BroadcastTab isAdmin={isAdmin} isTeacher={isTeacher} />
+        )}
+        {activeTab === "calendar" && (
+          <CalendarTab isAdmin={isAdmin} isTeacher={isTeacher} />
+        )}
 
         {activeTab === "finance" && !isTeacher && (
           <FinanceTab

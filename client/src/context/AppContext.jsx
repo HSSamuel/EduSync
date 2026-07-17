@@ -8,7 +8,13 @@ import React, {
   useState,
 } from "react";
 import { useNavigate } from "react-router-dom";
-import { CheckCircle2, AlertTriangle, Info, X, TriangleAlert } from "lucide-react";
+import {
+  CheckCircle2,
+  AlertTriangle,
+  Info,
+  X,
+  TriangleAlert,
+} from "lucide-react";
 import {
   apiFetchOrThrow,
   apiJsonFetch,
@@ -27,8 +33,7 @@ const TOAST_STYLES = {
     "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/70 dark:text-emerald-200",
   error:
     "border-red-200 bg-red-50 text-red-800 dark:border-red-900/40 dark:bg-red-950/70 dark:text-red-200",
-  info:
-    "border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-900/40 dark:bg-sky-950/70 dark:text-sky-200",
+  info: "border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-900/40 dark:bg-sky-950/70 dark:text-sky-200",
   warning:
     "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/70 dark:text-amber-200",
 };
@@ -41,10 +46,11 @@ const TOAST_ICONS = {
 };
 
 export const useAppContext = () => {
-  const auth = useContext(AuthContext);
-  const school = useContext(SchoolContext);
-  const ui = useContext(UiContext);
-  return { ...auth, ...school, ...ui };
+  return {
+    ...useContext(AuthContext),
+    ...useContext(SchoolContext),
+    ...useContext(UiContext),
+  };
 };
 
 const ToastViewport = ({ toasts, dismissToast }) => (
@@ -83,17 +89,17 @@ const ToastViewport = ({ toasts, dismissToast }) => (
 
 const ConfirmDialog = ({ state, onResolve }) => {
   if (!state.open) return null;
-
   const toneStyles =
     state.tone === "danger"
       ? "bg-red-600 hover:bg-red-700 focus:ring-red-500"
       : "bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500";
-
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-gray-950/60 p-4 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-3xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-gray-700 dark:bg-gray-900">
         <div className="flex items-start gap-3">
-          <div className={`rounded-2xl p-3 ${state.tone === "danger" ? "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-300" : "bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300"}`}>
+          <div
+            className={`rounded-2xl p-3 ${state.tone === "danger" ? "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-300" : "bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300"}`}
+          >
             <AlertTriangle size={20} />
           </div>
           <div className="flex-1">
@@ -105,7 +111,6 @@ const ConfirmDialog = ({ state, onResolve }) => {
             </p>
           </div>
         </div>
-
         <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <button
             type="button"
@@ -144,50 +149,54 @@ export const AppProvider = ({ children }) => {
   const confirmResolverRef = useRef(null);
 
   const dismissToast = useCallback((id) => {
+    setToasts((prev) => prev.filter((toast) => toast.id !== id));
     const timer = toastTimersRef.current.get(id);
     if (timer) {
       window.clearTimeout(timer);
       toastTimersRef.current.delete(id);
     }
-    setToasts((prev) => prev.filter((toast) => toast.id !== id));
   }, []);
 
-  const notify = useCallback(({ type = "info", title = "", message, duration = 4500 }) => {
-    if (!message) return;
+  const notify = useCallback(
+    ({ type = "info", title = "", message, duration = 4500 }) => {
+      if (!message) return;
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      setToasts((prev) => [...prev, { id, type, title, message }]);
+      const timer = window.setTimeout(() => dismissToast(id), duration);
+      toastTimersRef.current.set(id, timer);
+    },
+    [dismissToast],
+  );
 
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    setToasts((prev) => [...prev, { id, type, title, message }]);
+  const notifySuccess = useCallback(
+    (message, title = "Success") => notify({ type: "success", title, message }),
+    [notify],
+  );
+  const notifyError = useCallback(
+    (message, title = "Action failed") =>
+      notify({ type: "error", title, message, duration: 5500 }),
+    [notify],
+  );
+  const notifyInfo = useCallback(
+    (message, title = "Notice") => notify({ type: "info", title, message }),
+    [notify],
+  );
 
-    const timer = window.setTimeout(() => {
-      dismissToast(id);
-    }, duration);
-
-    toastTimersRef.current.set(id, timer);
-  }, [dismissToast]);
-
-  const notifySuccess = useCallback((message, title = "Success") => {
-    notify({ type: "success", title, message });
-  }, [notify]);
-
-  const notifyError = useCallback((message, title = "Action failed") => {
-    notify({ type: "error", title, message, duration: 5500 });
-  }, [notify]);
-
-  const notifyInfo = useCallback((message, title = "Notice") => {
-    notify({ type: "info", title, message });
-  }, [notify]);
-
-  const confirm = useCallback((options) => new Promise((resolve) => {
-    confirmResolverRef.current = resolve;
-    setConfirmState({
-      open: true,
-      title: options?.title || "Please confirm",
-      message: options?.message || "Are you sure you want to continue?",
-      confirmText: options?.confirmText || "Confirm",
-      cancelText: options?.cancelText || "Cancel",
-      tone: options?.tone || "default",
-    });
-  }), []);
+  const confirm = useCallback(
+    (options) =>
+      new Promise((resolve) => {
+        confirmResolverRef.current = resolve;
+        setConfirmState({
+          open: true,
+          title: options?.title || "Please confirm",
+          message: options?.message || "Are you sure you want to continue?",
+          confirmText: options?.confirmText || "Confirm",
+          cancelText: options?.cancelText || "Cancel",
+          tone: options?.tone || "default",
+        });
+      }),
+    [],
+  );
 
   const handleConfirmResolve = useCallback((result) => {
     if (confirmResolverRef.current) {
@@ -197,12 +206,14 @@ export const AppProvider = ({ children }) => {
     setConfirmState({ open: false });
   }, []);
 
-  useEffect(() => () => {
-    for (const timer of toastTimersRef.current.values()) {
-      window.clearTimeout(timer);
-    }
-    toastTimersRef.current.clear();
-  }, []);
+  useEffect(
+    () => () => {
+      for (const timer of toastTimersRef.current.values())
+        window.clearTimeout(timer);
+      toastTimersRef.current.clear();
+    },
+    [],
+  );
 
   const resetAppState = useCallback(() => {
     setUserData(null);
@@ -216,9 +227,8 @@ export const AppProvider = ({ children }) => {
 
   const ensureSession = useCallback(async () => {
     let hasToken = Boolean(getAccessToken());
-    if (!hasToken) {
-      hasToken = await refreshAccessToken();
-    }
+    // Pass true so the initial boot check fails silently if the user isn't logged in
+    if (!hasToken) hasToken = await refreshAccessToken(true);
     return hasToken;
   }, []);
 
@@ -228,7 +238,6 @@ export const AppProvider = ({ children }) => {
       { method: "GET" },
       "Unable to load your dashboard profile.",
     );
-
     const profile = extractResponseData(profilePayload, null);
     setUserData(profile);
     return profile;
@@ -240,76 +249,87 @@ export const AppProvider = ({ children }) => {
       { method: "GET" },
       "Unable to load your profile.",
     );
-
     return extractResponseData(profilePayload, null);
   }, []);
 
   const updateProfile = useCallback(async (payload) => {
     const result = await apiFetchOrThrow(
       "/users/me",
-      {
-        method: "PATCH",
-        body: JSON.stringify(payload),
-      },
+      { method: "PATCH", body: JSON.stringify(payload) },
       "Unable to update profile.",
     );
-
     const updatedProfile = extractResponseData(result, null);
     setUserData((prev) => ({ ...prev, ...(updatedProfile || {}) }));
     return updatedProfile;
   }, []);
 
-  const loadSubjects = useCallback(async ({ force = false } = {}) => {
-    if (!userData || userData.role === "Parent" || userData.role === "Student") {
-      if (!subjectsLoaded || subjects.length !== 0) {
-        setSubjects([]);
+  const loadSubjects = useCallback(
+    async ({ force = false } = {}) => {
+      if (
+        !userData ||
+        userData.role === "Parent" ||
+        userData.role === "Student"
+      ) {
+        if (!subjectsLoaded || subjects.length !== 0) {
+          setSubjects([]);
+          setSubjectsLoaded(true);
+        }
+        return [];
+      }
+      if ((subjectsLoadingRef.current || subjectsLoaded) && !force)
+        return subjects;
+
+      subjectsLoadingRef.current = true;
+      try {
+        const result = await apiJsonFetch("/subjects", { method: "GET" });
+        const nextSubjects = result.ok
+          ? extractResponseData(result.data, []) || []
+          : [];
+        const normalizedSubjects = Array.isArray(nextSubjects)
+          ? nextSubjects
+          : [];
+        setSubjects(normalizedSubjects);
         setSubjectsLoaded(true);
+        return normalizedSubjects;
+      } finally {
+        subjectsLoadingRef.current = false;
       }
-      return [];
-    }
+    },
+    [userData, subjectsLoaded, subjects],
+  );
 
-    if ((subjectsLoadingRef.current || subjectsLoaded) && !force) {
-      return subjects;
-    }
+  const loadStudents = useCallback(
+    async ({ force = false } = {}) => {
+      if (!userData || userData.role === "Student") {
+        if (!studentsLoaded || students.length !== 0) {
+          setStudents([]);
+          setStudentsLoaded(true);
+        }
+        return [];
+      }
+      if ((studentsLoadingRef.current || studentsLoaded) && !force)
+        return students;
 
-    subjectsLoadingRef.current = true;
-    try {
-      const result = await apiJsonFetch("/subjects", { method: "GET" });
-      const nextSubjects = result.ok ? extractResponseData(result.data, []) || [] : [];
-      const normalizedSubjects = Array.isArray(nextSubjects) ? nextSubjects : [];
-      setSubjects(normalizedSubjects);
-      setSubjectsLoaded(true);
-      return normalizedSubjects;
-    } finally {
-      subjectsLoadingRef.current = false;
-    }
-  }, [userData, subjectsLoaded, subjects]);
-
-  const loadStudents = useCallback(async ({ force = false } = {}) => {
-    if (!userData || userData.role === "Student") {
-      if (!studentsLoaded || students.length !== 0) {
-        setStudents([]);
+      studentsLoadingRef.current = true;
+      try {
+        const result = await apiJsonFetch("/students?limit=1000", {
+          method: "GET",
+        });
+        const nextStudents = result.ok
+          ? extractResponseData(result.data, []) || []
+          : [];
+        const normalizedStudents = Array.isArray(nextStudents)
+          ? nextStudents
+          : [];
+        setStudents(normalizedStudents);
         setStudentsLoaded(true);
+        return normalizedStudents;
+      } finally {
+        studentsLoadingRef.current = false;
       }
-      return [];
-    }
-
-    if ((studentsLoadingRef.current || studentsLoaded) && !force) {
-      return students;
-    }
-
-    studentsLoadingRef.current = true;
-    try {
-      const result = await apiJsonFetch("/students?limit=1000", { method: "GET" });
-      const nextStudents = result.ok ? extractResponseData(result.data, []) || [] : [];
-      const normalizedStudents = Array.isArray(nextStudents) ? nextStudents : [];
-      setStudents(normalizedStudents);
-      setStudentsLoaded(true);
-      return normalizedStudents;
-    } finally {
-      studentsLoadingRef.current = false;
-    }
-  }, [userData, studentsLoaded, students]);
+    },
+    [userData, studentsLoaded, students],
+  );
 
   const fetchGlobalData = useCallback(async () => {
     setLoading(true);
@@ -322,7 +342,6 @@ export const AppProvider = ({ children }) => {
       }
       await fetchProfile();
     } catch (err) {
-      console.error("Context Fetch Error:", err);
       clearAccessToken();
       resetAppState();
       navigate("/login", { replace: true });
@@ -339,7 +358,6 @@ export const AppProvider = ({ children }) => {
     try {
       await apiJsonFetch("/auth/logout", { method: "POST" });
     } catch (err) {
-      console.error("Logout error:", err);
     } finally {
       clearAccessToken();
       resetAppState();
@@ -348,34 +366,54 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const authValue = useMemo(() => ({
-    userData,
-    setUserData,
-    loading,
-    logout,
-    refreshData: fetchGlobalData,
-    fetchDetailedProfile,
-    updateProfile,
-  }), [userData, loading, fetchGlobalData, fetchDetailedProfile, updateProfile]);
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      notifyError("Session expired. Please log in again.");
+      clearAccessToken();
+      resetAppState();
+      navigate("/login", { replace: true });
+    };
 
-  const schoolValue = useMemo(() => ({
-    subjects,
-    setSubjects,
-    students,
-    setStudents,
-    loadSubjects,
-    loadStudents,
-    subjectsLoaded,
-    studentsLoaded,
-  }), [subjects, students, loadSubjects, loadStudents, subjectsLoaded, studentsLoaded]);
+    window.addEventListener("auth_expired", handleAuthExpired);
+    return () => window.removeEventListener("auth_expired", handleAuthExpired);
+  }, [navigate, notifyError, resetAppState]);
 
-  const uiValue = useMemo(() => ({
-    notify,
-    notifySuccess,
-    notifyError,
-    notifyInfo,
-    confirm,
-  }), [notify, notifySuccess, notifyError, notifyInfo, confirm]);
+  const authValue = useMemo(
+    () => ({
+      userData,
+      setUserData,
+      loading,
+      logout,
+      refreshData: fetchGlobalData,
+      fetchDetailedProfile,
+      updateProfile,
+    }),
+    [userData, loading, fetchGlobalData, fetchDetailedProfile, updateProfile],
+  );
+  const schoolValue = useMemo(
+    () => ({
+      subjects,
+      setSubjects,
+      students,
+      setStudents,
+      loadSubjects,
+      loadStudents,
+      subjectsLoaded,
+      studentsLoaded,
+    }),
+    [
+      subjects,
+      students,
+      loadSubjects,
+      loadStudents,
+      subjectsLoaded,
+      studentsLoaded,
+    ],
+  );
+  const uiValue = useMemo(
+    () => ({ notify, notifySuccess, notifyError, notifyInfo, confirm }),
+    [notify, notifySuccess, notifyError, notifyInfo, confirm],
+  );
 
   return (
     <AuthContext.Provider value={authValue}>
@@ -383,7 +421,10 @@ export const AppProvider = ({ children }) => {
         <UiContext.Provider value={uiValue}>
           {children}
           <ToastViewport toasts={toasts} dismissToast={dismissToast} />
-          <ConfirmDialog state={confirmState} onResolve={handleConfirmResolve} />
+          <ConfirmDialog
+            state={confirmState}
+            onResolve={handleConfirmResolve}
+          />
         </UiContext.Provider>
       </SchoolContext.Provider>
     </AuthContext.Provider>

@@ -6,6 +6,8 @@ function createChatRateLimiter({ windowMs = 10_000, maxEvents = 8 } = {}) {
     const current = store.get(key);
 
     if (!current || current.resetAt <= now) {
+      if (current) store.delete(key); // Fix: Clear memory
+
       store.set(key, { count: 1, resetAt: now + windowMs });
       return { allowed: true, remaining: maxEvents - 1, retryAfterMs: 0 };
     }
