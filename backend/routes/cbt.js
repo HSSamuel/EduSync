@@ -6,9 +6,14 @@ const { z } = require("zod");
 const validate = require("../middleware/validate");
 const { sendError, sendSuccess } = require("../utils/response");
 
+// 1. UPDATED SCHEMA: Added duration_minutes and instructions
 const createQuizSchema = z.object({
   subject_id: z.coerce.number().positive(),
   title: z.string().min(3, "Title must be at least 3 characters"),
+  duration_minutes: z.coerce
+    .number()
+    .positive("Duration must be a positive number"),
+  instructions: z.string().optional(),
   questions: z
     .array(
       z.object({
@@ -34,13 +39,20 @@ router.post(
         });
       }
 
-      const { subject_id, title, questions } = req.body;
+      const { subject_id, title, duration_minutes, instructions, questions } =
+        req.body;
 
+      // 2. UPDATED INSERT: Added duration_minutes and instructions to the database entry
       const newQuiz = await pool.query(
-        "INSERT INTO quizzes (subject_id, title, questions, created_by, school_id) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+        `INSERT INTO quizzes 
+          (subject_id, title, duration_minutes, instructions, questions, created_by, school_id) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
         [
           subject_id,
           title,
+          duration_minutes,
+          instructions ||
+            "No specific instructions provided for this exam. Standard examination rules apply.",
           JSON.stringify(questions),
           req.user.user_id,
           req.user.school_id,
@@ -60,9 +72,20 @@ router.post(
 
 router.get("/", authorize, async (req, res, next) => {
   try {
+    // 3. UPDATED SELECT: Fetching the new columns and the questions array so the frontend can count them
     const quizzes = await pool.query(
-      `SELECT q.quiz_id, q.title, q.created_at, s.subject_name FROM quizzes q
-       JOIN subjects s ON q.subject_id = s.subject_id WHERE q.school_id = $1 ORDER BY q.created_at DESC`,
+      `SELECT 
+        q.quiz_id, 
+        q.title, 
+        q.duration_minutes, 
+        q.instructions, 
+        q.questions, 
+        q.created_at, 
+        s.subject_name 
+       FROM quizzes q
+       JOIN subjects s ON q.subject_id = s.subject_id 
+       WHERE q.school_id = $1 
+       ORDER BY q.created_at DESC`,
       [req.user.school_id],
     );
     return sendSuccess(res, { data: quizzes.rows });
@@ -127,7 +150,6 @@ router.post("/:id/submit", authorize, async (req, res, next) => {
     }
     const student_id = studentQuery.rows[0].student_id;
 
-    // Fix: Verify if student already took this quiz
     const existingResult = await pool.query(
       "SELECT result_id FROM cbt_results WHERE quiz_id = $1 AND student_id = $2",
       [quiz_id, student_id],
@@ -180,6 +202,40 @@ router.post("/:id/submit", authorize, async (req, res, next) => {
       message: "Quiz auto-graded successfully!",
       data: { score, total: realQuestions.length },
     });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// 4. NEW DELETE ROUTE: Clears results first to prevent Foreign Key blocks
+router.delete("/:id", authorize, async (req, res, next) => {
+  try {
+    if (req.user.role !== "Teacher" && req.user.role !== "Admin") {
+      return sendError(res, {
+        status: 403,
+        message: "Access Denied.",
+        code: "FORBIDDEN",
+      });
+    }
+
+    const { id } = req.params;
+
+    // Clear dependent cbt_results first so PostgreSQL doesn't block the deletion
+    await pool.query("DELETE FROM cbt_results WHERE quiz_id = $1", [id]);
+
+    const deleteOp = await pool.query(
+      "DELETE FROM quizzes WHERE quiz_id = $1 AND school_id = $2 RETURNING *",
+      [id, req.user.school_id],
+    );
+
+    if (deleteOp.rowCount === 0) {
+      return sendError(res, {
+        status: 404,
+        message: "Exam not found or already deleted.",
+      });
+    }
+
+    return sendSuccess(res, { message: "Exam deleted successfully." });
   } catch (err) {
     return next(err);
   }

@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Link } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, animate, useInView } from "framer-motion";
 import {
   ArrowRight,
   ArrowUp,
@@ -22,6 +22,8 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import { useAppContext } from "../context/AppContext";
+import { apiFetch } from "../utils/api";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 28 },
@@ -124,12 +126,68 @@ const navLinks = [
   { label: "Testimonials", href: "#testimonials" },
 ];
 
+// Pro Contribution: Premium Animated Number Counter
+const AnimatedCounter = ({ value }) => {
+  const nodeRef = useRef(null);
+  const isInView = useInView(nodeRef, { once: true, margin: "-50px" });
+
+  useEffect(() => {
+    const node = nodeRef.current;
+    if (!node || !isInView) return;
+
+    const controls = animate(0, value, {
+      duration: 2.5,
+      ease: "easeOut",
+      onUpdate(val) {
+        node.textContent = Math.floor(val).toLocaleString();
+      },
+    });
+
+    return () => controls.stop();
+  }, [value, isInView]);
+
+  return <span ref={nodeRef}>{value.toLocaleString()}</span>;
+};
+
 const Landing = () => {
   const [isDark, setIsDark] = useState(
     document.documentElement.classList.contains("dark"),
   );
   const [showTopBtn, setShowTopBtn] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  
+  // App context and dynamic stats
+  const { userData } = useAppContext();
+  const [realStats, setRealStats] = useState({
+    totalStudents: 0,
+    totalTeachers: 0,
+    totalParents: 0,
+    totalSubjects: 0,
+    totalDocuments: 0,
+  });
+
+  const isAuth = Boolean(userData);
+  const schoolName = userData?.school_name || "your school";
+
+  useEffect(() => {
+    // Fetch Private Stats if Logged in, or Global Platform Stats if Logged out
+    const endpoint = isAuth ? "/dashboard/stats" : "/dashboard/public-stats";
+    
+    apiFetch(endpoint)
+      .then((res) => res.json())
+      .then((payload) => {
+        if (payload.success && payload.data) {
+          setRealStats({
+            totalStudents: payload.data.totalStudents || 0,
+            totalTeachers: payload.data.totalTeachers || 0,
+            totalParents: payload.data.totalParents || 0,
+            totalSubjects: payload.data.totalSubjects || 0,
+            totalDocuments: payload.data.totalDocuments || 0,
+          });
+        }
+      })
+      .catch((err) => console.error("Could not fetch real stats for landing:", err));
+  }, [isAuth]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -239,19 +297,30 @@ const Landing = () => {
               {isDark ? <Sun size={18} /> : <Moon size={18} />}
             </button>
 
-            <Link
-              to="/login"
-              className="rounded-full px-4 py-2.5 text-sm font-bold text-gray-700 transition hover:bg-gray-100 hover:text-blue-600 dark:text-gray-200 dark:hover:bg-gray-800 dark:hover:text-white"
-            >
-              Log In
-            </Link>
+            {isAuth ? (
+              <Link
+                to="/dashboard"
+                className="rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-500/20 transition hover:-translate-y-0.5 hover:from-blue-700 hover:to-indigo-700"
+              >
+                Go to Dashboard
+              </Link>
+            ) : (
+              <>
+                <Link
+                  to="/login"
+                  className="rounded-full px-4 py-2.5 text-sm font-bold text-gray-700 transition hover:bg-gray-100 hover:text-blue-600 dark:text-gray-200 dark:hover:bg-gray-800 dark:hover:text-white"
+                >
+                  Log In
+                </Link>
 
-            <Link
-              to="/register"
-              className="rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-500/20 transition hover:-translate-y-0.5 hover:from-blue-700 hover:to-indigo-700"
-            >
-              Get Started
-            </Link>
+                <Link
+                  to="/register"
+                  className="rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-500/20 transition hover:-translate-y-0.5 hover:from-blue-700 hover:to-indigo-700"
+                >
+                  Get Started
+                </Link>
+              </>
+            )}
           </div>
 
           <div className="flex items-center gap-2 md:hidden">
@@ -294,21 +363,33 @@ const Landing = () => {
                   </a>
                 ))}
 
-                <Link
-                  to="/login"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="rounded-2xl px-4 py-3 text-sm font-bold text-gray-700 transition hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
-                >
-                  Log In
-                </Link>
+                {isAuth ? (
+                  <Link
+                    to="/dashboard"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-3 text-center text-sm font-bold text-white"
+                  >
+                    Go to Dashboard
+                  </Link>
+                ) : (
+                  <>
+                    <Link
+                      to="/login"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="rounded-2xl px-4 py-3 text-sm font-bold text-gray-700 transition hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+                    >
+                      Log In
+                    </Link>
 
-                <Link
-                  to="/register"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-3 text-center text-sm font-bold text-white"
-                >
-                  Get Started
-                </Link>
+                    <Link
+                      to="/register"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-3 text-center text-sm font-bold text-white"
+                    >
+                      Get Started
+                    </Link>
+                  </>
+                )}
               </div>
             </motion.div>
           ) : null}
@@ -340,7 +421,7 @@ const Landing = () => {
                 <br className="hidden md:block" />
                 <span className="bg-gradient-to-r from-blue-600 via-indigo-500 to-purple-600 bg-clip-text text-transparent dark:from-blue-400 dark:via-indigo-400 dark:to-purple-400">
                   {" "}
-                  manage your school.
+                  manage {schoolName}.
                 </span>
               </motion.h1>
 
@@ -357,13 +438,23 @@ const Landing = () => {
                 variants={fadeUp}
                 className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row"
               >
-                <Link
-                  to="/register"
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-4 text-base font-bold text-white shadow-xl shadow-blue-500/20 transition hover:-translate-y-0.5 hover:from-blue-700 hover:to-indigo-700 sm:w-auto"
-                >
-                  Start for free
-                  <ArrowRight size={18} />
-                </Link>
+                {isAuth ? (
+                  <Link
+                    to="/dashboard"
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-4 text-base font-bold text-white shadow-xl shadow-blue-500/20 transition hover:-translate-y-0.5 hover:from-blue-700 hover:to-indigo-700 sm:w-auto"
+                  >
+                    Enter Workspace
+                    <ArrowRight size={18} />
+                  </Link>
+                ) : (
+                  <Link
+                    to="/register"
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-4 text-base font-bold text-white shadow-xl shadow-blue-500/20 transition hover:-translate-y-0.5 hover:from-blue-700 hover:to-indigo-700 sm:w-auto"
+                  >
+                    Start for free
+                    <ArrowRight size={18} />
+                  </Link>
+                )}
 
                 <a
                   href="#features"
@@ -373,12 +464,14 @@ const Landing = () => {
                 </a>
               </motion.div>
 
-              <motion.p
-                variants={fadeUp}
-                className="mt-4 text-sm font-medium text-gray-500 dark:text-gray-400"
-              >
-                No credit card required. Get started in minutes.
-              </motion.p>
+              {!isAuth && (
+                <motion.p
+                  variants={fadeUp}
+                  className="mt-4 text-sm font-medium text-gray-500 dark:text-gray-400"
+                >
+                  No credit card required. Get started in minutes.
+                </motion.p>
+              )}
             </div>
 
             <motion.div variants={fadeUp} className="mx-auto mt-12 max-w-6xl">
@@ -390,7 +483,7 @@ const Landing = () => {
                     <span className="h-3 w-3 rounded-full bg-emerald-400" />
                   </div>
                   <div className="rounded-full bg-gray-100 px-4 py-1.5 text-xs font-semibold text-gray-500 dark:bg-gray-800 dark:text-gray-300">
-                    EduSync Dashboard Preview
+                    {isAuth ? `${schoolName} Live Data` : "Global Platform Activity"}
                   </div>
                 </div>
 
@@ -399,24 +492,24 @@ const Landing = () => {
                     <div className="flex flex-col gap-4 text-center sm:flex-row sm:items-center sm:justify-between sm:text-left">
                       <div>
                         <p className="text-sm font-semibold text-blue-600 dark:text-blue-300">
-                          Admin overview
+                          {isAuth ? "Live overview" : "Admin overview"}
                         </p>
                         <h3 className="mt-1 text-2xl font-black text-gray-950 dark:text-white">
-                          Your school at a glance
+                          {isAuth ? `${schoolName} at a glance` : "Your school at a glance"}
                         </h3>
                       </div>
 
                       <div className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm dark:bg-gray-900 dark:text-gray-200">
                         <Sparkles size={16} className="text-blue-500" />
-                        Live school activity
+                        {isAuth ? "Live school activity" : "Real-time metrics"}
                       </div>
                     </div>
 
                     <div className="mt-5 grid gap-4 sm:grid-cols-3">
                       {[
-                        { label: "Students", value: "1,248" },
-                        { label: "Teachers", value: "84" },
-                        { label: "Attendance", value: "96%" },
+                        { label: "Students", value: realStats?.totalStudents || 0 },
+                        { label: "Teachers", value: realStats?.totalTeachers || 0 },
+                        { label: "Parents", value: realStats?.totalParents || 0 },
                       ].map((item) => (
                         <div
                           key={item.label}
@@ -426,7 +519,7 @@ const Landing = () => {
                             {item.label}
                           </p>
                           <p className="mt-2 text-2xl font-black text-gray-950 dark:text-white">
-                            {item.value}
+                            <AnimatedCounter value={item.value} />
                           </p>
                         </div>
                       ))}
@@ -435,10 +528,10 @@ const Landing = () => {
                     <div className="mt-5 grid gap-4 sm:grid-cols-2">
                       <div className="rounded-2xl border border-gray-200 bg-white p-4 text-center shadow-sm dark:border-gray-800 dark:bg-gray-900">
                         <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">
-                          Active classes
+                          Active subjects
                         </p>
                         <p className="mt-2 text-2xl font-black text-gray-950 dark:text-white">
-                          36
+                          <AnimatedCounter value={realStats?.totalSubjects || 0} />
                         </p>
                         <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
                           Structured by level, subject, and assigned teachers.
@@ -447,14 +540,13 @@ const Landing = () => {
 
                       <div className="rounded-2xl border border-gray-200 bg-white p-4 text-center shadow-sm dark:border-gray-800 dark:bg-gray-900">
                         <p className="text-sm font-semibold text-gray-500 dark:text-gray-400">
-                          Reports ready
+                          Vault documents
                         </p>
                         <p className="mt-2 text-2xl font-black text-gray-950 dark:text-white">
-                          128
+                          <AnimatedCounter value={realStats?.totalDocuments || 0} />
                         </p>
                         <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
-                          Results and summaries generated for faster parent
-                          communication.
+                          Securely stored policies, calendars, and files.
                         </p>
                       </div>
                     </div>
@@ -755,32 +847,46 @@ const Landing = () => {
                 </p>
 
                 <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-                  <Link
-                    to="/register"
-                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-8 py-4 text-base font-black text-blue-900 shadow-xl transition hover:-translate-y-0.5 hover:bg-blue-50"
-                  >
-                    Get Started as an Admin
-                    <ArrowRight size={18} />
-                  </Link>
+                  {isAuth ? (
+                    <Link
+                      to="/dashboard"
+                      className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-8 py-4 text-base font-black text-blue-900 shadow-xl transition hover:-translate-y-0.5 hover:bg-blue-50"
+                    >
+                      Access your workspace
+                      <ArrowRight size={18} />
+                    </Link>
+                  ) : (
+                    <>
+                      <Link
+                        to="/register"
+                        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-8 py-4 text-base font-black text-blue-900 shadow-xl transition hover:-translate-y-0.5 hover:bg-blue-50"
+                      >
+                        Get Started as an Admin
+                        <ArrowRight size={18} />
+                      </Link>
 
-                  <Link
-                    to="/login"
-                    className="inline-flex items-center justify-center rounded-2xl border border-white/20 bg-white/10 px-8 py-4 text-base font-bold text-white transition hover:bg-white/15"
-                  >
-                    Log In
-                  </Link>
+                      <Link
+                        to="/login"
+                        className="inline-flex items-center justify-center rounded-2xl border border-white/20 bg-white/10 px-8 py-4 text-base font-bold text-white transition hover:bg-white/15"
+                      >
+                        Log In
+                      </Link>
+                    </>
+                  )}
                 </div>
 
-                <p className="mt-5 text-sm font-medium text-blue-100/90">
-                  No credit card required. Built for real school workflows.
-                </p>
+                {!isAuth && (
+                  <p className="mt-5 text-sm font-medium text-blue-100/90">
+                    No credit card required. Built for real school workflows.
+                  </p>
+                )}
               </div>
             </div>
           </div>
         </section>
       </main>
 
-      <footer className="relative z-10 mt-auto border-t border-gray-200 bg-white/90 px-4 pb-8 pt-12 backdrop-blur-sm dark:border-gray-800 dark:bg-gray-950/95 sm:px-6 lg:px-8">
+      <footer className="relative z-10 mt-auto border-t border-white/10 bg-black px-4 pb-8 pt-12 sm:px-6 lg:px-8">
         <div className="mx-auto grid max-w-7xl grid-cols-1 gap-10 text-center md:grid-cols-4 md:text-left">
           <div className="md:col-span-1">
             <div className="flex items-center justify-center gap-2.5 md:justify-start">
@@ -791,13 +897,13 @@ const Landing = () => {
                 <span className="text-lg font-black tracking-tight text-blue-600 dark:text-blue-400">
                   Edu
                 </span>
-                <span className="text-lg font-black tracking-tight text-gray-900 dark:text-white">
+                <span className="text-lg font-black tracking-tight text-white">
                   Sync.
                 </span>
               </div>
             </div>
 
-            <p className="mt-4 mx-auto max-w-xs text-sm font-medium leading-7 text-gray-500 dark:text-gray-400 md:mx-0">
+            <p className="mt-4 mx-auto max-w-xs text-sm font-medium leading-7 text-slate-400 md:mx-0">
               The connected school management platform for academic operations,
               communication, and reporting.
             </p>
@@ -814,7 +920,7 @@ const Landing = () => {
                     key={item.label}
                     href="#"
                     aria-label={item.label}
-                    className="rounded-full border border-gray-200 p-2.5 text-gray-500 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600 dark:border-gray-800 dark:text-gray-400 dark:hover:border-gray-700 dark:hover:bg-gray-900 dark:hover:text-white"
+                    className="rounded-full border border-slate-800 p-2.5 text-slate-400 transition hover:border-blue-500 hover:bg-blue-600 hover:text-white"
                   >
                     <Icon size={18} />
                   </a>
@@ -824,54 +930,58 @@ const Landing = () => {
           </div>
 
           <div>
-            <h4 className="text-sm font-black uppercase tracking-[0.18em] text-gray-900 dark:text-white">
+            <h4 className="text-sm font-black uppercase tracking-[0.18em] text-white">
               Product
             </h4>
-            <ul className="mt-5 space-y-3 text-sm font-medium text-gray-500 dark:text-gray-400">
+            <ul className="mt-5 space-y-3 text-sm font-medium text-slate-400">
               <li>
                 <a
                   href="#features"
-                  className="transition hover:text-blue-600 dark:hover:text-blue-400"
+                  className="transition hover:text-white"
                 >
                   Features
                 </a>
               </li>
               <li>
                 <Link
-                  to="/register"
-                  className="transition hover:text-blue-600 dark:hover:text-blue-400"
+                  to={isAuth ? "/dashboard" : "/register"}
+                  className="transition hover:text-white"
                 >
-                  Get Started
+                  {isAuth ? "Dashboard" : "Get Started"}
                 </Link>
               </li>
-              <li>
-                <Link
-                  to="/login"
-                  className="transition hover:text-blue-600 dark:hover:text-blue-400"
-                >
-                  Admin Login
-                </Link>
-              </li>
-              <li>
-                <Link
-                  to="/login"
-                  className="transition hover:text-blue-600 dark:hover:text-blue-400"
-                >
-                  Student Portal
-                </Link>
-              </li>
+              {!isAuth && (
+                <>
+                  <li>
+                    <Link
+                      to="/login"
+                      className="transition hover:text-white"
+                    >
+                      Admin Login
+                    </Link>
+                  </li>
+                  <li>
+                    <Link
+                      to="/login"
+                      className="transition hover:text-white"
+                    >
+                      Student Portal
+                    </Link>
+                  </li>
+                </>
+              )}
             </ul>
           </div>
 
           <div>
-            <h4 className="text-sm font-black uppercase tracking-[0.18em] text-gray-900 dark:text-white">
+            <h4 className="text-sm font-black uppercase tracking-[0.18em] text-white">
               Resources
             </h4>
-            <ul className="mt-5 space-y-3 text-sm font-medium text-gray-500 dark:text-gray-400">
+            <ul className="mt-5 space-y-3 text-sm font-medium text-slate-400">
               <li>
                 <a
                   href="#how-it-works"
-                  className="transition hover:text-blue-600 dark:hover:text-blue-400"
+                  className="transition hover:text-white"
                 >
                   How it works
                 </a>
@@ -879,7 +989,7 @@ const Landing = () => {
               <li>
                 <a
                   href="#testimonials"
-                  className="transition hover:text-blue-600 dark:hover:text-blue-400"
+                  className="transition hover:text-white"
                 >
                   Testimonials
                 </a>
@@ -887,7 +997,7 @@ const Landing = () => {
               <li>
                 <a
                   href="#"
-                  className="transition hover:text-blue-600 dark:hover:text-blue-400"
+                  className="transition hover:text-white"
                 >
                   Help Center
                 </a>
@@ -895,7 +1005,7 @@ const Landing = () => {
               <li>
                 <a
                   href="#"
-                  className="transition hover:text-blue-600 dark:hover:text-blue-400"
+                  className="transition hover:text-white"
                 >
                   API Documentation
                 </a>
@@ -904,10 +1014,10 @@ const Landing = () => {
           </div>
 
           <div>
-            <h4 className="text-sm font-black uppercase tracking-[0.18em] text-gray-900 dark:text-white">
+            <h4 className="text-sm font-black uppercase tracking-[0.18em] text-white">
               Why EduSync
             </h4>
-            <ul className="mt-5 space-y-3 text-sm font-medium text-gray-500 dark:text-gray-400">
+            <ul className="mt-5 space-y-3 text-sm font-medium text-slate-400">
               {trustItems.map((item) => (
                 <li
                   key={item}
@@ -924,7 +1034,8 @@ const Landing = () => {
           </div>
         </div>
 
-        <div className="mx-auto mt-12 flex max-w-7xl flex-col items-center justify-between gap-3 border-t border-gray-200 pt-8 text-center text-sm font-medium text-gray-400 dark:border-gray-800 md:flex-row md:text-left">
+        {/* Centralized Copyright Footer */}
+        <div className="mx-auto mt-12 flex max-w-7xl flex-col items-center justify-center gap-3 border-t border-slate-900 pt-8 text-center text-sm font-medium text-slate-500">
           <p>© {new Date().getFullYear()} EduSync. All rights reserved.</p>
         </div>
       </footer>

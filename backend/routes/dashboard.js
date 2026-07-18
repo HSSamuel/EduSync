@@ -4,7 +4,36 @@ const pool = require("../db");
 const authorize = require("../middleware/authorize");
 const { sendError, sendSuccess } = require("../utils/response");
 
-// Get personal dashboard profile
+// NEW: Public stats for the logged-out landing page
+router.get("/public-stats", async (req, res) => {
+  try {
+    const stats = await pool.query(`
+      SELECT
+        (SELECT COUNT(*) FROM users WHERE role = 'Student' AND deleted_at IS NULL) as total_students,
+        (SELECT COUNT(*) FROM users WHERE role = 'Teacher' AND deleted_at IS NULL) as total_teachers,
+        (SELECT COUNT(*) FROM users WHERE role = 'Parent' AND deleted_at IS NULL) as total_parents,
+        (SELECT COUNT(*) FROM subjects) as total_subjects,
+        (SELECT COUNT(*) FROM school_documents) as total_documents
+    `);
+
+    const data = stats.rows[0];
+
+    return sendSuccess(res, {
+      data: {
+        totalStudents: parseInt(data.total_students, 10) || 0,
+        totalTeachers: parseInt(data.total_teachers, 10) || 0,
+        totalParents: parseInt(data.total_parents, 10) || 0,
+        totalSubjects: parseInt(data.total_subjects, 10) || 0,
+        totalDocuments: parseInt(data.total_documents, 10) || 0,
+      },
+    });
+  } catch (err) {
+    console.error("Public stats route error:", err.message);
+    return sendError(res, { status: 500, message: "Internal Server Error" });
+  }
+});
+
+// Get personal dashboard profile (Protected)
 router.get("/", authorize, async (req, res) => {
   try {
     const user = await pool.query(
@@ -60,10 +89,9 @@ router.get("/", authorize, async (req, res) => {
   }
 });
 
-// Get real-time school statistics
+// Get real-time school statistics (Protected)
 router.get("/stats", authorize, async (req, res) => {
   try {
-    // Count active users by role
     const roleCounts = await pool.query(
       `SELECT role, COUNT(*) FROM users 
        WHERE school_id = $1 AND deleted_at IS NULL 
@@ -105,7 +133,7 @@ router.get("/stats", authorize, async (req, res) => {
   }
 });
 
-// Get live audit log activity for the sidebar
+// Get live audit log activity for the sidebar (Protected)
 router.get("/activity", authorize, async (req, res) => {
   try {
     if (req.user.role !== "Admin") {
